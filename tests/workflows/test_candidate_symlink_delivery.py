@@ -198,7 +198,7 @@ async def test_link_probe_without_bash_keeps_executable_physical_delivery(tmp_pa
         Path(child.workspace_root, "data.txt").write_text("43\n")
 
     try:
-        assert (await environment.exec_cmd("command -v bash")).returncode == 1
+        assert (await environment.exec_cmd("command -v bash")).returncode != 0
         assert await _candidate_physical._has_worktree_conversions(environment, str(source))
         selected = await context.candidate_workflow(candidate, {}, label="portable-links")
         await context.adopt_candidate(selected)
