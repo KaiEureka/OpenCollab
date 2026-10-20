@@ -345,29 +345,26 @@ def api_key_env_precedence(provider: str | None, base_url: str | None = None) ->
     return ("OPENCOLLAB_API_KEY", "OPENAI_API_KEY")
 
 def accepted_api_key_envs(provider: str | None, base_url: str | None = None) -> list[str]:
-    """The env-var names a user can set to satisfy the API-key requirement.
-
-    ``OPENCOLLAB_API_KEY`` plus the provider-specific key, with
-    ``DASHSCOPE_API_KEY`` appended for a DashScope-compatible endpoint.
-    """
+    """Environment credentials recognized by the selected provider."""
     if is_dashscope_endpoint(base_url):
         names = ["OPENCOLLAB_API_KEY", "DASHSCOPE_API_KEY"]
     else:
         names = ["OPENCOLLAB_API_KEY", required_env_key(provider)]
+    if is_anthropic(provider):
+        names.append("ANTHROPIC_AUTH_TOKEN")
     return list(dict.fromkeys(names))
 
 def missing_api_key(provider: str | None, api_key: str | None, base_url: str | None = None) -> bool:
-    """Whether no usable API key is resolvable for ``provider``.
-
-    A non-empty ``api_key`` (already resolved, e.g. from ``build_config``)
-    satisfies the requirement; otherwise consult the env vars in precedence
-    order. Whitespace-only values do not count as present.
-    """
+    """Whether the resolved key and provider environment lack credentials."""
     if api_key and api_key.strip():
         return False
     for key in api_key_env_precedence(provider, base_url):
         value = os.environ.get(key)
         if value and value.strip():
+            return False
+    if is_anthropic(provider):
+        auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        if auth_token and auth_token.strip():
             return False
     return True
 

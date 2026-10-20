@@ -25,6 +25,7 @@ def _isolate_config_env(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENCOLLAB_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("OPENCOLLAB_LLM_TIMEOUT", raising=False)
     monkeypatch.delenv("OPENCOLLAB_TEMPERATURE", raising=False)
@@ -342,7 +343,9 @@ def test_api_key_env_precedence_is_provider_and_endpoint_specific():
 
 def test_accepted_api_key_envs_reproduces_hint_order():
     assert accepted_api_key_envs("openai") == ["OPENCOLLAB_API_KEY", "OPENAI_API_KEY"]
-    assert accepted_api_key_envs("anthropic") == ["OPENCOLLAB_API_KEY", "ANTHROPIC_API_KEY"]
+    assert accepted_api_key_envs("anthropic") == [
+        "OPENCOLLAB_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+    ]
     assert accepted_api_key_envs(
         "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"
     ) == ["OPENCOLLAB_API_KEY", "DASHSCOPE_API_KEY"]
