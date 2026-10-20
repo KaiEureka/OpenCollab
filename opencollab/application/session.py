@@ -595,7 +595,10 @@ class Session:
             restored.active_turn_start_message_index = restored_turn_start
         if phase is not SessionPhase.AWAITING_EVENTS:
             if not restored.pending_events.is_empty():
-                self._complete_missing_pending_rows(restored)
+                self._append_restore_results_for_open_tool_calls(
+                    restored, exclude_ids=set(restored.pending_events.rows),
+                    completed_results=raw_state.get("loop_checkpoint_results"),
+                )
             open_ids = set(self._open_tool_call_ids(restored))
             for message in restored.pending_events.ordered_results():
                 if message["tool_call_id"] in open_ids:
