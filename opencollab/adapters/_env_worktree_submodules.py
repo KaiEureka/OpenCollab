@@ -236,6 +236,7 @@ class _SourceSubmoduleTree:
                     "update",
                     "--init",
                     "--no-fetch",
+                    "--checkout",
                     "--",
                     normalized_path,
                 )

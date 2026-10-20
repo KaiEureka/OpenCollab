@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,10 +13,11 @@ from opencollab.adapters._env_worktree import WorktreeEnvironment
 from opencollab.adapters._env_worktree_submodules import _initialize_source_available_submodules
 from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
 from opencollab.adapters.worktree_pool import WorktreePool
+from opencollab.application.workflow import WorkflowContext
 from opencollab.environments import attach_container
 from tests.support.worktree_delivery_support import CONTAINER_ID
 from tests.support.worktree_delivery_support import worktree_transport as worktree_transport
-from tests.workflows.test_workflow_candidate_workspace import _git, _repository
+from tests.workflows.test_workflow_candidate_workspace import _Factory, _git, _repository
 
 
 def _dependency(tmp_path: Path, name: str) -> Path:
@@ -114,6 +116,84 @@ async def test_candidate_reads_committed_source_available_submodules(tmp_path, m
             await lease.cleanup()
         await base.cleanup()
     assert not candidate_path.exists()
+    assert _git(source, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
+@pytest.mark.parametrize("backend", ["workflow", "team"])
+@pytest.mark.parametrize("update", ["checkout", "none"])
+@pytest.mark.parametrize(
+    ("module_path", "nested"),
+    [("vendor/dependency", False), ('vendor/Shared "Library"\ncopy', False),
+     ('vendor/Shared "Library"\ncopy', True)],
+    ids=["plain", "quoted-path", "nested"],
+)
+async def test_candidate_replays_initialized_submodules_with_disabled_updates(
+    tmp_path, monkeypatch, backend, update, module_path, nested,
+):
+    leaf = _dependency(tmp_path, "leaf")
+    (leaf / "source.py").write_text("value = 42\n")
+    _git(leaf, "commit", "-am", "prepare executable dependency")
+    dependency = leaf
+    nested_path = "inner/Leaf Library"
+    if nested:
+        dependency = _dependency(tmp_path, "middle")
+        _git(dependency, "-c", "protocol.file.allow=always", "submodule", "add",
+             "--name", "leaf", str(leaf), nested_path)
+        _git(dependency, "config", "-f", ".gitmodules", "submodule.leaf.update", update)
+        _git(dependency, "config", "-f", ".gitmodules", "submodule.leaf.url", "https://example.invalid/leaf.git")
+        _git(dependency, "commit", "-am", "record nested dependency")
+    source = _repository(tmp_path)
+    _git(source, "-c", "protocol.file.allow=always", "submodule", "add",
+         "--name", "dependency", str(dependency), module_path)
+    if nested:
+        _git(source / module_path, "-c", "protocol.file.allow=always",
+             "-c", f"submodule.leaf.url={leaf}", "submodule", "update",
+             "--init", "--no-fetch", "--checkout", "--", nested_path)
+    _git(source, "config", "-f", ".gitmodules", "submodule.dependency.update", update)
+    _git(source, "config", "-f", ".gitmodules", "submodule.dependency.url", "https://example.invalid/dependency.git")
+    dependency_path = f"{module_path}/{nested_path}" if nested else module_path
+    (source / "app.py").write_text(
+        f"import runpy\nprint(runpy.run_path({f'{dependency_path}/source.py'!r})['value'])\n"
+    )
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "record project dependency strategy")
+    assert _git(source, "status", "--porcelain") == ""
+    source_index = (source / ".git/index").read_bytes()
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
+    base = LocalEnvironment(str(source))
+    pool = WorktreePool(str(source), use_worktrees=True, enable_adoption=True)
+    executions = []
+    command = shlex.join((sys.executable, "-B", "app.py"))
+
+    async def execute(environment):
+        result = await environment.exec_cmd(command)
+        executions.append((result.returncode, result.stdout, result.stderr))
+        return result.stdout
+
+    async def candidate(child, _args):
+        environment = LocalEnvironment(child.workspace_root)
+        try:
+            return await execute(environment)
+        finally:
+            await environment.cleanup()
+
+    try:
+        await execute(base)
+        assert executions[-1][:2] == (0, "42\n"), executions[-1][2]
+        if backend == "workflow":
+            context = WorkflowContext(_Factory(base), candidate_workspace=EnvCandidateWorkspace(base))
+            captured = await context.candidate_workflow(candidate, {}, label="dependency-strategy")
+            assert captured.diff == ""
+        else:
+            environment = await pool.acquire("coder")
+            await execute(environment)
+            assert await environment.get_diff() == ""
+        assert executions[-1][:2] == (0, "42\n"), executions[-1][2]
+        assert (source / ".git/index").read_bytes() == source_index
+        assert _git(source, "status", "--porcelain") == ""
+    finally:
+        await pool.release()
+        await base.cleanup()
     assert _git(source, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 def _partly_initialized_source(tmp_path: Path) -> Path:
