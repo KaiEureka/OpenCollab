@@ -40,6 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from opencollab.adapters.llm.providers import (
     is_anthropic,
+    is_dashscope_endpoint,
     normalize_wire_protocol,
     required_env_key,
 )
@@ -335,18 +336,9 @@ def load_config_env(workspace: str | None = None) -> dict[str, str]:
             values.setdefault(key, value)
     return values
 
-def _is_dashscope_base_url(base_url: str | None) -> bool:
-    lowered = (base_url or "").lower()
-    return "dashscope" in lowered or "aliyuncs" in lowered
-
 def api_key_env_precedence(provider: str | None, base_url: str | None = None) -> tuple[str, ...]:
-    """Ordered API-key env vars to consult, most provider-specific first.
-
-    Key specificity matters more than source: this keeps a generic exported
-    ``OPENAI_API_KEY`` from being sent to a provider-specific compatible
-    endpoint (DashScope) or to the native Anthropic path.
-    """
-    if _is_dashscope_base_url(base_url):
+    """Resolve configured keys by endpoint before consulting generic variables."""
+    if is_dashscope_endpoint(base_url):
         return ("DASHSCOPE_API_KEY", "OPENCOLLAB_API_KEY")
     if is_anthropic(provider):
         return ("ANTHROPIC_API_KEY", "OPENCOLLAB_API_KEY")
@@ -358,7 +350,7 @@ def accepted_api_key_envs(provider: str | None, base_url: str | None = None) -> 
     ``OPENCOLLAB_API_KEY`` plus the provider-specific key, with
     ``DASHSCOPE_API_KEY`` appended for a DashScope-compatible endpoint.
     """
-    if _is_dashscope_base_url(base_url):
+    if is_dashscope_endpoint(base_url):
         names = ["OPENCOLLAB_API_KEY", "DASHSCOPE_API_KEY"]
     else:
         names = ["OPENCOLLAB_API_KEY", required_env_key(provider)]

@@ -42,6 +42,10 @@ def required_env_key(provider: str | None) -> str:
     """The provider-specific API-key env var checked for a missing key."""
     return "ANTHROPIC_API_KEY" if is_anthropic(provider) else "OPENAI_API_KEY"
 
+def is_dashscope_endpoint(base_url: str | None) -> bool:
+    lowered = (base_url or "").lower()
+    return "dashscope" in lowered or "aliyuncs" in lowered
+
 def warn_provider_near_miss(provider: str | None) -> None:
     """Warn when ``provider`` resembles Anthropic but won't take that path."""
     normalized = normalize_provider(provider)

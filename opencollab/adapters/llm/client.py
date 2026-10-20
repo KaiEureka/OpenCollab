@@ -27,6 +27,7 @@ from opencollab.adapters.llm.openai_provider import _build_request_kwargs, compl
 from opencollab.adapters.llm.providers import (
     RESPONSES,
     is_anthropic,
+    is_dashscope_endpoint,
     normalize_provider,
     normalize_wire_protocol,
     warn_provider_near_miss,
@@ -47,6 +48,15 @@ _NATIVE_OPENAI_HOSTS = {
 }
 
 _ledger_lock = threading.Lock()
+
+def _dashscope_api_key(api_key: str | None) -> str:
+    if api_key and api_key.strip():
+        return api_key
+    for name in ("DASHSCOPE_API_KEY", "OPENCOLLAB_API_KEY"):
+        value = os.environ.get(name)
+        if value and value.strip():
+            return value
+    raise ValueError("no API key configured for DashScope endpoint")
 
 async def _record_api_usage_async(**kwargs: Any) -> None:
     def _locked_record() -> None:
@@ -143,7 +153,10 @@ class LLMClient:
         else:
             self.base_url = base_url or os.environ.get("OPENAI_BASE_URL")
             openai_kwargs: dict[str, Any] = {
-                "api_key": api_key or os.environ.get("OPENAI_API_KEY"),
+                "api_key": (
+                    _dashscope_api_key(api_key) if is_dashscope_endpoint(self.base_url)
+                    else api_key or os.environ.get("OPENAI_API_KEY")
+                ),
                 "base_url": self.base_url,
                 "timeout": openai.Timeout(request_timeout, connect=connect_timeout),
                 "max_retries": 0,
