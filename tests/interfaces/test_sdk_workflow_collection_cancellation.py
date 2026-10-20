@@ -14,8 +14,9 @@ from opencollab import OpenCollab
 @pytest.mark.parametrize("kind", ["parallel", "pipeline"])
 @pytest.mark.parametrize("nested", [False, True])
 @pytest.mark.parametrize("cancellation", ["upstream", "recovered", "caller"])
+@pytest.mark.parametrize("cancel_first", [True, False])
 async def test_cancelled_collection_stops_owned_writers_before_return(
-    tmp_path, kind, nested, cancellation,
+    tmp_path, kind, nested, cancellation, cancel_first,
 ):
     candidate = tmp_path / "candidate.txt"
     candidate.write_text("initial candidate\n")
@@ -48,7 +49,10 @@ async def test_cancelled_collection_stops_owned_writers_before_return(
 
     async def flow(ctx, _inputs):
         async def collection():
-            units = [wait_for_upstream, write_candidate, queued_write]
+            units = (
+                [wait_for_upstream, write_candidate, queued_write]
+                if cancel_first else [write_candidate, wait_for_upstream, queued_write]
+            )
             if kind == "parallel":
                 return await ctx.parallel(units)
 
@@ -62,6 +66,9 @@ async def test_cancelled_collection_stops_owned_writers_before_return(
                 return await ctx.parallel([collection])
             return await collection()
         except asyncio.CancelledError:
+            cancellation_requests = getattr(asyncio.current_task(), "cancelling", None)
+            if cancellation != "caller" and callable(cancellation_requests):
+                assert cancellation_requests() == 0
             if cancellation == "recovered":
                 candidate.write_text("fallback candidate\n")
                 return {"recovered": True}
@@ -111,7 +118,8 @@ async def test_cancelled_collection_stops_owned_writers_before_return(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["parallel", "pipeline"])
 @pytest.mark.parametrize("nested", [False, True])
-async def test_caller_cancellation_preserves_awaited_worker_cleanup(tmp_path, kind, nested):
+@pytest.mark.parametrize("writer_first", [False, True])
+async def test_caller_cancellation_preserves_awaited_worker_cleanup(tmp_path, kind, nested, writer_first):
     active_lease = tmp_path / "active-lease.txt"
     closed = tmp_path / "resource-closed.txt"
     active_lease.write_text("open\n")
@@ -139,13 +147,14 @@ async def test_caller_cancellation_preserves_awaited_worker_cleanup(tmp_path, ki
 
     async def flow(ctx, _inputs):
         async def collection():
+            units = [writer, peer] if writer_first else [peer, writer]
             if kind == "parallel":
-                return await ctx.parallel([peer, writer])
+                return await ctx.parallel(units)
 
             async def stage(_previous, operation, _index):
                 return await operation()
 
-            return await ctx.pipeline([peer, writer], stage)
+            return await ctx.pipeline(units, stage)
 
         if nested:
             return await ctx.parallel([collection])
@@ -165,6 +174,93 @@ async def test_caller_cancellation_preserves_awaited_worker_cleanup(tmp_path, ki
         assert closed.read_text() == "closed\n"
         assert not active_lease.exists()
         assert all(task.done() for task in workers)
+    finally:
+        release_cleanup.set()
+        if not running.done():
+            running.cancel()
+        await asyncio.gather(running, *workers, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["parallel", "pipeline"])
+@pytest.mark.parametrize("order", ["external-first", "upstream-first", "same-turn"])
+async def test_nested_collection_cancellation_race_preserves_worker_cleanup(tmp_path, kind, order):
+    lease = tmp_path / "lease.txt"
+    closed = tmp_path / "closed.txt"
+    lease.write_text("open\n")
+    upstream = asyncio.get_running_loop().create_future()
+    writer_started = asyncio.Event()
+    receiver_started = asyncio.Event()
+    receiver_finished = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    workers = set()
+    contexts = []
+
+    async def writer():
+        workers.add(asyncio.current_task())
+        writer_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            lease.unlink()
+            closed.write_text("closed\n")
+
+    async def receiver():
+        workers.add(asyncio.current_task())
+        receiver_started.set()
+        try:
+            await upstream
+        finally:
+            receiver_finished.set()
+
+    async def flow(ctx, _inputs):
+        contexts.append(ctx)
+
+        async def collection():
+            if kind == "parallel":
+                return await ctx.parallel([writer, receiver])
+
+            async def stage(_previous, operation, _index):
+                return await operation()
+
+            return await ctx.pipeline([writer, receiver], stage)
+
+        return await ctx.parallel([collection])
+
+    running = asyncio.create_task(OpenCollab(tmp_path, model="test-model").workflow(
+        flow, concurrency=2, task_concurrency=2, timeout=30, cleanup_timeout=2, trace=False,
+    ))
+    try:
+        await asyncio.wait_for(writer_started.wait(), 10)
+        await asyncio.wait_for(receiver_started.wait(), 10)
+        if order == "external-first":
+            running.cancel()
+            await asyncio.wait_for(cleanup_started.wait(), 10)
+            upstream.cancel()
+        elif order == "upstream-first":
+            upstream.cancel()
+            await asyncio.wait_for(cleanup_started.wait(), 10)
+            running.cancel()
+        else:
+            running.cancel()
+            upstream.cancel()
+        await asyncio.wait_for(cleanup_started.wait(), 10)
+        await asyncio.wait_for(receiver_finished.wait(), 10)
+        finished, _pending = await asyncio.wait({running}, timeout=0.05)
+        assert running not in finished
+        assert lease.exists()
+        assert not closed.exists()
+
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(asyncio.shield(running), 10)
+        assert not lease.exists()
+        assert closed.read_text() == "closed\n"
+        assert all(task.done() for task in workers)
+        assert contexts[0]._task_semaphore._value == 2
     finally:
         release_cleanup.set()
         if not running.done():

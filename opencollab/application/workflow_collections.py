@@ -189,26 +189,46 @@ class WorkflowCollectionsMixin:
             # a waiting worker for every nested item.
             workers = []
             extra_count = min(size - 1, self._task_concurrency - 1)
+            cancelled_worker = asyncio.get_running_loop().create_future()
+
+            def observe_worker_cancellation(task: asyncio.Task[Any]) -> None:
+                if task.cancelled() and not cancelled_worker.done():
+                    cancelled_worker.set_result(task)
 
             async def allocate_workers() -> None:
                 for _ in range(extra_count):
                     await self._task_semaphore.acquire()
-                    workers.append(self._start_acquired_task_worker(worker))
+                    task = self._start_acquired_task_worker(worker)
+                    workers.append(task)
+                    task.add_done_callback(observe_worker_cancellation)
 
             if extra_count == 0:
                 await worker()
             else:
+                # Borrow the parent slot in a child task so another worker's
+                # cancellation can interrupt it before its operation finishes.
+                inline_worker = asyncio.create_task(worker())
                 allocator = asyncio.create_task(allocate_workers())
                 try:
-                    await worker()
+                    done, _pending = await asyncio.wait(
+                        {inline_worker, cancelled_worker},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if cancelled_worker in done:
+                        cancelled = cancelled_worker.result()
+                        cancelled.result()
+                    await inline_worker
                     allocator.cancel()
                     await asyncio.gather(allocator, return_exceptions=True)
                     await asyncio.gather(*workers)
                 except BaseException:
+                    inline_worker.cancel()
                     allocator.cancel()
                     for task in workers:
                         task.cancel()
-                    await asyncio.gather(allocator, *workers, return_exceptions=True)
+                    await await_owned_operation(
+                        asyncio.gather(inline_worker, allocator, *workers, return_exceptions=True),
+                    )
                     raise
         else:
             workers = [

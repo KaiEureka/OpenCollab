@@ -84,6 +84,7 @@ async def test_sibling_nested_collections_use_slots_released_later():
     first_consumer_done = asyncio.Event()
     allow_second_group = asyncio.Event()
     second_group_started = asyncio.Event()
+    second_producer_started = asyncio.Event()
     second_consumer_started = asyncio.Event()
     release_first_io = asyncio.Event()
     release_first_consumer = asyncio.Event()
@@ -107,6 +108,8 @@ async def test_sibling_nested_collections_use_slots_released_later():
         async def producer():
             await queues[index].put("first")
             events.append((index, "first_put"))
+            if index == 1:
+                second_producer_started.set()
             await queues[index].put("second")
             return "produced"
 
@@ -139,6 +142,7 @@ async def test_sibling_nested_collections_use_slots_released_later():
         await asyncio.wait_for(first_consumer_started.wait(), 2.0)
         allow_second_group.set()
         await asyncio.wait_for(second_group_started.wait(), 2.0)
+        await asyncio.wait_for(second_producer_started.wait(), 2.0)
         assert (0, "consumer_started") in events
         assert (1, "first_put") in events
         assert (1, "consumer_started") not in events
@@ -223,7 +227,9 @@ async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap
         results = await task
 
     assert high_water == 3
-    assert peak_tasks <= 3 * ctx._task_concurrency + 1
+    # Each parent slot may own an inline worker and an allocator. The
+    # collection caller and admission waiter add two tasks on Python 3.10.
+    assert peak_tasks <= 3 * ctx._task_concurrency + 2
     assert results == [list(range(2_000))] * 4
 
 @pytest.mark.asyncio
