@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -259,6 +261,52 @@ async def test_non_git_copy_exports_changes_before_cleanup(tmp_path) -> None:
 
     await env.cleanup()
     assert not os.path.exists(workspace)
+
+@pytest.mark.parametrize("git_source", [False, True])
+async def test_abort_stops_native_process_while_retaining_undelivered_changes(
+    tmp_path, git_source,
+) -> None:
+    source = _repo(tmp_path / "source") if git_source else tmp_path / "source"
+    if not git_source:
+        source.mkdir()
+        (source / "tracked.txt").write_text("base\n", encoding="utf-8")
+    if git_source:
+        (source / ".gitignore").write_text("*.ignored\n", encoding="utf-8")
+        _git(source, "add", ".gitignore")
+        _git(source, "commit", "-qm", "ignore generated files")
+    env = WorktreeEnvironment(str(source))
+    workspace = Path(await env.setup())
+    await env.write_file("tracked.txt", "changed\n")
+    if git_source:
+        (workspace / "build.ignored").write_text("generated\n", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="ignored untracked files"):
+            await env.get_diff()
+    ready = tmp_path / "ready"
+    late_write = tmp_path / "late-write"
+    script = (
+        "from pathlib import Path; import time; "
+        f"Path({str(ready)!r}).touch(); time.sleep(1); Path({str(late_write)!r}).touch()"
+    )
+    worker = asyncio.create_task(env.exec_cmd("exec " + shlex.join([sys.executable, "-c", script])))
+    for _ in range(200):
+        if ready.exists():
+            break
+        await asyncio.sleep(0.01)
+    assert ready.exists()
+
+    with pytest.raises(RuntimeError, match="worktree retained|unexported"):
+        await env.abort()
+    result = await worker
+    assert result.returncode != 0
+    assert not late_write.exists()
+    assert env.revoked and workspace.exists()
+    with pytest.raises(RuntimeError, match="aborted"):
+        await env.exec_cmd("touch unexpected")
+    if git_source:
+        (workspace / "build.ignored").unlink()
+    assert "+changed" in await env.get_diff()
+    await env.cleanup()
+    assert not workspace.exists()
 
 async def test_git_worktree_reports_committed_and_untracked_changes(tmp_path) -> None:
     source = _repo(tmp_path / "repo")

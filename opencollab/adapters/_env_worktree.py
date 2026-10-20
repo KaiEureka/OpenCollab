@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import uuid
 from collections.abc import Sequence
+from contextlib import asynccontextmanager
 
 from opencollab.adapters._candidate_increment import _apply_increment
 from opencollab.adapters._env_base import Environment, ExecResult, TextFileRange
@@ -418,15 +419,32 @@ class WorktreeEnvironment(Environment):
         return self.workspace if self._git_diff_delivery_pending else None
 
     async def get_diff(self) -> str:
-        self._ensure_active()
-        if self._local_env is None:
-            return ""
+        async with self._lifecycle_lock:
+            if self.revoked and (self._local_env is not None or self._worktree_dir is None):
+                self._ensure_active()
+            if self._worktree_dir is None:
+                return ""
+            async with self._capture_owner() as owner:
+                return await self._capture_diff(owner)
+
+    @asynccontextmanager
+    async def _capture_owner(self):
+        if self._local_env is not None:
+            yield self._local_env
+            return
+        owner = LocalEnvironment(self.workspace)
+        try:
+            yield owner
+        finally:
+            await await_owned_operation(owner.cleanup(), propagate_cancellation=True)
+
+    async def _capture_diff(self, owner: LocalEnvironment) -> str:
         if not self._git_mode:
             self._diff_base = None
             self._head_commit = None
             self._own_commits = ()
             self._own_commit_count = None
-            diff = await self._directory_copy_diff()
+            diff = await self._directory_copy_diff(owner=owner)
             self._copy_exported_diff = diff
             self._git_diff_delivery_pending = False
             return diff
@@ -437,7 +455,7 @@ class WorktreeEnvironment(Environment):
         self._diff_base = base_revision
         await self._resolve_own_commits(base_revision)
         # Enumerate new paths from the same repository root as the final diff.
-        result = await self._local_env.exec_cmd(
+        result = await owner.exec_cmd(
             f"cd -- {shlex.quote(self._worktree_dir)} && "
             + guarded_staged_diff_command(base_revision=base_revision)
         )
@@ -452,7 +470,7 @@ class WorktreeEnvironment(Environment):
                 f"worktree retained at {self.workspace}"
             )
         patch = await _complete_patch(
-            result, "worktree diff conversion", self._local_env,
+            result, "worktree diff conversion", owner,
             self._worktree_dir, base_revision, None, captured_blobs=True,
         )
         self._git_diff_delivery_pending = False
@@ -479,7 +497,11 @@ class WorktreeEnvironment(Environment):
 
     async def _directory_copy_diff(
         self, before: str | None = None, after: str | None = None,
+        *, owner: LocalEnvironment | None = None,
     ) -> str:
+        if owner is None:
+            async with self._capture_owner() as capture_owner:
+                return await self._directory_copy_diff(before, after, owner=capture_owner)
         before = before or self._copy_baseline_dir
         after = after or self._worktree_dir
         if before is None or after is None:
@@ -493,15 +515,14 @@ class WorktreeEnvironment(Environment):
             f"{shlex.quote(os.path.basename(before))} "
             f"{shlex.quote(os.path.basename(after))}"
         )
-        assert self._local_env is not None
-        result = await self._local_env.exec_cmd(command)
+        result = await owner.exec_cmd(command)
         if result.stdout_truncated or result.stderr_truncated:
             raise RuntimeError("non-Git worktree diff exceeded capture limit")
         if result.returncode not in (0, 1):
             detail = result.stderr.strip() or f"git exited with status {result.returncode}"
             raise RuntimeError(f"non-Git worktree diff extraction failed: {detail}")
         return await _complete_patch(
-            result, "non-Git worktree diff conversion", self._local_env,
+            result, "non-Git worktree diff conversion", owner,
             after, "HEAD", None, allowed=(0, 1), before_directory=before,
         )
 
@@ -649,6 +670,14 @@ class WorktreeEnvironment(Environment):
         await self._cleanup()
 
     async def abort(self) -> None:
+        self.revoke()
+        await await_owned_operation(self._abort(), propagate_cancellation=True)
+
+    async def _abort(self) -> None:
+        async with self._lifecycle_lock:
+            if self._local_env is not None:
+                await self._local_env.abort()
+                self._local_env = None
         await self._cleanup()
 
     async def _cleanup(self) -> None:
