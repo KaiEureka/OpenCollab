@@ -11,6 +11,7 @@ from typing import Any
 
 from opencollab.adapters._env_worktree_submodules import _source_available_submodule_paths
 from opencollab.adapters._git_patch_bytes import _complete, _complete_patch, _patch_temporary
+from opencollab.adapters.git_patch import _submodule_patch_guard
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.patches import patch_paths
 
@@ -292,6 +293,12 @@ async def _capture_physical(
             environment, workspace, base_revision, exclude_paths=exclude_paths,
             strict=strict, metadata=owned,
         )
+        _complete(await environment.exec_cmd(
+            _submodule_patch_guard(
+                _git_prefix(workspace, strict), base_revision,
+                indexed_git_command=owned[0], reject_ignored_untracked=False,
+            ), timeout=900,
+        ), "physical candidate submodule inspection")
         normalized = await _normalize_tree(environment, workspace, tree, strict=strict, metadata=owned)
         patch = await _tree_patch(environment, workspace, base_revision, normalized, strict=strict)
         return _PhysicalCapture(tree, normalized, patch)
