@@ -629,6 +629,13 @@ class Session:
             and raw_state.get("terminal_reason") is not None
             else None
         )
+        if phase is SessionPhase.AUTOSAVING and isinstance(submitted_summary, str):
+            # Submission has already ended model execution; only its save was interrupted.
+            answer = {"role": "assistant", "content": submitted_summary}
+            if not restored.messages or restored.messages[-1] != answer:
+                restored.append_message(answer)
+            restored.mark_done()
+            restored.terminal_reason = "submitted"
 
     def _normalize_forked_state(self, state: SessionState, raw_state: dict[str, Any]) -> None:
         state.pending_events.clear()

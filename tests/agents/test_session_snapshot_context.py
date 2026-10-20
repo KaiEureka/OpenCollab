@@ -15,9 +15,10 @@ import pytest
 
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.tools.bash import BashTool
-from opencollab.adapters.tools.fs import FileReadTool
+from opencollab.adapters.tools.fs import FileReadTool, FileWriteTool
+from opencollab.adapters.tools.submit import SubmitTool
 from opencollab.application.shaping import AutoCompactShaper, PerToolResultBudgetShaper
-from opencollab.bootstrap import SnapshotSessionError, build_session, snapshot_session
+from opencollab.bootstrap import SnapshotSessionError, build_session, load_session, snapshot_session
 from opencollab.bootstrap.agent_profiles import resolve_agent_profile
 from opencollab.bootstrap.context_policy import ContextPolicy
 from opencollab.domain.agent import Agent
@@ -26,7 +27,7 @@ from opencollab.domain.session import SessionPhase
 from tests.runtime.test_async_compaction import history
 from tests.runtime.test_compaction_accounting import AccountingModel
 from tests.support.scheduler_awaiting_test_support import build_scheduler
-from tests.support.session_characterization_test_support import llm_response
+from tests.support.session_characterization_test_support import FakeLLMClient, llm_response
 
 _MARKER = "END_OF_FIXTURE"
 
@@ -52,6 +53,73 @@ class _MarkerProvider:
                 "function": {"name": "file_read", "arguments": '{"path":"fixture.txt"}'},
             }], finish_reason="tool_calls")
         return llm_response(content="FOUND" if any(_MARKER in result for result in results) else "MISSING")
+
+
+@pytest.mark.parametrize("event_type", ["text_delta", "step_end"])
+@pytest.mark.parametrize("max_steps", [1, 10])
+async def test_submitted_snapshot_finishes_without_another_model_call(tmp_path, event_type, max_steps):
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    summary = "Saved the verified result."
+    held, release = asyncio.Event(), asyncio.Event()
+
+    async def hold_submission(event):
+        if event.type == event_type and source.state.submitted_summary == summary:
+            held.set()
+            await release.wait()
+
+    model = FakeLLMClient([llm_response(tool_calls=[
+        {"id": "write", "type": "function", "function": {
+            "name": "file_write", "arguments": json.dumps({
+                "path": "result.txt", "mode": "create", "content": "verified result\n",
+            }),
+        }},
+        {"id": "submit", "type": "function", "function": {
+            "name": "submit", "arguments": json.dumps({"summary": summary}),
+        }},
+    ], finish_reason="tool_calls")])
+    agent = Agent(name="worker", system_prompt="Write and submit the result.", tools=[FileWriteTool(), SubmitTool()])
+    source = build_session(
+        agent=agent, env=_ForkableEnvironment(str(workspace)), llm=model,
+        event_sink=hold_submission, max_steps=max_steps,
+    )
+    branch = restored = None
+    await source.add_user_message("Write and submit the verified result")
+    running = asyncio.create_task(source.run_loop())
+    try:
+        await asyncio.wait_for(held.wait(), 3)
+        assert source.phase is SessionPhase.AUTOSAVING
+        assert source.messages[-1] == {"role": "assistant", "content": summary}
+        branch = snapshot_session(source)
+        saved = tmp_path / "submitted.json"
+        source.save(str(saved))
+        restored_workspace = tmp_path / "restored"
+        shutil.copytree(workspace, restored_workspace)
+        restored = load_session(
+            str(saved), agent=agent, env=LocalEnvironment(str(restored_workspace)),
+            llm=model, max_steps=max_steps,
+        )
+        for session in (branch, restored):
+            assert await session.run_loop() == summary
+            assert session.phase is SessionPhase.DONE
+            assert session.state.terminal_reason == "submitted"
+            assert session.used_tokens == source.used_tokens
+            assert sum(message == {"role": "assistant", "content": summary} for message in session.messages) == 1
+            assert (Path(session.env.workspace) / "result.txt").read_text() == "verified result\n"
+            session.save(str(tmp_path / f"completed-{id(session)}.json"))
+            assert await session.run_loop() == summary
+        assert len(model.calls) == 1
+        release.set()
+        assert await asyncio.wait_for(running, 3) == summary
+        assert source.phase is SessionPhase.DONE
+    finally:
+        release.set()
+        if not running.done():
+            running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+        for session in (branch, restored, source):
+            if session is not None:
+                await session.aclose()
 
 
 async def test_snapshot_during_native_tool_execution_resumes_without_replaying_it(tmp_path):
