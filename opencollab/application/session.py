@@ -113,6 +113,7 @@ class Session:
         self.store = runtime.store
         self.tool_execution = runtime.tool_execution
         self.tool_execution.loop_reservation_checkpoint = self._checkpoint_loop_reservation
+        self.tool_execution.tool_results_checkpoint = self._track_tool_results
         self.runner = runtime.runner
         self._context_summarizer = runtime.context_summarizer
         # Set again now that the runner and the tool executor exist, so both
@@ -341,6 +342,7 @@ class Session:
                         "The execution outcome is unknown."
                     ),
                     exclude_ids=set(self.state.pending_events.rows),
+                    completed_results=self._completed_tool_results(),
                 )
                 raise
             except BaseException as exc:
@@ -648,14 +650,17 @@ class Session:
         )
         self._normalize_interrupted_snapshot_state(state, raw_state, turn_start)
 
-    def _fork_runtime_metadata(self) -> dict[str, Any]:
+    def _completed_tool_results(self) -> list[dict]:
         state = self.state
-        completed = (
+        return (
             [dict(row) for row in (*self._loop_checkpoint_prefix, *self._loop_checkpoint_results)]
             if state.step_count == self._loop_checkpoint_step
             and state.phase not in {SessionPhase.AUTOSAVING, SessionPhase.AWAITING_EVENTS}
             else []
         )
+
+    def _fork_runtime_metadata(self) -> dict[str, Any]:
+        state = self.state
         return {
             "phase": state.phase.value,
             "pending_events": [_serialize_pending_row(row) for row in state.pending_events.rows.values()],
@@ -663,7 +668,7 @@ class Session:
             "pending_step_latency": state.pending_step_latency,
             "submitted_summary": state.submitted_summary,
             "terminal_reason": state.terminal_reason,
-            "loop_checkpoint_results": completed,
+            "loop_checkpoint_results": self._completed_tool_results(),
         }
 
     def _restore_auto_save_tracking(self, snapshot: dict[str, Any]) -> None:
@@ -790,13 +795,14 @@ class Session:
             if exclude_ids is not None and tool_call_id in exclude_ids:
                 continue
             if exclude_ids is not None and not restored_state.pending_events.is_empty():
+                completed = tool_call_id in receipts
                 restored_state.pending_events.add(PendingRow(
                     tool_call_id=tool_call_id,
                     kind=RowKind.IMMEDIATE,
                     order=order,
-                    status=RowStatus.FAILED,
-                    result=content,
-                    error=content,
+                    status=RowStatus.DONE if completed else RowStatus.FAILED,
+                    result=receipts.get(tool_call_id, content),
+                    error=None if completed else content,
                 ))
                 continue
             restored_state.append_message(
@@ -1011,19 +1017,21 @@ class Session:
             return None
         return self._auto_save_subscriber.enqueue()
 
-    async def _checkpoint_loop_reservation(self, completed_results: list[dict]) -> None:
-        """Persist a consumed extra dispatch through the existing save owner."""
-        if self._auto_save_path is None:
-            return
+    def _track_tool_results(self, completed_results: list[dict]) -> None:
         pending = [
             {"role": "tool", "tool_call_id": row.tool_call_id, "content": row.result or ""}
             for row in self.state.pending_events.rows.values() if row.status is not RowStatus.PENDING
         ]
-        # Retain the live prefix until this model batch finishes. A cancellation
-        # or failed tool can trigger a later terminal save of the same step.
+        # Keep the live batch visible to snapshots before its results reach the transcript.
         self._loop_checkpoint_prefix = pending
         self._loop_checkpoint_results = completed_results
         self._loop_checkpoint_step = self.state.step_count
+
+    async def _checkpoint_loop_reservation(self, completed_results: list[dict]) -> None:
+        """Persist a consumed extra dispatch through the existing save owner."""
+        if self._auto_save_path is None:
+            return
+        self._track_tool_results(completed_results)
         subscriber = self._auto_save_subscriber
         failures = subscriber.failure_count if subscriber is not None else 0
         owner = self.enqueue_auto_save()

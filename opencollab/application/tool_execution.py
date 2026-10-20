@@ -346,6 +346,7 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
         )
         self._pending_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self.loop_reservation_checkpoint: Callable[[list[dict]], Awaitable[None]] | None = None
+        self.tool_results_checkpoint: Callable[[list[dict]], None] | None = None
 
     @property
     def pending_cleanup_tasks(self) -> tuple[asyncio.Task[Any], ...]:
@@ -376,6 +377,8 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
         )
         if any(preflight_errors):
             return self.preflight_rejection_result(tool_calls, preflight_errors)
+        if self.tool_results_checkpoint is not None:
+            self.tool_results_checkpoint(result.messages_to_append)
         loop_batch = _LoopBatch(self, result)
 
         for index, tc in enumerate(tool_calls):

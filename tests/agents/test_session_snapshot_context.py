@@ -55,6 +55,190 @@ class _MarkerProvider:
         return llm_response(content="FOUND" if any(_MARKER in result for result in results) else "MISSING")
 
 
+@pytest.mark.parametrize("event_type", ["tool_end", "tool_start", "step_end"])
+@pytest.mark.parametrize("autosave", [False, True])
+async def test_snapshot_preserves_completed_native_output_before_the_batch_is_published(
+    tmp_path, event_type, autosave,
+):
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "input.txt").write_text("one-time-value\n")
+    held, release = asyncio.Event(), asyncio.Event()
+    events, requests = [], []
+
+    def call(name, arguments, ident):
+        return {
+            "id": ident, "type": "function",
+            "function": {"name": name, "arguments": json.dumps(arguments)},
+        }
+
+    def command(code):
+        return shlex.join((sys.executable, "-B", "-c", code))
+
+    class Model:
+        async def complete(self, messages, **kwargs):
+            requests.append(copy.deepcopy(messages))
+            results = {row["tool_call_id"]: row["content"] for row in messages if row["role"] == "tool"}
+            if not results:
+                consume = (
+                    "from pathlib import Path\n"
+                    "p=Path('input.txt')\nvalue=p.read_text()\np.unlink()\n"
+                    "with Path('executions.txt').open('a') as stream: stream.write('once\\n')\n"
+                    "print('CONSUMED_'+value)\n"
+                )
+                return llm_response(tool_calls=[
+                    call("bash", {"command": command(consume)}, "consume"),
+                    call("bash", {"command": command("print('SECOND_EXECUTED')")}, "second"),
+                ], finish_reason="tool_calls")
+            if "delivery" not in results:
+                assert "CONSUMED_one-time-value" in results["consume"]
+                verify = (
+                    "from pathlib import Path\n"
+                    "assert not Path('input.txt').exists()\n"
+                    "assert Path('executions.txt').read_text()=='once\\n'\n"
+                    f"Path('delivery.txt').write_text({results['consume']!r})\n"
+                    "print('DELIVERY_EXECUTED')\n"
+                )
+                return llm_response(tool_calls=[
+                    call("bash", {"command": command(verify)}, "delivery"),
+                ], finish_reason="tool_calls")
+            assert "DELIVERY_EXECUTED" in results["delivery"]
+            return llm_response(tool_calls=[
+                call("submit", {"summary": "Delivered the consumed value."}, "submit"),
+            ], finish_reason="tool_calls")
+
+    async def hold_snapshot(event):
+        events.append(event)
+        target = {"tool_end": "consume", "tool_start": "second"}.get(event_type)
+        if event.type == event_type and not held.is_set() and (
+            target is None or event.data.get("tool_call_id") == target
+        ):
+            held.set()
+            await release.wait()
+
+    agent = Agent(name="worker", system_prompt="Deliver the command's output.", tools=[BashTool(), SubmitTool()])
+    model = Model()
+    source = build_session(
+        agent=agent, env=_ForkableEnvironment(str(workspace)), llm=model,
+        event_sink=hold_snapshot,
+        auto_save_path=str(tmp_path / "live.json") if autosave else None,
+    )
+    branch = restored = None
+    await source.add_user_message("Read and consume the one-time input, then deliver its value.")
+    running = asyncio.create_task(source.run_loop())
+    try:
+        await asyncio.wait_for(held.wait(), 5)
+        branch = snapshot_session(source)
+        saved = tmp_path / "snapshot.json"
+        source.save(str(saved))
+        restored_workspace = tmp_path / "restored"
+        shutil.copytree(workspace, restored_workspace)
+        restored = load_session(
+            str(saved), agent=agent, env=LocalEnvironment(str(restored_workspace)), llm=model,
+        )
+        for session in (branch, restored):
+            assert await session.run_loop() == "Delivered the consumed value."
+            assert session.phase is SessionPhase.DONE
+            directory = Path(session.env.workspace)
+            assert "CONSUMED_one-time-value" in (directory / "delivery.txt").read_text()
+            assert (directory / "executions.txt").read_text() == "once\n"
+            assert [row["tool_call_id"] for row in session.messages if row["role"] == "tool"] == [
+                "consume", "second", "delivery", "submit",
+            ]
+            second = next(row["content"] for row in session.messages if row.get("tool_call_id") == "second")
+            assert ("SECOND_EXECUTED" in second) is (event_type == "step_end")
+        release.set()
+        assert await asyncio.wait_for(running, 5) == "Delivered the consumed value."
+        assert (workspace / "executions.txt").read_text() == "once\n"
+        assert "CONSUMED_one-time-value" in (workspace / "delivery.txt").read_text()
+        assert len(requests) == 7
+        assert [(event.type, event.data["tool_call_id"]) for event in events
+                if event.type in {"tool_start", "tool_end"}] == [
+            ("tool_start", "consume"), ("tool_end", "consume"),
+            ("tool_start", "second"), ("tool_end", "second"),
+            ("tool_start", "delivery"), ("tool_end", "delivery"),
+            ("tool_start", "submit"), ("tool_end", "submit"),
+        ]
+    finally:
+        release.set()
+        if not running.done():
+            running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+        for session in (branch, restored, source):
+            if session is not None:
+                await session.aclose()
+
+
+@pytest.mark.parametrize("autosave", [False, True])
+async def test_cancelled_native_batch_keeps_the_output_of_completed_commands(tmp_path, autosave):
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "input.txt").write_text("one-time-value\n")
+
+    class Model:
+        async def complete(self, messages, **kwargs):
+            results = {row["tool_call_id"]: row["content"] for row in messages if row["role"] == "tool"}
+            if results:
+                return llm_response(content=results["consume"])
+            commands = [
+                ("consume", "from pathlib import Path\np=Path('input.txt')\nvalue=p.read_text()\np.unlink()\n"
+                 "with Path('executions.txt').open('a') as stream: stream.write('once\\n')\n"
+                 "print('CONSUMED_'+value)\n"),
+                ("waiting", "import time\nfrom pathlib import Path\nPath('started').touch()\n"
+                 "while not Path('release').exists(): time.sleep(.01)\nPath('late.txt').touch()\n"),
+            ]
+            return llm_response(tool_calls=[{
+                "id": ident, "type": "function", "function": {
+                    "name": "bash", "arguments": json.dumps({
+                        "command": shlex.join((sys.executable, "-B", "-c", code)),
+                    }),
+                },
+            } for ident, code in commands], finish_reason="tool_calls")
+
+    model = Model()
+    agent = Agent(name="worker", system_prompt="Return the consumed output.", tools=[BashTool()])
+    source = build_session(
+        agent=agent, env=LocalEnvironment(str(workspace)), llm=model,
+        auto_save_path=str(tmp_path / "live.json") if autosave else None,
+    )
+    restored = None
+    await source.add_user_message("Consume the input, then wait.")
+    running = asyncio.create_task(source.run_loop())
+    try:
+        async def wait_for_start():
+            while not (workspace / "started").exists():
+                await asyncio.sleep(.01)
+
+        await asyncio.wait_for(wait_for_start(), 5)
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+        assert source.phase is SessionPhase.STOPPED
+        results = [row for row in source.messages if row["role"] == "tool"]
+        assert [row["tool_call_id"] for row in results] == ["consume", "waiting"]
+        assert "CONSUMED_one-time-value" in results[0]["content"]
+        assert "interrupted by session cancellation" in results[1]["content"]
+        saved = tmp_path / "cancelled.json"
+        source.save(str(saved))
+        restored = load_session(str(saved), agent=agent, env=LocalEnvironment(str(workspace)), llm=model)
+        for session in (source, restored):
+            await session.add_user_message("Return the completed command's output.")
+            assert "CONSUMED_one-time-value" in await session.run_loop()
+            assert (workspace / "executions.txt").read_text() == "once\n"
+            assert not (workspace / "input.txt").exists()
+        (workspace / "release").touch()
+        await asyncio.sleep(.05)
+        assert not (workspace / "late.txt").exists()
+    finally:
+        (workspace / "release").touch()
+        if not running.done():
+            running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+        for session in (source, restored):
+            if session is not None:
+                await session.aclose()
+
+
 @pytest.mark.parametrize("event_type", ["tool_end", "text_delta", "step_end"])
 @pytest.mark.parametrize("max_steps", [1, 10])
 @pytest.mark.parametrize("autosave", [False, True])
