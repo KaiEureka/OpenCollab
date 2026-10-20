@@ -253,6 +253,12 @@ class WorkflowCandidatesMixin:
         revision = await read_revision() if callable(read_revision) else None
         return revision, await self._candidate_workspace.source_diff()
 
+    async def _candidate_source_changed(self, lease: Any, before: tuple[str | None, str]) -> bool:
+        if await self._candidate_source_state() != before:
+            return True
+        inspect_source = getattr(lease, "physical_source_changed", None)
+        return bool(await inspect_source()) if callable(inspect_source) else False
+
     async def _finish_candidate_run(
         self, lease: Any, candidate: CandidateRun | None, failure: BaseException | None,
         *, label: str, preserve_lease: bool,
@@ -360,7 +366,7 @@ class WorkflowCandidatesMixin:
                     failure.__cause__ = exc
                     raise failure
                 try:
-                    source_after = await self._candidate_source_state()
+                    source_changed = await self._candidate_source_changed(lease, source_before)
                 except asyncio.CancelledError:
                     preserve_lease = True
                     raise
@@ -373,7 +379,7 @@ class WorkflowCandidatesMixin:
                     )
                     failure.__cause__ = exc
                     raise failure
-                if source_after != source_before:
+                if source_changed:
                     preserve_lease = True
                     failure = CandidateWorkspaceTrackingError(
                         f"source worktree changed during candidate {label}. "
@@ -492,7 +498,7 @@ class WorkflowCandidatesMixin:
                     failure.__cause__ = exc
                     raise failure
                 try:
-                    source_after = await self._candidate_source_state()
+                    source_changed = await self._candidate_source_changed(lease, source_before)
                 except asyncio.CancelledError:
                     preserve_lease = True
                     raise
@@ -505,7 +511,7 @@ class WorkflowCandidatesMixin:
                     )
                     failure.__cause__ = exc
                     raise failure
-                if source_after != source_before:
+                if source_changed:
                     preserve_lease = True
                     failure = CandidateWorkspaceTrackingError(
                         f"source worktree changed during candidate workflow {label}. "

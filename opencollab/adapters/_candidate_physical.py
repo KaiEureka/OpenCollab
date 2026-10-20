@@ -124,7 +124,7 @@ async def _physical_git(
 
 async def _physical_tree(
     environment: Any, workspace: str, base_revision: str,
-    *, exclude_paths: Sequence[str] = (), strict: bool = False,
+    *, exclude_paths: Sequence[str] = (), exclude_tree_paths: Sequence[str] = (), strict: bool = False,
     metadata: tuple[str, str] | None = None,
 ) -> str:
     real_git = _git_prefix(workspace, strict)
@@ -155,6 +155,11 @@ async def _physical_tree(
                     "--pathspec-file-nul; fi",
                     timeout=900,
                 ), "physical candidate contents capture")
+                if exclude_tree_paths:
+                    _complete(await environment.exec_cmd(
+                        f"{git} --literal-pathspecs rm --quiet -r --cached --ignore-unmatch -- "
+                        f"{shlex.join(exclude_tree_paths)}", timeout=900,
+                    ), "physical source path exclusion")
                 return _complete(await environment.exec_cmd(
                     f"{git} write-tree",
                 ), "physical candidate tree").strip()

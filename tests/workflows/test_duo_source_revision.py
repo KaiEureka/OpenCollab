@@ -34,8 +34,11 @@ def response(name, arguments, sequence):
         usage=Usage(5, 3),
     )
 
-@pytest.mark.parametrize("mode,mutate", [("duo", False), ("duo", True), ("direct", True)])
-async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch, mode, mutate):
+@pytest.mark.parametrize("mode,mutate,physical", [
+    ("duo", False, False), ("duo", True, False), ("direct", True, False),
+    ("duo", False, True), ("duo", True, True),
+])
+async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch, mode, mutate, physical):
     monkeypatch.delenv("OPENCOLLAB_UNBOUNDED_LIMITS", raising=False)
     monkeypatch.setenv("OPENCOLLAB_API_USAGE_LOG", "")
     repo = tmp_path / "repo"
@@ -46,9 +49,15 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
     git(repo, "config", "commit.gpgsign", "false")
     (repo / "source.py").write_text("def value():\n    return 1\n")
     (repo / "flags.py").write_text("ENABLED = True\n")
+    helper = b'#!/bin/sh\nprintf "42\\n"\n'
+    if physical:
+        (repo / ".gitattributes").write_text("*.sh text eol=crlf\n")
+        (repo / "helper.sh").write_bytes(helper)
+        (repo / "helper.sh").chmod(0o755)
+    probe = '    subprocess.run(["./helper.sh"], check=True, stdout=subprocess.DEVNULL)\n' if physical else ""
     (repo / "test_public.py").write_text(
-        "from source import value\nfrom flags import ENABLED\n\n"
-        "def test_public():\n    assert ENABLED and value() >= 2\n"
+        "import subprocess\nfrom source import value\nfrom flags import ENABLED\n\n"
+        f"def test_public():\n{probe}    assert ENABLED and value() >= 2\n"
     )
     (repo / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n")
     git(repo, "add", ".")
@@ -59,6 +68,7 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
     (repo / "flags.py").write_text("ENABLED = False\n")
     git(repo, "commit", "-am", "\u4fee\u6539\u5019\u9009\u4f9d\u8d56")
     git(repo, "checkout", "-q", original_branch)
+    source_index = (repo / ".git/index").read_bytes()
     command = f"{shlex.quote(sys.executable)} -m pytest -q -rA -p no:cacheprovider test_public.py"
     judge_entered = asyncio.Event()
     changed = asyncio.Event()
@@ -128,7 +138,10 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
 
     async def external_change():
         await judge_entered.wait()
-        git(repo, "checkout", "-q", "other")
+        if physical:
+            (repo / "helper.sh").write_bytes(helper.replace(b"\n", b"\r\n"))
+        else:
+            git(repo, "checkout", "-q", "other")
         changed.set()
 
     async def direct(ctx, _args):
@@ -147,7 +160,7 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
             "duo" if mode == "duo" else direct,
             {
                 "goal": "value returns 3 with ENABLED",
-                "candidate_evidence_dir": str(tmp_path / "evidence"),
+                "candidate_evidence_dir": str((repo if physical else tmp_path) / "evidence"),
                 "allow_unisolated_shell": True,
             },
             budget=100_000,
@@ -161,6 +174,7 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
                 {
                     "mode": mode,
                     "mutate": mutate,
+                    "physical": physical,
                     "runtime_status": result.status,
                     "output": result.output,
                     "source": (repo / "source.py").read_text(),
@@ -173,6 +187,11 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
         if mode == "direct":
             assert result.output == "revision-change-rejected"
             assert (repo / "source.py").read_text() == "def value():\n    return 1\n"
+        elif mutate and physical:
+            assert not result.ok
+            assert "source worktree changed before candidate adoption" in result.reason
+            assert (repo / "source.py").read_text() == "def value():\n    return 1\n"
+            assert (repo / "helper.sh").read_bytes() == helper.replace(b"\n", b"\r\n")
         elif mutate:
             assert result.output.get("adopted") is None
             assert (repo / "source.py").read_text() == "def value():\n    return 1\n"
@@ -180,6 +199,8 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
         else:
             assert result.output["adopted"] == "B"
             assert final.returncode == 0
+        if physical:
+            assert (repo / ".git/index").read_bytes() == source_index
     finally:
         if mutator is not None:
             if not mutator.done():

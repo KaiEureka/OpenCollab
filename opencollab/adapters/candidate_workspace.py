@@ -140,6 +140,22 @@ class _CandidateLease:
     delivery_diff: str | None = None
     delivery_paths: tuple[str, ...] = ()
     strict_capture: bool = False
+    source_untracked_exclusions: tuple[str, ...] = ()
+
+    async def physical_source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
+        if self.physical_base_revision is None:
+            return False
+        current = await _physical_tree(
+            self.base_environment, self.source_workspace, self.base_revision,
+            exclude_paths=self.source_untracked_exclusions, strict=self.strict_capture,
+        )
+        if not exclude_paths:
+            return current != self.physical_base_revision
+        return bool((await _tree_patch(
+            self.base_environment, self.source_workspace, self.physical_base_revision, current,
+            exclude_paths=_repository_exclusions(self.workspace_prefix, exclude_paths),
+            strict=self.strict_capture,
+        )).strip())
 
     async def diff(self, exclude_paths: Sequence[str] = ()) -> str:
         async with _candidate_temporary(
@@ -467,6 +483,10 @@ class EnvCandidateWorkspace:
                 workspace_prefix=workspace_prefix,
                 physical_base_revision=source_capture.tree if source_capture is not None else None,
                 strict_capture=strict_capture,
+                source_untracked_exclusions=(
+                    *self._owned_untracked_paths(repository_root),
+                    *strict_untracked_exclusions,
+                ),
             )
             if lease_observer is not None:
                 lease_observer(lease)
@@ -628,6 +648,18 @@ class EnvCandidateWorkspace:
         excluded = _repository_exclusions(await self._workspace_prefix(), exclude_paths) if exclude_paths else ()
         base_revision = await self.source_revision()
         return await self._source_patch(repository_root, base_revision, excluded)
+
+    async def physical_source_revision(self, exclude_paths: Sequence[str] = ()) -> str | None:
+        """Return a conversion-aware source tree with repository-relative exclusions."""
+        root = await self._repository_root()
+        if not await _has_worktree_conversions(self._environment, root):
+            return None
+        excluded = tuple(_safe_path(path) for path in exclude_paths)
+        return await _physical_tree(
+            self._environment, root, await self.source_revision(),
+            exclude_paths=(*self._owned_untracked_paths(root), *excluded),
+            exclude_tree_paths=excluded,
+        )
 
     async def _source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
         repository_root = await self._repository_root()

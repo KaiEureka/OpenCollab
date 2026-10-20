@@ -52,8 +52,10 @@ async def duo(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
     evidence_root = _source_evidence_root(ctx, evidence_parent)
     files = CandidateEvidenceFiles(evidence_parent) if evidence_root is not None else None
     source_reader = None
+    evidence_exclusions = ()
     if files is not None:
         directory = files.directory.resolve()
+        evidence_exclusions = (directory.relative_to(evidence_root).as_posix(),)
         workspace = Path(ctx.host_workspace).resolve()
         excluded = (directory.relative_to(workspace).as_posix(),) if directory.is_relative_to(workspace) else ()
 
@@ -69,6 +71,12 @@ async def duo(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
                 raise RuntimeError("candidate_workspace_tracking_failure: source diff unavailable for Duo evidence")
             return _without_owned_evidence(source, directory.relative_to(evidence_root).as_posix())
 
+    physical_source_reader = None
+    read_physical = getattr(getattr(ctx, "_candidate_workspace", None), "physical_source_revision", None)
+    if callable(read_physical):
+        async def physical_source_reader() -> str | None:
+            return await read_physical(exclude_paths=evidence_exclusions)
+
     async def adjudicator(context: Any, **options: Any) -> tuple[str, Any, str]:
         return await adjudicate_candidate_files(
             context, **options, evidence_parent=evidence_parent, evidence_files=files,
@@ -76,7 +84,7 @@ async def duo(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
 
     result = await run_dual_coder(
         ctx, args, selector_prompt=SELECTION_PROMPT, adjudicator=adjudicator,
-        source_reader=source_reader,
+        source_reader=source_reader, physical_source_reader=physical_source_reader,
     )
     result["prompt_revision"] = _PROMPT_REVISION
     return result
