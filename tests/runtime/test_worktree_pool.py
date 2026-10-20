@@ -684,6 +684,51 @@ async def test_worktree_cleanup_stops_when_local_environment_is_not_quiescent(
     await env.cleanup()
     assert not os.path.exists(workspace)
 
+
+@pytest.mark.parametrize("hook_phase", ["post-checkout", "reference-transaction"])
+async def test_cancelled_checkout_removes_registered_worktree_before_return(
+    tmp_path, hook_phase,
+) -> None:
+    source = _repo(tmp_path / "repo")
+    entered = tmp_path / "hook-entered"
+    release = tmp_path / "hook-release"
+    hook = source / ".git/hooks" / hook_phase
+    claim_only = (
+        '[ "$1" = committed ] || exit 0\n'
+        "grep -Eq '^0+ [0-9a-f]+ refs/heads/cancelled-checkout$' || exit 0\n"
+        if hook_phase == "reference-transaction" else ""
+    )
+    hook.write_text(
+        "#!/bin/sh\n"
+        + claim_only
+        + f": > {shlex.quote(str(entered))}\n"
+        + f"while [ ! -e {shlex.quote(str(release))} ]; do sleep 0.05; done\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    env = WorktreeEnvironment(str(source), branch_name="cancelled-checkout")
+    owner = asyncio.create_task(env.setup())
+    try:
+        async with asyncio.timeout(5):
+            while not entered.exists():
+                await asyncio.sleep(0.01)
+        candidate = Path(env._worktree_dir) if env._worktree_dir is not None else None
+        owner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(owner, 5)
+        assert candidate is None or not candidate.exists()
+        assert not _branch_exists(source, "cancelled-checkout")
+        listing = _git(source, "worktree", "list", "--porcelain", "-z").stdout
+        assert sum(field.startswith("worktree ") for field in listing.split("\0")) == 1
+        await env.cleanup()
+        assert _git(source, "worktree", "list", "--porcelain", "-z").stdout == listing
+    finally:
+        release.touch()
+        if not owner.done():
+            owner.cancel()
+        await asyncio.gather(owner, return_exceptions=True)
+        await env.cleanup()
+
 async def test_double_cancellation_cannot_interrupt_setup_cleanup(tmp_path, monkeypatch) -> None:
     source = tmp_path / "source"
     source.mkdir()

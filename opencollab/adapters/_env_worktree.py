@@ -92,6 +92,7 @@ class WorktreeEnvironment(Environment):
         self._git_mode = False
         self._branch_owned = False
         self._owned_branch_oid: str | None = None
+        self._pending_branch_claim: str | None = None
         self._worktree_registered = False
         self._lifecycle_lock = asyncio.Lock()
         self._source_subdir = ""
@@ -237,8 +238,13 @@ class WorktreeEnvironment(Environment):
         if base.returncode != 0 or base.stdout_truncated or base.stderr_truncated:
             raise RuntimeError("cannot resolve worktree base commit")
         self._base_commit = base.stdout.strip()
+        claim_marker = f"opencollab-claim-{uuid.uuid4().hex}"
+        self._pending_branch_claim = claim_marker
         claimed = await self._git(
             "update-ref",
+            "--create-reflog",
+            "-m",
+            claim_marker,
             f"refs/heads/{self._branch}",
             self._base_commit,
             ABSENT_REF_OLD_VALUE,
@@ -255,6 +261,7 @@ class WorktreeEnvironment(Environment):
             raise RuntimeError(f"cannot atomically claim worktree branch: {claimed.stderr.strip()}")
         self._branch_owned = True
         self._owned_branch_oid = self._base_commit
+        self._pending_branch_claim = None
         self._worktree_dir = tempfile.mkdtemp(prefix="opencollab-wt-")
         # The claimed ref is an ownership lease, not the worktree's HEAD. A
         # detached worktree keeps its own commits from moving that lease, so a
@@ -609,6 +616,16 @@ class WorktreeEnvironment(Environment):
                 raise RuntimeError("worktree cleanup failed") from exc
             else:
                 self._local_env = None
+        if self._git_mode and self._worktree_dir is not None and not self._worktree_registered:
+            listed = await self._git("worktree", "list", "--porcelain", "-z")
+            if listed.returncode != 0 or listed.stdout_truncated or listed.stderr_truncated:
+                raise RuntimeError("cannot inspect worktree registration before cleanup")
+            registered_paths = {
+                os.path.realpath(field.removeprefix("worktree "))
+                for field in listed.stdout.split("\0")
+                if field.startswith("worktree ")
+            }
+            self._worktree_registered = os.path.realpath(self._worktree_dir) in registered_paths
         if self._git_mode and self._worktree_registered and self._worktree_dir is not None:
             removed = await self._git("worktree", "remove", "--force", self._worktree_dir)
             if removed.returncode != 0:
@@ -643,6 +660,19 @@ class WorktreeEnvironment(Environment):
                 failures.append(exc)
             else:
                 self._copy_baseline_dir = None
+        if self._git_mode and self._pending_branch_claim is not None and not self._branch_owned:
+            ref = f"refs/heads/{self._branch}"
+            claim = await self._git("reflog", "show", "-1", "--format=%gs", ref)
+            if claim.stdout_truncated or claim.stderr_truncated or claim.returncode not in {0, 128}:
+                raise RuntimeError("cannot inspect interrupted worktree branch claim")
+            if claim.returncode == 0 and claim.stdout.removesuffix("\n") == self._pending_branch_claim:
+                branch = await self._git("rev-parse", ref)
+                if branch.returncode != 0 or branch.stdout_truncated or branch.stderr_truncated:
+                    raise RuntimeError("cannot inspect interrupted worktree branch identity")
+                if branch.stdout.strip() == self._base_commit:
+                    self._branch_owned = True
+                    self._owned_branch_oid = self._base_commit
+            self._pending_branch_claim = None
         if self._git_mode and self._branch_owned and not self._worktree_registered:
             expected_oid = self._owned_branch_oid
             if expected_oid is None:
