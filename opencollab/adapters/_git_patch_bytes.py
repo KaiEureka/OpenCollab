@@ -91,7 +91,7 @@ async def _patch_temporary(
                     timeout=_PATCH_GIT_TIMEOUT_SECONDS,
                 ),
                 "candidate temporary storage",
-            ).strip()
+            ).removesuffix("\n")
         # Git metadata is outside ordinary file snapshots, including linked
         # worktrees. A private directory also owns any transient Git lock files.
         with tempfile.TemporaryDirectory(prefix="opencollab-candidate-", dir=git_directory) as directory:
