@@ -30,6 +30,41 @@ async def _initialize_source_available_submodules(
         active_sources=set(),
     )
 
+async def _source_available_submodule_paths(
+    source_repository: str, *, git_in: Callable[..., Awaitable[ExecResult]],
+    source_prefix: str = "", local_filesystem: bool = True,
+    git_marker_exists: Callable[[str], Awaitable[bool]] | None = None,
+) -> tuple[str, ...]:
+    tree = _SourceSubmoduleTree(
+        git_in, require_initialized=False, local_filesystem=local_filesystem,
+        git_marker_exists=git_marker_exists,
+    )
+    if not local_filesystem:
+        resolved = await git_in(source_repository, "rev-parse", "--show-toplevel")
+        if resolved.returncode != 0 or resolved.stdout_truncated or resolved.stderr_truncated:
+            raise RuntimeError("cannot resolve Git submodule source repository")
+        source_repository = resolved.stdout.removesuffix("\n")
+    root = tree._normalize_path(source_repository)
+    paths: list[str] = []
+    active_sources: set[str] = set()
+
+    async def collect(repository: str, prefix: str) -> None:
+        repository = tree._normalize_path(repository)
+        if repository in active_sources:
+            raise RuntimeError("cyclic initialized Git submodule source")
+        active_sources.add(repository)
+        try:
+            for _name, _path, module in await tree._configured_source_submodules(
+                repository, repository, source_prefix=prefix,
+            ):
+                paths.append(tree._path.relpath(module, root).replace("\\", "/"))
+                await collect(module, "")
+        finally:
+            active_sources.remove(repository)
+
+    await collect(root, source_prefix)
+    return tuple(paths)
+
 class _SourceSubmoduleTree:
     def __init__(
         self, git_in: Callable[..., Awaitable[ExecResult]], *,

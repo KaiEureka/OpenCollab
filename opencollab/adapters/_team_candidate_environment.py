@@ -74,6 +74,7 @@ class _TeamCandidateEnvironment:
             result, "worktree diff extraction", owner, root,
             self._lease.base_revision, None, captured_blobs=True,
         )
+        await self._lease._assert_physical_submodules()
         self._delivery_pending = False
         return patch
 

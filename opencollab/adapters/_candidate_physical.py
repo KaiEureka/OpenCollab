@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from opencollab.adapters._env_worktree_submodules import _source_available_submodule_paths
 from opencollab.adapters._git_patch_bytes import _complete, _complete_patch, _patch_temporary
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.patches import patch_paths
@@ -163,6 +164,47 @@ async def _physical_tree(
                 return _complete(await environment.exec_cmd(
                     f"{git} write-tree",
                 ), "physical candidate tree").strip()
+
+
+async def _physical_submodule_trees(
+    environment: Any, workspace: str, *, strict: bool = False, source_prefix: str = "",
+    include_paths: Sequence[str] = (), exclude_paths: Sequence[str] = (),
+    exclude_tree_paths: Sequence[str] = (),
+) -> tuple[tuple[str, str], ...]:
+    async def git_in(directory: str, *arguments: str) -> Any:
+        return await environment.exec_cmd(
+            f"{_git_prefix(directory, strict)} {shlex.join(arguments)}", timeout=900,
+        )
+
+    async def git_marker_exists(directory: str) -> bool:
+        marker = shlex.quote(posixpath.join(directory, ".git"))
+        result = await environment.exec_cmd(f"test -e {marker} || test -L {marker}", timeout=900)
+        _complete(result, "physical source submodule metadata inspection", allowed=(0, 1))
+        return result.returncode == 0
+
+    modules = await _source_available_submodule_paths(
+        workspace, git_in=git_in, source_prefix=source_prefix,
+        local_filesystem=bool(getattr(environment, "local_filesystem", False)),
+        git_marker_exists=git_marker_exists,
+    )
+    trees = []
+    for path in modules:
+        if any(path == excluded or path.startswith(excluded + "/") for excluded in exclude_tree_paths):
+            continue
+        module = posixpath.join(workspace, path)
+        if path not in include_paths and not await _has_worktree_conversions(environment, module, strict=strict):
+            continue
+        revision = _complete(await git_in(module, "rev-parse", "--verify", "HEAD"),
+                             "physical source submodule revision").strip()
+        tree = await _physical_tree(
+            environment, module, revision, strict=strict,
+            exclude_paths=tuple(excluded[len(path) + 1:] for excluded in exclude_paths
+                                if excluded.startswith(path + "/")),
+            exclude_tree_paths=tuple(excluded[len(path) + 1:] for excluded in exclude_tree_paths
+                                     if excluded.startswith(path + "/")),
+        )
+        trees.append((path, tree))
+    return tuple(sorted(trees))
 
 
 async def _tree_patch(

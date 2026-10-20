@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import posixpath
 import shlex
@@ -20,6 +21,7 @@ from opencollab.adapters._candidate_physical import (
     _has_worktree_conversions,
     _physical_git,
     _physical_paths,
+    _physical_submodule_trees,
     _physical_tree,
     _tree_patch,
 )
@@ -141,8 +143,32 @@ class _CandidateLease:
     delivery_paths: tuple[str, ...] = ()
     strict_capture: bool = False
     source_untracked_exclusions: tuple[str, ...] = ()
+    physical_source_submodules: tuple[tuple[str, str], ...] = ()
+    physical_candidate_submodules: tuple[tuple[str, str], ...] = ()
 
     async def physical_source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
+        excluded = _repository_exclusions(self.workspace_prefix, exclude_paths)
+        current_modules = dict(await _physical_submodule_trees(
+            self.base_environment, self.source_workspace, strict=self.strict_capture,
+            source_prefix=self.workspace_prefix.rstrip("/"),
+            include_paths=tuple(path for path, _tree in self.physical_source_submodules),
+            exclude_paths=self.source_untracked_exclusions,
+        ))
+        original_modules = dict(self.physical_source_submodules)
+        for path in original_modules.keys() | current_modules.keys():
+            if any(path == item or path.startswith(item + "/") for item in excluded):
+                continue
+            before, after = original_modules.get(path), current_modules.get(path)
+            if before == after:
+                continue
+            if before is None or after is None:
+                return True
+            if (await _tree_patch(
+                self.base_environment, posixpath.join(self.source_workspace, path), before, after,
+                exclude_paths=tuple(item[len(path) + 1:] for item in excluded if item.startswith(path + "/")),
+                strict=self.strict_capture,
+            )).strip():
+                return True
         if self.physical_base_revision is None:
             return False
         current = await _physical_tree(
@@ -153,11 +179,21 @@ class _CandidateLease:
             return current != self.physical_base_revision
         return bool((await _tree_patch(
             self.base_environment, self.source_workspace, self.physical_base_revision, current,
-            exclude_paths=_repository_exclusions(self.workspace_prefix, exclude_paths),
+            exclude_paths=excluded,
             strict=self.strict_capture,
         )).strip())
 
+    async def _assert_physical_submodules(self) -> None:
+        current = await _physical_submodule_trees(
+            self.base_environment, self.candidate_workspace, strict=self.strict_capture,
+            source_prefix=self.workspace_prefix.rstrip("/"),
+            include_paths=tuple(path for path, _tree in self.physical_candidate_submodules),
+        )
+        if current != self.physical_candidate_submodules:
+            raise RuntimeError("submodule physical changes cannot be delivered as a repository patch")
+
     async def diff(self, exclude_paths: Sequence[str] = ()) -> str:
+        await self._assert_physical_submodules()
         async with _candidate_temporary(
             self.base_environment, self.source_workspace,
             "", prefix=".candidate-capture-index-",
@@ -233,6 +269,7 @@ class _CandidateLease:
                 patch = await self.diff(exclude_paths)
                 self.delivery_diff, self.delivery_paths = patch, ()
                 return patch
+        await self._assert_physical_submodules()
         if not self.strict_capture:
             await _assert_patchable_submodules(
                 self.base_environment, self.candidate_workspace, self.base_revision,
@@ -474,6 +511,11 @@ class EnvCandidateWorkspace:
                 source_patch = source_capture.patch
             elif not strict_capture:
                 source_patch = await self._source_patch(repository_root, base_revision)
+            source_modules = await _physical_submodule_trees(
+                self._environment, repository_root, strict=strict_capture,
+                source_prefix=workspace_prefix.rstrip("/"),
+                exclude_paths=(*self._owned_untracked_paths(repository_root), *strict_untracked_exclusions),
+            )
             lease = _CandidateLease(
                 base_environment=self._environment,
                 environment=None,
@@ -487,6 +529,7 @@ class EnvCandidateWorkspace:
                     *self._owned_untracked_paths(repository_root),
                     *strict_untracked_exclusions,
                 ),
+                physical_source_submodules=source_modules,
             )
             if lease_observer is not None:
                 lease_observer(lease)
@@ -554,6 +597,13 @@ class EnvCandidateWorkspace:
                     local_filesystem=isinstance(self._environment, LocalEnvironment),
                     git_marker_exists=git_marker_exists,
                 )
+                lease.physical_candidate_submodules = await _physical_submodule_trees(
+                    self._environment, path, strict=strict_capture,
+                    source_prefix=workspace_prefix.rstrip("/"),
+                    include_paths=tuple(module for module, _tree in source_modules),
+                )
+                if lease.physical_candidate_submodules != source_modules:
+                    raise RuntimeError("source submodule physical contents cannot be reproduced in candidate")
                 if source_patch.strip():
                     async with _candidate_temporary(
                         self._environment, repository_root, source_patch,
@@ -650,16 +700,21 @@ class EnvCandidateWorkspace:
         return await self._source_patch(repository_root, base_revision, excluded)
 
     async def physical_source_revision(self, exclude_paths: Sequence[str] = ()) -> str | None:
-        """Return a conversion-aware source tree with repository-relative exclusions."""
+        """Read conversion-aware source trees with repository-relative exclusions."""
         root = await self._repository_root()
-        if not await _has_worktree_conversions(self._environment, root):
-            return None
         excluded = tuple(_safe_path(path) for path in exclude_paths)
-        return await _physical_tree(
-            self._environment, root, await self.source_revision(),
-            exclude_paths=(*self._owned_untracked_paths(root), *excluded),
+        modules = await _physical_submodule_trees(
+            self._environment, root, exclude_paths=(*self._owned_untracked_paths(root), *excluded),
             exclude_tree_paths=excluded,
         )
+        revision = None
+        if await _has_worktree_conversions(self._environment, root):
+            revision = await _physical_tree(
+                self._environment, root, await self.source_revision(),
+                exclude_paths=(*self._owned_untracked_paths(root), *excluded),
+                exclude_tree_paths=excluded,
+            )
+        return json.dumps((revision, modules)) if modules else revision
 
     async def _source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
         repository_root = await self._repository_root()
