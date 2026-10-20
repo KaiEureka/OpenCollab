@@ -87,6 +87,21 @@ def test_candidate_evaluator_must_cover_every_observed_input(
     assert (tmp_path / task.candidate_file).is_file()
 
 
+def test_missing_candidate_reports_no_examples_passed(tmp_path: Path) -> None:
+    class NoCandidateContext(ScriptedContext):
+        async def agent(self, prompt: str, *, schema=None, **kwargs):
+            if schema is not None:
+                return await super().agent(prompt, schema=schema, **kwargs)
+            return "done"
+
+    result = _run(make_task(tmp_path), NoCandidateContext(tmp_path), max_iterations=1)
+
+    assert result["known_examples"] == INITIAL_BATCH
+    assert result["events"][-1]["passed"] == 0
+    assert result["candidate_exists"] is False
+    assert result["final_score"] is None
+
+
 def make_task(workspace: Path, **overrides: Any) -> ReconstructionTask:
     fields: dict[str, Any] = dict(
         input_type="list of integers",

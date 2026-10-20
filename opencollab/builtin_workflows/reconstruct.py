@@ -401,10 +401,11 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
         if stop_reason:
             break
         fails = await failures(program)
-        passed = len(examples) - len(fails)
+        candidate_exists = program.is_file()
+        passed = len(examples) - len(fails) if candidate_exists else 0
         score = None
         source = ""
-        if program.is_file():
+        if candidate_exists:
             archived.append(candidates_dir / f"iter_{iteration:03d}.py")
             shutil.copy(program, archived[-1])
             source = program.read_text(encoding="utf-8")
