@@ -49,16 +49,26 @@ class _TeamCandidateEnvironment:
     def recovery_location(self) -> str | None:
         return self.workspace if self._delivery_pending else None
 
+    def _capture_environment(self, *, allow_delivered: bool = False) -> Any:
+        delegate = self._delegate
+        if not delegate.revoked:
+            return delegate
+        if not self._delivery_pending and not allow_delivered:
+            delegate._ensure_active()
+        owner = self._lease.base_environment
+        owner._ensure_active()
+        return owner
+
     async def get_diff(self) -> str:
-        self._delegate._ensure_active()
+        owner = self._capture_environment()
         self._delivery_pending = True
         root = self._lease.candidate_workspace
-        result = await self._delegate.exec_cmd(
+        result = await owner.exec_cmd(
             f"cd -- {shlex.quote(root)} && "
             + guarded_staged_diff_command(base_revision=self._lease.base_revision),
         )
         patch = await _complete_patch(
-            result, "worktree diff extraction", self._delegate, root,
+            result, "worktree diff extraction", owner, root,
             self._lease.base_revision, None, captured_blobs=True,
         )
         self._delivery_pending = False
@@ -66,8 +76,7 @@ class _TeamCandidateEnvironment:
 
     async def diff_captured(self, before_patch: str, after_patch: str) -> str:
         """Subtract saved cumulative patches using the lease's original tree."""
-        delegate = self._delegate
-        delegate._ensure_active()
+        delegate = self._capture_environment(allow_delivered=True)
         root = self._lease.candidate_workspace
         base = self._lease.base_revision
         git, guard = _git_command_and_config_guard()
