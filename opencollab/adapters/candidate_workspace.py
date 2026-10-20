@@ -708,7 +708,10 @@ class EnvCandidateWorkspace:
             exclude_tree_paths=excluded,
         )
         revision = None
-        if await _has_worktree_conversions(self._environment, root):
+        if await _has_worktree_conversions(
+            self._environment, root, exclude_paths=excluded,
+            exclude_untracked_paths=self._owned_untracked_paths(root),
+        ):
             revision = await _physical_tree(
                 self._environment, root, await self.source_revision(),
                 exclude_paths=(*self._owned_untracked_paths(root), *excluded),

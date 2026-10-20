@@ -30,14 +30,23 @@ def _git_prefix(workspace: str, strict: bool = False) -> str:
     return command
 
 
-async def _has_worktree_conversions(environment: Any, workspace: str, *, strict: bool = False) -> bool:
+async def _has_worktree_conversions(
+    environment: Any, workspace: str, *, strict: bool = False, exclude_paths: Sequence[str] = (),
+    exclude_untracked_paths: Sequence[str] = (),
+) -> bool:
     git = _git_prefix(workspace, strict)
     ignored = "--exclude-per-directory=.gitignore" if strict else "--exclude-standard"
+
+    def pathspec(paths: Sequence[str]) -> str:
+        return " -- . " + " ".join(shlex.quote(f":(exclude,literal){path}") for path in paths) if paths else ""
+
     async with _patch_temporary(
         environment, workspace, "", prefix=".candidate-attribute-probe-", repository=False,
     ) as paths_file:
         result = await environment.exec_cmd(
-            f"{git} ls-files --cached --others {ignored} -z > {shlex.quote(paths_file)} && "
+            f"{git} ls-files --cached -z{pathspec(exclude_paths)} > {shlex.quote(paths_file)} && "
+            f"{git} ls-files --others {ignored} -z{pathspec((*exclude_paths, *exclude_untracked_paths))} "
+            f">> {shlex.quote(paths_file)} && "
             f"{git} check-attr --all -z --stdin < {shlex.quote(paths_file)} && printf '\\0\\0' && "
             f"({git} config --null --get-regexp '^(core\\.autocrlf|extensions\\.worktreeconfig)$' "
             '|| [ "$?" -eq 1 ])',
@@ -192,16 +201,24 @@ async def _physical_submodule_trees(
         if any(path == excluded or path.startswith(excluded + "/") for excluded in exclude_tree_paths):
             continue
         module = posixpath.join(workspace, path)
-        if path not in include_paths and not await _has_worktree_conversions(environment, module, strict=strict):
+        module_exclusions = tuple(excluded[len(path) + 1:] for excluded in exclude_tree_paths
+                                  if excluded.startswith(path + "/"))
+        module_untracked_exclusions = tuple(
+            "." if path == excluded or path.startswith(excluded + "/") else excluded[len(path) + 1:]
+            for excluded in exclude_paths
+            if path == excluded or path.startswith(excluded + "/") or excluded.startswith(path + "/")
+        )
+        if path not in include_paths and not await _has_worktree_conversions(
+            environment, module, strict=strict, exclude_paths=module_exclusions,
+            exclude_untracked_paths=module_untracked_exclusions,
+        ):
             continue
         revision = _complete(await git_in(module, "rev-parse", "--verify", "HEAD"),
                              "physical source submodule revision").strip()
         tree = await _physical_tree(
             environment, module, revision, strict=strict,
-            exclude_paths=tuple(excluded[len(path) + 1:] for excluded in exclude_paths
-                                if excluded.startswith(path + "/")),
-            exclude_tree_paths=tuple(excluded[len(path) + 1:] for excluded in exclude_tree_paths
-                                     if excluded.startswith(path + "/")),
+            exclude_paths=module_untracked_exclusions,
+            exclude_tree_paths=module_exclusions,
         )
         trees.append((path, tree))
     return tuple(sorted(trees))
