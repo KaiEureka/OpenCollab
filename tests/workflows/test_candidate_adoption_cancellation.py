@@ -47,7 +47,7 @@ async def test_candidate_adoption_finishes_before_propagating_repeated_cancellat
             await asyncio.wait_for(operation, 10)
         assert completed.is_set()
         assert calls == [(selected if modern else selected.diff, ("tests",))]
-        if failure:
+        if failure and sys.version_info >= (3, 11):
             assert any("delivery cleanup failed" in note for note in getattr(cancelled.value, "__notes__", ()))
         executed = subprocess.run(
             [sys.executable, "-B", "app.py"], cwd=tmp_path, capture_output=True, check=True,
