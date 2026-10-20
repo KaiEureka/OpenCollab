@@ -286,6 +286,38 @@ async def test_non_git_copy_exports_changes_before_cleanup(tmp_path) -> None:
     await env.cleanup()
     assert not os.path.exists(workspace)
 
+
+async def test_non_git_candidate_uses_one_snapshot_when_source_changes_during_setup(
+    tmp_path, monkeypatch,
+) -> None:
+    source = tmp_path / "plain"
+    source.mkdir()
+    (source / "app.py").write_text("print(1)\n", encoding="utf-8")
+    notes = source / "notes.txt"
+    notes.write_text("original\n", encoding="utf-8")
+    actual_copytree = worktree_module.shutil.copytree
+
+    def copy_then_save(src, dst, **kwargs):
+        result = actual_copytree(src, dst, **kwargs)
+        if Path(src) == source:
+            notes.write_text("user saved\n", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(worktree_module.shutil, "copytree", copy_then_save)
+    pool = WorktreePool(str(source), use_worktrees=True, enable_adoption=True)
+    coder = await pool.acquire("coder")
+    try:
+        assert await coder.get_diff() == ""
+        assert await coder.read_file("notes.txt") == "original\n"
+        await coder.write_file("app.py", "print(42)\n")
+        patch = await coder.get_diff()
+        assert "notes.txt" not in patch
+        await pool.adopt(patch)
+        assert (source / "app.py").read_text() == "print(42)\n"
+        assert notes.read_text() == "user saved\n"
+    finally:
+        await pool.release()
+
 @pytest.mark.parametrize("git_source", [False, True])
 async def test_abort_stops_native_process_while_retaining_undelivered_changes(
     tmp_path, git_source,

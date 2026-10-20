@@ -301,18 +301,20 @@ class WorktreeEnvironment(Environment):
     async def _setup_directory_copy(self) -> None:
         self._copy_baseline_dir = tempfile.mkdtemp(prefix="opencollab-cp-baseline-")
         self._worktree_dir = tempfile.mkdtemp(prefix="opencollab-cp-")
-        for target in (self._copy_baseline_dir, self._worktree_dir):
-            await await_owned_operation(
-                asyncio.to_thread(
-                    shutil.copytree,
-                    self._source,
-                    target,
-                    dirs_exist_ok=True,
-                    symlinks=True,
-                    ignore=self._ignore_owned_save_dir,
-                ),
-                propagate_cancellation=True,
-            )
+        await await_owned_operation(
+            asyncio.to_thread(
+                shutil.copytree, self._source, self._copy_baseline_dir,
+                dirs_exist_ok=True, symlinks=True, ignore=self._ignore_owned_save_dir,
+            ),
+            propagate_cancellation=True,
+        )
+        await await_owned_operation(
+            asyncio.to_thread(
+                shutil.copytree, self._copy_baseline_dir, self._worktree_dir,
+                dirs_exist_ok=True, symlinks=True,
+            ),
+            propagate_cancellation=True,
+        )
 
     def _ignore_owned_save_dir(self, directory: str, names: list[str]) -> list[str]:
         return [
