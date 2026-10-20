@@ -55,16 +55,22 @@ class _MarkerProvider:
         return llm_response(content="FOUND" if any(_MARKER in result for result in results) else "MISSING")
 
 
-@pytest.mark.parametrize("event_type", ["text_delta", "step_end"])
+@pytest.mark.parametrize("event_type", ["tool_end", "text_delta", "step_end"])
 @pytest.mark.parametrize("max_steps", [1, 10])
-async def test_submitted_snapshot_finishes_without_another_model_call(tmp_path, event_type, max_steps):
+@pytest.mark.parametrize("autosave", [False, True])
+async def test_submitted_snapshot_finishes_without_another_model_call(tmp_path, event_type, max_steps, autosave):
     workspace = tmp_path / "source"
     workspace.mkdir()
     summary = "Saved the verified result."
     held, release = asyncio.Event(), asyncio.Event()
+    events = []
 
     async def hold_submission(event):
-        if event.type == event_type and source.state.submitted_summary == summary:
+        events.append(event)
+        accepted = event.data.get("tool") == "submit" if event_type == "tool_end" else (
+            source.state.submitted_summary == summary
+        )
+        if event.type == event_type and accepted:
             held.set()
             await release.wait()
 
@@ -77,19 +83,28 @@ async def test_submitted_snapshot_finishes_without_another_model_call(tmp_path, 
         {"id": "submit", "type": "function", "function": {
             "name": "submit", "arguments": json.dumps({"summary": summary}),
         }},
+        {"id": "skipped", "type": "function", "function": {
+            "name": "file_write", "arguments": json.dumps({
+                "path": "skipped.txt", "mode": "create", "content": "late write\n",
+            }),
+        }},
     ], finish_reason="tool_calls")])
     agent = Agent(name="worker", system_prompt="Write and submit the result.", tools=[FileWriteTool(), SubmitTool()])
     source = build_session(
         agent=agent, env=_ForkableEnvironment(str(workspace)), llm=model,
         event_sink=hold_submission, max_steps=max_steps,
+        auto_save_path=str(tmp_path / "live.json") if autosave else None,
     )
     branch = restored = None
     await source.add_user_message("Write and submit the verified result")
     running = asyncio.create_task(source.run_loop())
     try:
         await asyncio.wait_for(held.wait(), 3)
-        assert source.phase is SessionPhase.AUTOSAVING
-        assert source.messages[-1] == {"role": "assistant", "content": summary}
+        assert source.phase is (
+            SessionPhase.EXECUTING_TOOLS if event_type == "tool_end" else SessionPhase.AUTOSAVING
+        )
+        if event_type != "tool_end":
+            assert source.messages[-1] == {"role": "assistant", "content": summary}
         branch = snapshot_session(source)
         saved = tmp_path / "submitted.json"
         source.save(str(saved))
@@ -106,12 +121,19 @@ async def test_submitted_snapshot_finishes_without_another_model_call(tmp_path, 
             assert session.used_tokens == source.used_tokens
             assert sum(message == {"role": "assistant", "content": summary} for message in session.messages) == 1
             assert (Path(session.env.workspace) / "result.txt").read_text() == "verified result\n"
+            assert not (Path(session.env.workspace) / "skipped.txt").exists()
             session.save(str(tmp_path / f"completed-{id(session)}.json"))
             assert await session.run_loop() == summary
         assert len(model.calls) == 1
         release.set()
         assert await asyncio.wait_for(running, 3) == summary
         assert source.phase is SessionPhase.DONE
+        assert not (workspace / "skipped.txt").exists()
+        assert sum(message == {"role": "assistant", "content": summary} for message in source.messages) == 1
+        assert [(event.type, event.data["tool"]) for event in events if event.type in {"tool_start", "tool_end"}] == [
+            ("tool_start", "file_write"), ("tool_end", "file_write"),
+            ("tool_start", "submit"), ("tool_end", "submit"),
+        ]
     finally:
         release.set()
         if not running.done():

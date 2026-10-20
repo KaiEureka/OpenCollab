@@ -563,13 +563,15 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
 
             result.messages_to_append.append(self.tool_result_message(tool_id, tool_output))
             loop_batch.sync_completed_prefix()
+            submitted = tool_succeeded and facts.submitted_summary is not None
+            if submitted:
+                self.state.submitted_summary = facts.submitted_summary
             await self._emit_observation(
                 lambda: self.event_factory.tool_end(
                     tool.name, tool_latency, tool_id
                 ),
                 label="tool_end",
             )
-            submitted = tool_succeeded and facts.submitted_summary is not None
             if getattr(tool, "terminal_capture_accepted", False) or submitted:
                 result.terminal_capture_accepted = True
                 if submitted:

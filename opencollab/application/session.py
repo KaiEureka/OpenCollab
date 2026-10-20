@@ -629,8 +629,8 @@ class Session:
             and raw_state.get("terminal_reason") is not None
             else None
         )
-        if phase is SessionPhase.AUTOSAVING and isinstance(submitted_summary, str):
-            # Submission has already ended model execution; only its save was interrupted.
+        if phase in {SessionPhase.EXECUTING_TOOLS, SessionPhase.AUTOSAVING} and isinstance(submitted_summary, str):
+            # Accepted submissions survive interruption during their tool_end or autosave events.
             answer = {"role": "assistant", "content": submitted_summary}
             if not restored.messages or restored.messages[-1] != answer:
                 restored.append_message(answer)
