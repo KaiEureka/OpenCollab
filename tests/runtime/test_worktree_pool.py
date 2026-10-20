@@ -46,6 +46,30 @@ def _repo(path):
 def _branch_exists(repo, branch: str) -> bool:
     return _git(repo, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0
 
+@pytest.mark.parametrize("suffix", ["", " ", "\n"])
+@pytest.mark.parametrize("subdirectory", [False, True])
+async def test_git_worktree_keeps_whitespace_in_repository_root(
+    tmp_path, suffix: str, subdirectory: bool,
+) -> None:
+    source = _repo(tmp_path / f"repo{suffix}")
+    if subdirectory:
+        workspace = source / "packages" / "worker"
+        workspace.mkdir(parents=True)
+        (workspace / "code.py").write_text("value = 1\n", encoding="utf-8")
+        _git(source, "add", ".")
+        _git(source, "commit", "-qm", "add worker")
+        filename = "code.py"
+    else:
+        workspace = source
+        filename = "tracked.txt"
+    env = WorktreeEnvironment(str(workspace))
+
+    candidate = Path(await env.setup())
+    await env.write_file(filename, "changed\n")
+    assert "+changed" in await env.get_diff()
+    await env.cleanup()
+    assert not candidate.exists()
+
 class _OneShotAsyncBarrier:
     """Release all waiters once the expected parties have arrived."""
 

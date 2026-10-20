@@ -137,7 +137,7 @@ class WorktreeEnvironment(Environment):
                 or top_level.stderr_truncated
             ):
                 raise RuntimeError("cannot resolve Git repository root")
-            repository_root = os.path.realpath(top_level.stdout.strip())
+            repository_root = os.path.realpath(top_level.stdout.removesuffix("\n"))
             self._repository_root = repository_root
             try:
                 contained = os.path.commonpath((repository_root, self._source))
