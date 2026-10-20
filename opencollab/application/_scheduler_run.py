@@ -127,7 +127,9 @@ class SchedulerRunMixin:
         if self._message_inbox.get(aid):
             turn_start = len(session.state.messages)
             await self._drain_message_inbox(aid)
-            await self._wait_for_restored_turn(aid, turn_start)
+            task = self._tasks.get(aid)
+            if self._message_inbox.get(aid) or (task is not None and not task.done()):
+                await self._wait_for_restored_turn(aid, turn_start)
 
         if self._shutting_down:
             raise RuntimeError("Cannot run scheduler: scheduler is shutting down.")
