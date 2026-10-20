@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
+import json
+import shlex
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from opencollab.adapters.env import LocalEnvironment
+from opencollab.adapters.tools.bash import BashTool
 from opencollab.adapters.tools.fs import FileReadTool
 from opencollab.application.shaping import AutoCompactShaper, PerToolResultBudgetShaper
 from opencollab.bootstrap import SnapshotSessionError, build_session, snapshot_session
 from opencollab.bootstrap.agent_profiles import resolve_agent_profile
 from opencollab.bootstrap.context_policy import ContextPolicy
 from opencollab.domain.agent import Agent
+from opencollab.domain.pending import PendingRow, RowKind, RowStatus
+from opencollab.domain.session import SessionPhase
 from tests.runtime.test_async_compaction import history
 from tests.runtime.test_compaction_accounting import AccountingModel
 from tests.support.scheduler_awaiting_test_support import build_scheduler
@@ -45,6 +52,103 @@ class _MarkerProvider:
                 "function": {"name": "file_read", "arguments": '{"path":"fixture.txt"}'},
             }], finish_reason="tool_calls")
         return llm_response(content="FOUND" if any(_MARKER in result for result in results) else "MISSING")
+
+
+async def test_snapshot_during_native_tool_execution_resumes_without_replaying_it(tmp_path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "work.py").write_text(
+        "import time\nfrom pathlib import Path\n"
+        "Path('started').touch()\n"
+        "while not Path('release').exists(): time.sleep(.01)\n"
+        "Path('native.txt').write_text('completed')\n"
+    )
+
+    class Model:
+        async def complete(self, messages, **kwargs):
+            if any(message.get("role") == "tool" for message in messages):
+                return llm_response(content="resume accepted")
+            return llm_response(tool_calls=[{
+                "id": "native", "type": "function", "function": {
+                    "name": "bash", "arguments": json.dumps({
+                        "command": shlex.quote(sys.executable) + " work.py", "timeout": 5,
+                    }),
+                },
+            }], finish_reason="tool_calls")
+
+    agent = Agent(name="worker", system_prompt="Run the command.", tools=[BashTool()])
+    model = Model()
+    source = build_session(agent=agent, env=_ForkableEnvironment(str(source_dir)), llm=model)
+    branch = restored = None
+    await source.add_user_message("Run the local command")
+    running = asyncio.create_task(source.run_loop())
+    try:
+        async with asyncio.timeout(3):
+            while not (source_dir / "started").exists():
+                await asyncio.sleep(.01)
+        assert source.state.phase is SessionPhase.EXECUTING_TOOLS
+        branch = snapshot_session(source)
+        source.save(str(tmp_path / "active.json"))
+        restored_dir = tmp_path / "restored"
+        shutil.copytree(source_dir, restored_dir)
+        restored = build_session(agent=agent, env=LocalEnvironment(str(restored_dir)), llm=model)
+        restored.restore(str(tmp_path / "active.json"))
+
+        assert await branch.run_loop() == "resume accepted"
+        assert await restored.run_loop() == "resume accepted"
+        assert branch.state.phase is restored.state.phase is SessionPhase.DONE
+        assert any("interrupted" in message.get("content", "") for message in branch.messages
+                   if message.get("role") == "tool")
+        assert not (Path(branch.env.workspace) / "native.txt").exists()
+
+        (source_dir / "release").touch()
+        assert await asyncio.wait_for(running, 3) == "resume accepted"
+        assert (source_dir / "native.txt").read_text() == "completed"
+    finally:
+        (source_dir / "release").touch()
+        if not running.done():
+            running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+        for session in (branch, restored, source):
+            if session is not None:
+                await session.aclose()
+
+
+async def test_snapshot_marks_deferred_work_without_a_branch_producer_as_interrupted(tmp_path):
+    class Model:
+        async def complete(self, messages, **kwargs):
+            assert any("interrupted" in message.get("content", "") for message in messages
+                       if message.get("role") == "tool")
+            return llm_response(content="resumed")
+
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    source = build_session(
+        agent=Agent(name="worker", system_prompt="Work."),
+        env=_ForkableEnvironment(str(workspace)), llm=Model(),
+    )
+    source.state.append_message({"role": "user", "content": "Continue"})
+    source.state.append_message({
+        "role": "assistant", "content": None, "tool_calls": [{
+            "id": "child", "type": "function",
+            "function": {"name": "spawn_agent", "arguments": "{}"},
+        }],
+    })
+    source.state.pending_events.add(PendingRow(
+        tool_call_id="child", kind=RowKind.CHILD_AGENT, order=0,
+        ref=9, status=RowStatus.PENDING,
+    ))
+    source.state.set_phase(SessionPhase.AWAITING_EVENTS)
+    source.state.active_turn_start_message_index = 0
+    branch = snapshot_session(source)
+    try:
+        assert branch.state.pending_events.rows["child"].status is RowStatus.FAILED
+        assert source.state.pending_events.rows["child"].status is RowStatus.PENDING
+        assert await branch.run_loop() == "resumed"
+        assert branch.state.phase is SessionPhase.DONE
+    finally:
+        await branch.aclose()
+        await source.aclose()
 
 
 async def test_snapshot_events_follow_registered_lead_identity(tmp_path):

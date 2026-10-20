@@ -567,6 +567,15 @@ class Session:
                 if row is not None:
                     restored.pending_events.add(row)
 
+        self._normalize_interrupted_snapshot_state(restored, raw_state, restored_turn_start)
+        self._publish_restored_state(restored, snapshot, path)
+
+    def _normalize_interrupted_snapshot_state(
+        self,
+        restored: SessionState,
+        raw_state: dict[str, Any],
+        restored_turn_start: int | None,
+    ) -> None:
         phase = _restore_phase(raw_state.get("phase", SessionPhase.IDLE.value))
         if phase is SessionPhase.AWAITING_EVENTS:
             self._complete_missing_pending_rows(restored)
@@ -576,8 +585,8 @@ class Session:
                 # which excludes prior answers while retaining the resumed one.
                 restored_turn_start = len(restored.messages)
         # In-flight provider/tool phases depend on process-local coroutines that
-        # cannot survive restart. AWAITING_EVENTS is recoverable because pending
-        # child rows above are converted to explicit FAILED tool results.
+        # cannot survive a restored or forked session. AWAITING_EVENTS can
+        # resume because pending child rows become explicit FAILED results.
         recoverable = {SessionPhase.AWAITING_EVENTS, *[p for p in SessionPhase if p.is_terminal()]}
         restored.set_phase(phase if phase in recoverable else SessionPhase.IDLE)
         if restored.phase is SessionPhase.AWAITING_EVENTS:
@@ -593,7 +602,7 @@ class Session:
                 restored, completed_results=raw_state.get("loop_checkpoint_results"),
             )
             # Rows from an interrupted non-awaiting phase have no live producer
-            # after process restart. The explicit tool results above close the
+            # after restoration. The explicit tool results above close the
             # provider protocol; keeping the stale sidecar rows would make the
             # scheduler's quiescence check wait forever after the resumed turn.
             restored.pending_events.clear()
@@ -620,7 +629,17 @@ class Session:
             and raw_state.get("terminal_reason") is not None
             else None
         )
-        self._publish_restored_state(restored, snapshot, path)
+
+    def _normalize_forked_state(self, state: SessionState, raw_state: dict[str, Any]) -> None:
+        state.pending_events.clear()
+        for value in raw_state.get("pending_events", []):
+            row = _restore_pending_row(value)
+            if row is not None:
+                state.pending_events.add(row)
+        turn_start = _restore_active_turn_start(
+            raw_state.get("active_turn_start_message_index"), state.messages,
+        )
+        self._normalize_interrupted_snapshot_state(state, raw_state, turn_start)
 
     def _restore_auto_save_tracking(self, snapshot: dict[str, Any]) -> None:
         sequence = _snapshot_nonnegative_int(snapshot.get("_autosave_sequence"))

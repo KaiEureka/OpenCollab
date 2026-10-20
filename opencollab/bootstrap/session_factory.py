@@ -327,7 +327,10 @@ def snapshot_session(
         aid=session.state.aid,
         run_id=session.run_id,
     )
+    _, snapshot_meta = session._snapshot_for_save()
     state = _clone_snapshot_component(session.state, label="session state")
+    new._normalize_forked_state(state, snapshot_meta["session_state"])
+    new.runner.reset_for_restore()
     new.state = state
     new.runner.state = state
     new.tool_execution.state = state
