@@ -728,7 +728,7 @@ class EnvCandidateWorkspace:
         )
 
     async def adopt_run(self, candidate: Any, preserve_paths: Sequence[str] = ()) -> None:
-        if candidate.delivery_diff is None:
+        if candidate.delivery_diff is None or candidate.delivery_source_diff != candidate.diff:
             await self.adopt(candidate.diff, preserve_paths)
             return
         patch = candidate.effective_diff

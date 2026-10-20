@@ -259,21 +259,32 @@ async def test_adoption_uses_conversion_attributes_saved_after_capture(tmp_path,
     assert subprocess.run([str(repo / "run.sh")], check=True, capture_output=True).stdout == b"42\n"
 
 
-async def test_changed_public_candidate_diff_does_not_apply_earlier_physical_capture(tmp_path):
+@pytest.mark.parametrize("converted", [False, True])
+async def test_changed_public_candidate_diff_adopts_the_current_canonical_patch(tmp_path, converted):
     repo = _repository(tmp_path)
+    if converted:
+        (repo / ".gitattributes").write_text("*.py text eol=crlf\n")
+        _git(repo, "add", ".gitattributes")
+        _git(repo, "commit", "-m", "准备公开补丁改写对照")
 
     async def flow(ctx, inputs):
         async def edit(child, arguments):
-            Path(child.workspace_root, "source.py").write_text("value = 2\n")
+            Path(child.workspace_root, "source.py").write_text("value = 42\nprint(value)\n")
         candidate = await ctx.candidate_workflow(edit, {}, label="binding")
-        with pytest.raises(ValueError, match="diff changed after physical capture"):
+        with pytest.raises(ValueError, match="patch must be non-empty"):
             await ctx.adopt_candidate(replace(candidate, diff=""))
         assert (repo / "source.py").read_text() == "value = 1\n"
-        await ctx.adopt_candidate(candidate)
+        alternate = candidate.diff.replace("value = 42", "value = 43")
+        selected = replace(candidate, diff=alternate)
+        assert selected.effective_diff == alternate
+        await ctx.adopt_candidate(selected)
 
     result = await OpenCollab(repo).workflow(flow, trace=False)
     assert result.ok, result.reason
-    assert (repo / "source.py").read_text() == "value = 2\n"
+    expected = b"value = 43\nprint(value)\n"
+    assert (repo / "source.py").read_bytes() == (expected.replace(b"\n", b"\r\n") if converted else expected)
+    tested = subprocess.run([sys.executable, str(repo / "source.py")], check=True, capture_output=True)
+    assert tested.stdout == b"43\n"
 
 
 async def test_duo_selects_and_adopts_a_physical_only_change(tmp_path):

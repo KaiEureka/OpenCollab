@@ -64,10 +64,8 @@ class CandidateRun:
 
     @property
     def effective_diff(self) -> str:
-        if self.delivery_diff is None:
+        if self.delivery_diff is None or self.delivery_source_diff != self.diff:
             return self.diff
-        if self.delivery_source_diff != self.diff:
-            raise ValueError("candidate diff changed after physical capture")
         return self.delivery_diff
 
 class CandidateCaptureError(RuntimeError):
