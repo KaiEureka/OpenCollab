@@ -102,6 +102,59 @@ def test_missing_candidate_reports_no_examples_passed(tmp_path: Path) -> None:
     assert result["final_score"] is None
 
 
+@pytest.mark.parametrize("random_value", [(2, -3), [2, -3]])
+def test_random_tuple_and_agent_json_list_count_as_one_input(
+    tmp_path: Path, random_value: tuple[int, int] | list[int]
+) -> None:
+    class DuplicateProposalContext(ScriptedContext):
+        def __init__(self, workspace: Path) -> None:
+            super().__init__(workspace)
+            self.proposals = 0
+
+        async def agent(self, prompt: str, *, schema=None, **kwargs):
+            if schema is not None:
+                self.proposals += 1
+                return {"inputs": [[2, -3] if self.proposals == 1 else [4, -3]]}
+            return await super().agent(prompt, schema=schema, **kwargs)
+
+    task = make_task(tmp_path, random_inputs=lambda k, exclude: [random_value])
+    ctx = DuplicateProposalContext(tmp_path)
+    result = _run(task, ctx, initial_batch=2, random_share=0.5, max_iterations=1, early_stop=1)
+
+    assert ctx.proposals == 2
+    assert result["known_examples"] == 2
+    assert [row[0] for row in result["examples"]] == [random_value, [4, -3]]
+    assert any("repeat" in event.get("rejected", "") for event in result["events"])
+
+
+def test_random_mapping_and_reordered_agent_mapping_count_as_one_input(tmp_path: Path) -> None:
+    class MappingContext(ScriptedContext):
+        def __init__(self, workspace: Path) -> None:
+            super().__init__(workspace, programs=["def solve(data):\n    return sum(data.values())\n"])
+            self.proposals = 0
+
+        async def agent(self, prompt: str, *, schema=None, **kwargs):
+            if schema is not None:
+                self.proposals += 1
+                return {"inputs": [{"y": 3, "x": 2} if self.proposals == 1 else {"x": 4, "y": 3}]}
+            return await super().agent(prompt, schema=schema, **kwargs)
+
+    async def evaluate(_program: Path, inputs: list[Any]) -> list[dict[str, Any]]:
+        return [{"ok": True, "output": sum(value.values())} for value in inputs]
+
+    task = make_task(
+        tmp_path, input_type="mapping", kind="other", oracle=lambda value: sum(value.values()),
+        evaluate=evaluate, random_inputs=lambda k, exclude: [{"x": 2, "y": 3}],
+    )
+    ctx = MappingContext(tmp_path)
+    result = _run(task, ctx, initial_batch=2, random_share=0.5, max_iterations=1, early_stop=1)
+
+    assert ctx.proposals == 2
+    assert result["known_examples"] == 2
+    assert [row[0] for row in result["examples"]] == [{"x": 2, "y": 3}, {"x": 4, "y": 3}]
+    assert any("repeat" in event.get("rejected", "") for event in result["events"])
+
+
 def make_task(workspace: Path, **overrides: Any) -> ReconstructionTask:
     fields: dict[str, Any] = dict(
         input_type="list of integers",
