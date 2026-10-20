@@ -6,6 +6,7 @@ import shlex
 from contextlib import AsyncExitStack
 from typing import Any
 
+from opencollab.adapters._candidate_physical import _has_worktree_conversions
 from opencollab.adapters._git_patch_bytes import _complete, _complete_patch, _patch_temporary
 from opencollab.adapters.git_patch import _git_command_and_config_guard, guarded_staged_diff_command
 
@@ -17,6 +18,8 @@ class _TeamCandidateEnvironment:
         self._lease = lease
         self.source_workspace = source_workspace
         self._delivery_pending = False
+        self.delivery_diff: str | None = None
+        self.delivery_paths: tuple[str, ...] = ()
 
     @property
     def _delegate(self) -> Any:
@@ -74,11 +77,29 @@ class _TeamCandidateEnvironment:
         self._delivery_pending = False
         return patch
 
-    async def diff_captured(self, before_patch: str, after_patch: str) -> str:
+    async def capture_changes(self) -> str:
+        validated = await self.get_diff()
+        self._delivery_pending = True
+        if self._lease.physical_base_revision is None and not (
+            await _has_worktree_conversions(self._lease.base_environment, self._lease.candidate_workspace, strict=True)
+            or await _has_worktree_conversions(self._lease.base_environment, self._lease.source_workspace, strict=True)
+        ):
+            self.delivery_diff, self.delivery_paths = validated, ()
+            self._delivery_pending = False
+            return validated
+        patch = await self._lease.capture_changes(force_physical=True)
+        self.delivery_diff = self._lease.delivery_diff
+        self.delivery_paths = self._lease.delivery_paths
+        self._delivery_pending = False
+        return patch
+
+    async def diff_captured(self, before_patch: str, after_patch: str, *, physical: bool = False) -> str:
         """Subtract saved cumulative patches using the lease's original tree."""
         delegate = self._capture_environment(allow_delivered=True)
         root = self._lease.candidate_workspace
-        base = self._lease.base_revision
+        base = (
+            self._lease.physical_base_revision or self._lease.base_revision if physical else self._lease.base_revision
+        )
         git, guard = _git_command_and_config_guard()
         async with AsyncExitStack() as stack:
             trees = []

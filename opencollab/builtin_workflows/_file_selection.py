@@ -61,7 +61,7 @@ async def adjudicate_candidate_files(
         ),
     }
     await ctx.log(f"Duo complete adjudication evidence directory: {files.directory}")
-    paths = {"A": patch_paths(candidate_a.diff), "B": patch_paths(candidate_b.diff)}
+    paths = {"A": patch_paths(candidate_a.effective_diff), "B": patch_paths(candidate_b.effective_diff)}
     comparison_text, _, _ = contract._judge_input(candidate_a, candidate_b)
     comparison = json.loads(comparison_text)
     for label, candidate in (("A", candidate_a), ("B", candidate_b)):

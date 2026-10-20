@@ -219,7 +219,7 @@ async def test_public_candidate_timeout_captures_owned_atomic_write(repository, 
     started, release, written = threading.Event(), threading.Event(), threading.Event()
     cancellation_started, capture_started = asyncio.Event(), asyncio.Event()
     sessions = []
-    original_write, original_diff = local_module.write_regular_bytes_atomic, _CandidateLease.diff
+    original_write, original_diff = local_module.write_regular_bytes_atomic, _CandidateLease.capture_changes
     original_build = runtime.build_session
     original_cancel = ToolExecutionUseCase._cleanup_caller_cancelled_execution
 
@@ -260,7 +260,7 @@ async def test_public_candidate_timeout_captures_owned_atomic_write(repository, 
     monkeypatch.setattr(LLMClient, "complete", complete)
     monkeypatch.setattr(runtime, "build_session", build)
     monkeypatch.setattr(ToolExecutionUseCase, "_cleanup_caller_cancelled_execution", cancelled)
-    monkeypatch.setattr(_CandidateLease, "diff", diff)
+    monkeypatch.setattr(_CandidateLease, "capture_changes", diff)
 
     async def workflow(ctx, _args):
         return await ctx.candidate_agent(
@@ -284,6 +284,7 @@ async def test_public_candidate_timeout_captures_owned_atomic_write(repository, 
         result = await asyncio.wait_for(task, timeout=5)
         assert result.ok, result.reason
         candidate = result.output
+        assert capture_started.is_set()
         assert candidate.output is None
         assert "+late native candidate write" in candidate.diff
         assert candidate.lifecycle_errors == ()
@@ -299,7 +300,7 @@ async def test_public_workflow_waits_through_candidate_capture(repository, monke
     started, release_model = asyncio.Event(), asyncio.Event()
     capturing, release_capture = asyncio.Event(), asyncio.Event()
     holder, sessions = {}, []
-    original_build, original_diff = runtime.build_session, _CandidateLease.diff
+    original_build, original_diff = runtime.build_session, _CandidateLease.capture_changes
 
     async def complete(llm, messages, **kwargs):
         if not any(message.get("role") == "tool" for message in messages):
@@ -326,7 +327,7 @@ async def test_public_workflow_waits_through_candidate_capture(repository, monke
 
     monkeypatch.setattr(LLMClient, "complete", complete)
     monkeypatch.setattr(runtime, "build_session", build)
-    monkeypatch.setattr(_CandidateLease, "diff", diff)
+    monkeypatch.setattr(_CandidateLease, "capture_changes", diff)
 
     async def child(ctx, _args):
         return await ctx.agent("write", tools=evidence_tools("file_write"))

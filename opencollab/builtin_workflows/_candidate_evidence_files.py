@@ -67,7 +67,7 @@ class CandidateEvidenceFiles:
             ),
             "report_is_model_supplied": True,
         })
-        return {
+        evidence = {
             "result_path": result_path,
             "index_path": index_path,
             "diff_path": diff_path,
@@ -76,6 +76,14 @@ class CandidateEvidenceFiles:
             "diff_bytes": len(candidate.diff.encode("utf-8")),
             "diff_blocks": len(entries),
         }
+        if candidate.delivery_diff is not None:
+            delivery_path = self._write(f"{label}/candidate.delivery.diff", candidate.effective_diff)
+            evidence.update(
+                delivery_diff_path=delivery_path,
+                delivery_diff_characters=len(candidate.effective_diff),
+                delivery_diff_bytes=len(candidate.effective_diff.encode("utf-8")),
+            )
+        return evidence
 
     def add_shared_records(self, records: list[dict[str, Any]]) -> str:
         return self._json("shared-public-test-records.json", records)

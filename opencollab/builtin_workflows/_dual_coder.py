@@ -219,17 +219,17 @@ async def run_dual_coder(
         "candidates": {
             "A": {
                 "kind": "minimal-root-cause-coder",
-                "nonempty": bool(candidate_a.diff.strip()),
+                "nonempty": bool(candidate_a.effective_diff.strip()),
                 "diff_bytes": len(candidate_a.diff.encode("utf-8")),
-                "changed_paths": patch_paths(candidate_a.diff),
+                "changed_paths": patch_paths(candidate_a.effective_diff),
                 "public_command": dual._candidate_command(candidate_a),
                 "public_test_records": dual._candidate_records(candidate_a),
             },
             "B": {
                 "kind": "cross-component-contract-coder",
-                "nonempty": bool(candidate_b.diff.strip()),
+                "nonempty": bool(candidate_b.effective_diff.strip()),
                 "diff_bytes": len(candidate_b.diff.encode("utf-8")),
-                "changed_paths": patch_paths(candidate_b.diff),
+                "changed_paths": patch_paths(candidate_b.effective_diff),
                 "public_command": dual._candidate_command(candidate_b),
                 "public_test_records": dual._candidate_records(candidate_b),
             },

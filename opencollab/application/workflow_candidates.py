@@ -58,6 +58,17 @@ class CandidateRun:
     verified_targets: tuple[str, ...]
     lifecycle_errors: tuple[str, ...] = ()
     source_revision: str | None = None
+    delivery_diff: str | None = None
+    delivery_paths: tuple[str, ...] = ()
+    delivery_source_diff: str | None = None
+
+    @property
+    def effective_diff(self) -> str:
+        if self.delivery_diff is None:
+            return self.diff
+        if self.delivery_source_diff != self.diff:
+            raise ValueError("candidate diff changed after physical capture")
+        return self.delivery_diff
 
 class CandidateCaptureError(RuntimeError):
     """A candidate worktree survived but its diff could not be captured."""
@@ -340,7 +351,8 @@ class WorkflowCandidatesMixin:
                     await self.log(f"candidate agent failed ({label}): {exc}")
                 await _wait_for_candidate_cleanup(budget_lease)
                 try:
-                    diff = await lease.diff()
+                    capture = inspect.getattr_static(lease, "capture_changes", None)
+                    diff = await lease.capture_changes() if callable(capture) else await lease.diff()
                 except Exception as exc:
                     preserve_lease = True
                     failure = CandidateCaptureError(
@@ -379,6 +391,9 @@ class WorkflowCandidatesMixin:
                     test_records=records,
                     verified_targets=targets,
                     source_revision=source_before[0],
+                    delivery_diff=getattr(lease, "delivery_diff", None),
+                    delivery_paths=getattr(lease, "delivery_paths", ()),
+                    delivery_source_diff=diff if getattr(lease, "delivery_diff", None) is not None else None,
                 )
             except BaseException as exc:
                 failure = exc
@@ -468,7 +483,8 @@ class WorkflowCandidatesMixin:
                     await self.log(f"candidate workflow failed ({label}): {exc}")
                 await child.wait_for_pending_cleanup()
                 try:
-                    diff = await lease.diff()
+                    capture = inspect.getattr_static(lease, "capture_changes", None)
+                    diff = await lease.capture_changes() if callable(capture) else await lease.diff()
                 except Exception as exc:
                     preserve_lease = True
                     failure = CandidateCaptureError(
@@ -506,6 +522,9 @@ class WorkflowCandidatesMixin:
                     test_records=(),
                     verified_targets=(),
                     source_revision=source_before[0],
+                    delivery_diff=getattr(lease, "delivery_diff", None),
+                    delivery_paths=getattr(lease, "delivery_paths", ()),
+                    delivery_source_diff=diff if getattr(lease, "delivery_diff", None) is not None else None,
                 )
             except BaseException as exc:
                 failure = exc

@@ -8,11 +8,21 @@ import shlex
 import tempfile
 import uuid
 from collections.abc import Callable, Sequence
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any
 
 from opencollab.adapters._candidate_increment import _apply_increment as _apply_increment
 from opencollab.adapters._candidate_increment import _safe_path
+from opencollab.adapters._candidate_physical import (
+    _apply_physical,
+    _capture_physical,
+    _has_worktree_conversions,
+    _physical_git,
+    _physical_paths,
+    _physical_tree,
+    _tree_patch,
+)
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import ProcessCleanupError
@@ -126,6 +136,10 @@ class _CandidateLease:
     base_revision: str
     workspace_prefix: str = ""
     cleaned: bool = False
+    physical_base_revision: str | None = None
+    delivery_diff: str | None = None
+    delivery_paths: tuple[str, ...] = ()
+    strict_capture: bool = False
 
     async def diff(self, exclude_paths: Sequence[str] = ()) -> str:
         async with _candidate_temporary(
@@ -193,6 +207,45 @@ class _CandidateLease:
                 base_revision=self.base_revision,
                 index_file=index_file,
             )
+
+    async def capture_changes(self, exclude_paths: Sequence[str] = (), *, force_physical: bool = False) -> str:
+        if self.physical_base_revision is None and not force_physical:
+            converted = await _has_worktree_conversions(
+                self.base_environment, self.candidate_workspace, strict=self.strict_capture,
+            ) or await _has_worktree_conversions(
+                self.base_environment, self.source_workspace, strict=self.strict_capture,
+            )
+            if not converted:
+                patch = await self.diff(exclude_paths)
+                self.delivery_diff, self.delivery_paths = patch, ()
+                return patch
+        if not self.strict_capture:
+            await _assert_patchable_submodules(
+                self.base_environment, self.candidate_workspace, self.base_revision,
+            )
+        captured = await _capture_physical(
+            self.base_environment, self.candidate_workspace, self.base_revision, strict=self.strict_capture,
+        )
+        excluded = _repository_exclusions(self.workspace_prefix, exclude_paths)
+        self.delivery_diff = await _tree_patch(
+            self.base_environment, self.candidate_workspace,
+            self.physical_base_revision or self.base_revision, captured.tree,
+            exclude_paths=excluded,
+            strict=self.strict_capture,
+        )
+        self.delivery_paths = tuple(dict.fromkeys((
+            *await _physical_paths(
+                self.base_environment, self.source_workspace, self.delivery_diff, strict=self.strict_capture,
+            ),
+            *await _physical_paths(
+                self.base_environment, self.candidate_workspace, self.delivery_diff, strict=self.strict_capture,
+            ),
+        )))
+        return await _tree_patch(
+            self.base_environment, self.candidate_workspace,
+            self.base_revision, captured.normalized_tree, exclude_paths=excluded,
+            strict=self.strict_capture,
+        )
 
     async def cleanup(self) -> None:
         await await_owned_operation(self._cleanup_resources(), propagate_cancellation=True)
@@ -383,141 +436,194 @@ class EnvCandidateWorkspace:
                 "team source contents capture", self._environment, repository_root,
                 base_revision, None, captured_blobs=True,
             )
-        else:
-            source_patch = await self._source_patch(repository_root, base_revision)
-        lease = _CandidateLease(
-            base_environment=self._environment,
-            environment=None,
-            source_workspace=repository_root,
-            candidate_workspace=path,
-            base_revision=base_revision,
-            workspace_prefix=workspace_prefix,
-        )
-        if lease_observer is not None:
-            lease_observer(lease)
-        try:
-            # Environment adapters terminate their command group before raising
-            # cancellation. Cleanup starts only after that command has settled.
-            create_command = (
-                "git -C "
-                f"{shlex.quote(repository_root)} worktree add --detach -- "
-                f"{shlex.quote(path)} {shlex.quote(base_revision)}"
+        async with AsyncExitStack() as capture_resources:
+            converted = await _has_worktree_conversions(
+                self._environment, repository_root, strict=strict_capture,
             )
-            if strict_capture:
-                git, guard = _git_command_and_config_guard()
-                create_command = (
-                    f"cd -- {shlex.quote(repository_root)} && {guard}{git} "
-                    f"worktree add --detach -- {shlex.quote(path)} {shlex.quote(base_revision)}"
-                )
-            result = await self._environment.exec_cmd(
-                create_command,
-                timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
-            )
-            _complete(result, f"candidate worktree setup for {label}")
-            candidate_workspace = path
-            if workspace_prefix:
-                candidate_workspace = posixpath.join(path, _safe_path(workspace_prefix))
-                _complete(
-                    await self._environment.exec_cmd(
-                        f"mkdir -p -- {shlex.quote(candidate_workspace)}",
-                        timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
-                    ),
-                    "candidate workspace directory",
-                )
-            lease.environment = await self._candidate_environment(candidate_workspace)
-            await lease.environment.setup()
-            if isinstance(self._environment, LocalEnvironment):
-                source_repository = os.path.realpath(repository_root)
-                source_workspace = os.path.realpath(self._workspace)
-                try:
-                    if os.path.commonpath((source_repository, source_workspace)) != source_repository:
-                        raise RuntimeError("candidate source workspace is outside its Git repository")
-                except ValueError as exc:
-                    raise RuntimeError("candidate source workspace is outside its Git repository") from exc
-
-            async def git_in(workspace: str, *arguments: str) -> Any:
-                return await self._environment.exec_cmd(
-                    shlex.join(("git", "-C", workspace, *arguments)),
-                    timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
-                )
-
-            async def git_marker_exists(source_module: str) -> bool:
-                marker = shlex.quote(posixpath.join(source_module, ".git"))
-                result = await self._environment.exec_cmd(
-                    f"test -e {marker} || test -L {marker}",
-                    timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
-                )
-                _complete(result, "source submodule Git metadata inspection", allowed=(0, 1))
-                return result.returncode == 0
-
-            await _initialize_source_available_submodules(
-                repository_root,
-                path,
-                git_in=git_in,
-                source_prefix=workspace_prefix.rstrip("/"),
-                require_initialized=False,
-                local_filesystem=isinstance(self._environment, LocalEnvironment),
-                git_marker_exists=git_marker_exists,
-            )
-            if source_patch.strip():
-                async with _candidate_temporary(
-                    self._environment, repository_root, source_patch,
-                    prefix=".candidate-source-", suffix=".patch",
-                ) as source_file:
-                    apply_command = (
-                        f"git -C {shlex.quote(path)} apply --index --binary --whitespace=nowarn "
-                        f"-- {shlex.quote(source_file)}"
+            source_capture = physical_context = None
+            if converted:
+                if not strict_capture:
+                    await _assert_patchable_submodules(
+                        self._environment, repository_root, base_revision, reject_ignored_untracked=False,
                     )
-                    if strict_capture:
-                        git, guard = _git_command_and_config_guard()
-                        apply_command = (
-                            f"cd -- {shlex.quote(path)} && {guard}{git} "
-                            f"apply --index --binary --whitespace=nowarn -- {shlex.quote(source_file)}"
-                        )
+                physical_context = await capture_resources.enter_async_context(_physical_git(
+                    self._environment, repository_root, strict=strict_capture,
+                ))
+                source_capture = await _capture_physical(
+                    self._environment, repository_root, base_revision,
+                    exclude_paths=(
+                        *self._owned_untracked_paths(repository_root),
+                        *strict_untracked_exclusions,
+                    ),
+                    strict=strict_capture, metadata=physical_context,
+                )
+                source_patch = source_capture.patch
+            elif not strict_capture:
+                source_patch = await self._source_patch(repository_root, base_revision)
+            lease = _CandidateLease(
+                base_environment=self._environment,
+                environment=None,
+                source_workspace=repository_root,
+                candidate_workspace=path,
+                base_revision=base_revision,
+                workspace_prefix=workspace_prefix,
+                physical_base_revision=source_capture.tree if source_capture is not None else None,
+                strict_capture=strict_capture,
+            )
+            if lease_observer is not None:
+                lease_observer(lease)
+            try:
+                # Environment adapters terminate their command group before raising
+                # cancellation. Cleanup starts only after that command has settled.
+                create_command = (
+                    "git -C "
+                    f"{shlex.quote(repository_root)} worktree add --detach -- "
+                    f"{shlex.quote(path)} {shlex.quote(base_revision)}"
+                )
+                if strict_capture:
+                    git, guard = _git_command_and_config_guard()
+                    create_command = (
+                        f"cd -- {shlex.quote(repository_root)} && {guard}{git} "
+                        f"worktree add --detach -- {shlex.quote(path)} {shlex.quote(base_revision)}"
+                    )
+                result = await self._environment.exec_cmd(
+                    create_command,
+                    timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                )
+                _complete(result, f"candidate worktree setup for {label}")
+                candidate_workspace = path
+                if workspace_prefix:
+                    candidate_workspace = posixpath.join(path, _safe_path(workspace_prefix))
                     _complete(
                         await self._environment.exec_cmd(
-                            apply_command,
+                            f"mkdir -p -- {shlex.quote(candidate_workspace)}",
                             timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
                         ),
-                        "candidate source contents",
+                        "candidate workspace directory",
                     )
-                # The candidate's index records its starting contents, including
-                # source untracked files, while the source index stays untouched.
-                lease.base_revision = _complete(
+                lease.environment = await self._candidate_environment(candidate_workspace)
+                await lease.environment.setup()
+                if isinstance(self._environment, LocalEnvironment):
+                    source_repository = os.path.realpath(repository_root)
+                    source_workspace = os.path.realpath(self._workspace)
+                    try:
+                        if os.path.commonpath((source_repository, source_workspace)) != source_repository:
+                            raise RuntimeError("candidate source workspace is outside its Git repository")
+                    except ValueError as exc:
+                        raise RuntimeError("candidate source workspace is outside its Git repository") from exc
+
+                async def git_in(workspace: str, *arguments: str) -> Any:
+                    return await self._environment.exec_cmd(
+                        shlex.join(("git", "-C", workspace, *arguments)),
+                        timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                    )
+
+                async def git_marker_exists(source_module: str) -> bool:
+                    marker = shlex.quote(posixpath.join(source_module, ".git"))
+                    result = await self._environment.exec_cmd(
+                        f"test -e {marker} || test -L {marker}",
+                        timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                    )
+                    _complete(result, "source submodule Git metadata inspection", allowed=(0, 1))
+                    return result.returncode == 0
+
+                await _initialize_source_available_submodules(
+                    repository_root,
+                    path,
+                    git_in=git_in,
+                    source_prefix=workspace_prefix.rstrip("/"),
+                    require_initialized=False,
+                    local_filesystem=isinstance(self._environment, LocalEnvironment),
+                    git_marker_exists=git_marker_exists,
+                )
+                if source_patch.strip():
+                    async with _candidate_temporary(
+                        self._environment, repository_root, source_patch,
+                        prefix=".candidate-source-", suffix=".patch",
+                    ) as source_file:
+                        apply_command = (
+                            f"git -C {shlex.quote(path)} apply --index --binary --whitespace=nowarn "
+                            f"-- {shlex.quote(source_file)}"
+                        )
+                        if strict_capture:
+                            git, guard = _git_command_and_config_guard()
+                            apply_command = (
+                                f"cd -- {shlex.quote(path)} && {guard}{git} "
+                                f"apply --index --binary --whitespace=nowarn -- {shlex.quote(source_file)}"
+                            )
+                        _complete(
+                            await self._environment.exec_cmd(
+                                apply_command,
+                                timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                            ),
+                            "candidate source contents",
+                        )
+                    # The candidate's index records its starting contents, including
+                    # source untracked files, while the source index stays untouched.
+                    lease.base_revision = _complete(
+                        await self._environment.exec_cmd(
+                            f"git -C {shlex.quote(path)} write-tree",
+                            timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                        ),
+                        "candidate source tree",
+                    ).strip()
+                if source_capture is not None:
+                    candidate_metadata = (
+                        f"{physical_context[0]} -C {shlex.quote(path)} --work-tree={shlex.quote(path)} "
+                        f"-c safe.directory= -c safe.directory={shlex.quote(path)}",
+                        physical_context[1],
+                    )
+                    current_physical = await _physical_tree(
+                        self._environment, path, lease.base_revision,
+                        strict=strict_capture, metadata=candidate_metadata,
+                    )
+                    physical_source_patch = await _tree_patch(
+                        self._environment, path, current_physical, source_capture.tree,
+                        strict=strict_capture,
+                    )
+                    if physical_source_patch.strip():
+                        from opencollab.patches import patch_paths
+
+                        async with _candidate_temporary(
+                            self._environment, path, physical_source_patch,
+                            prefix=".candidate-physical-source-", suffix=".patch",
+                        ) as physical_source_file:
+                            await _apply_physical(
+                                self._environment, path, physical_source_file, patch_paths(physical_source_patch),
+                                strict=strict_capture, metadata=candidate_metadata,
+                            )
+                    _complete(await self._environment.exec_cmd(
+                        f"git -C {shlex.quote(path)} update-ref refs/worktree/opencollab-physical-source "
+                        f"{shlex.quote(source_capture.tree)}",
+                    ), "candidate physical source reference")
+                # A worktree-local ref retains the original contents for recovery
+                # throughout the lease, including after commits or Git collection.
+                _complete(
                     await self._environment.exec_cmd(
-                        f"git -C {shlex.quote(path)} write-tree",
+                        f"git -C {shlex.quote(path)} update-ref refs/worktree/opencollab-source "
+                        f"{shlex.quote(lease.base_revision)}",
                         timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
                     ),
-                    "candidate source tree",
-                ).strip()
-            # A worktree-local ref retains the original contents for recovery
-            # throughout the lease, including after commits or Git collection.
-            _complete(
-                await self._environment.exec_cmd(
-                    f"git -C {shlex.quote(path)} update-ref refs/worktree/opencollab-source "
-                    f"{shlex.quote(lease.base_revision)}",
-                    timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
-                ),
-                "candidate source recovery reference",
-            )
-            return lease
-        except BaseException as failure:
-            if isinstance(failure, ProcessCleanupError) or getattr(self._environment, "revoked", False):
-                if lease.environment is not None:
+                    "candidate source recovery reference",
+                )
+                return lease
+            except BaseException as failure:
+                if isinstance(failure, ProcessCleanupError) or getattr(self._environment, "revoked", False):
+                    if lease.environment is not None:
+                        try:
+                            await await_owned_operation(lease.environment.cleanup())
+                        except BaseException as cleanup_error:
+                            add_exception_note(failure, f"candidate environment cleanup failed: {cleanup_error}")
+                    add_exception_note(failure, f"candidate worktree retained until command cleanup completes: {path}")
+                else:
                     try:
-                        await await_owned_operation(lease.environment.cleanup())
+                        await await_owned_operation(lease.cleanup())
                     except BaseException as cleanup_error:
-                        add_exception_note(failure, f"candidate environment cleanup failed: {cleanup_error}")
-                add_exception_note(failure, f"candidate worktree retained until command cleanup completes: {path}")
-            else:
-                try:
-                    await await_owned_operation(lease.cleanup())
-                except BaseException as cleanup_error:
-                    add_exception_note(
-                        failure,
-                        f"candidate initialization cleanup failed: {type(cleanup_error).__name__}: {cleanup_error}",
-                    )
-            raise
+                        add_exception_note(
+                            failure,
+                            f"candidate initialization cleanup failed: {type(cleanup_error).__name__}: {cleanup_error}",
+                        )
+                raise
 
     async def source_diff(self, exclude_paths: Sequence[str] = ()) -> str:
         repository_root = await self._repository_root()
@@ -619,6 +725,25 @@ class EnvCandidateWorkspace:
         )
         await _apply_increment(
             self._environment, await self._repository_root(), patch, preserved,
+        )
+
+    async def adopt_run(self, candidate: Any, preserve_paths: Sequence[str] = ()) -> None:
+        if candidate.delivery_diff is None:
+            await self.adopt(candidate.diff, preserve_paths)
+            return
+        patch = candidate.effective_diff
+        if not patch.strip():
+            return
+        preserved = (
+            _repository_exclusions(await self._workspace_prefix(), preserve_paths)
+            if preserve_paths else ()
+        )
+        await _apply_increment(
+            self._environment, await self._repository_root(), patch, preserved,
+            physical_paths=tuple(dict.fromkeys((
+                *candidate.delivery_paths,
+                *await _physical_paths(self._environment, await self._repository_root(), patch),
+            ))),
         )
 
 __all__ = ["EnvCandidateWorkspace"]

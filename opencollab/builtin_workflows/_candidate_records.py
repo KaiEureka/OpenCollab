@@ -93,7 +93,7 @@ async def _adopt(
     attempts: list[str] = []
     for label in order:
         candidate = candidates[label]
-        if not candidate.diff.strip():
+        if not candidate.effective_diff.strip():
             continue
         attempts.append(label)
         try:

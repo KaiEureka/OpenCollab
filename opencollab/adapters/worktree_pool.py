@@ -10,7 +10,9 @@ import shlex
 import uuid
 from collections.abc import Sequence
 from contextlib import nullcontext
+from contextvars import ContextVar
 
+from opencollab.adapters._candidate_physical import _physical_paths
 from opencollab.adapters._git_patch_bytes import _complete
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
 from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace, _apply_increment
@@ -69,6 +71,9 @@ class WorktreePool:
         self._release_active = False
         self._generation = 0
         self._inflight_acquires = 0
+        self._physical_delivery_paths: ContextVar[tuple[str, ...] | None] = ContextVar(
+            "physical_delivery_paths", default=None,
+        )
 
     async def acquire(self, role: str) -> Environment:
         """Create (and remember) an isolated env for a spawned agent of this role."""
@@ -144,6 +149,13 @@ class WorktreePool:
             )
         return self._owned_delivery_environment
 
+    async def adopt_captured(self, patch: str, physical_paths: Sequence[str]) -> None:
+        token = self._physical_delivery_paths.set(tuple(physical_paths))
+        try:
+            await self.adopt(patch)
+        finally:
+            self._physical_delivery_paths.reset(token)
+
     async def adopt(self, patch: str) -> None:
         if not self._enable_adoption:
             raise PermissionError("this team has not declared adopt_agent")
@@ -159,7 +171,13 @@ class WorktreePool:
                     _complete(probe, "team delivery repository").removesuffix("\n")
                     if repository else source.workspace
                 )
-                await _apply_increment(source, root, patch, repository=repository, strict=True)
+                physical_paths = self._physical_delivery_paths.get()
+                await _apply_increment(
+                    source, root, patch, repository=repository, strict=True,
+                    physical_paths=tuple(dict.fromkeys((
+                        *physical_paths, *await _physical_paths(source, root, patch, strict=True),
+                    ))) if physical_paths is not None else (),
+                )
         finally:
             await _finish_cleanup(self._end_acquire())
 
