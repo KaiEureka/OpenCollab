@@ -530,6 +530,7 @@ async def test_parallel_candidate_collections_share_task_capacity(repository, ca
         candidate_workspace=EnvCandidateWorkspace(LocalEnvironment(str(repository))),
     )
     active = peak = 0
+    both_entered = asyncio.Event()
 
     async def service():
         nonlocal active, peak
@@ -538,7 +539,12 @@ async def test_parallel_candidate_collections_share_task_capacity(repository, ca
         try:
             if active > capacity:
                 raise RuntimeError("service capacity exceeded")
-            await asyncio.sleep(0.02)
+            if capacity == 2:
+                if active == 2:
+                    both_entered.set()
+                await asyncio.wait_for(both_entered.wait(), 5)
+            else:
+                await asyncio.sleep(0)
             return "completed"
         finally:
             active -= 1

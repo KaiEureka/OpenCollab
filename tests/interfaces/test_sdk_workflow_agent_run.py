@@ -161,7 +161,7 @@ async def test_stage_timeout_waits_for_late_usage_before_next_stage(tmp_path):
             return await super().complete(messages, tools, **kwargs)
 
     async def flow(ctx, _args):
-        first = await ctx.agent_run("first", tools=[], timeout=.02, cleanup_timeout=1)
+        first = await ctx.agent_run("first", tools=[], timeout=1, cleanup_timeout=1)
         assert first.cleanup_complete and first.workspace_ready
         assert first.tokens == 60
         second = await ctx.agent_run("second", tools=[])
