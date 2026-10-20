@@ -119,7 +119,7 @@ def _resolve_llm(
     return LLMClient(
         model=agent.model,
         api_key=agent.api_key,
-        auth_token=agent.auth_token,
+        auth_token=getattr(agent, "auth_token", None),
         base_url=agent.base_url,
         provider=agent.provider,
         wire_protocol=getattr(agent, "wire_protocol", "chat_completions"),
