@@ -13,7 +13,7 @@ import time
 from typing import Any
 
 from opencollab.application.scheduler_types import LaunchSpec
-from opencollab.domain.identity import validate_role_identity
+from opencollab.domain.identity import role_collision_key, validate_role_identity
 from opencollab.domain.pending import PendingRowError, RowStatus
 from opencollab.domain.scheduler import SessionControlBlock
 from opencollab.domain.session import SessionPhase
@@ -91,6 +91,8 @@ class LifecycleMixin:
         task: str,
         context: str = "",
         tool_call_id: str | None = None,
+        *,
+        review_source_aid: int | None = None,
     ) -> int:
         """Non-blocking spawn. Creates SCB, builds session, starts task. Returns aid.
 
@@ -116,6 +118,20 @@ class LifecycleMixin:
         # Record declared and undeclared role refusals before topology validation.
         self._refuse_spawn_when_prebuilt(parent_aid, role, task, context)
         self._check_topology(parent_aid, role, verb="spawn")
+        review_source = None
+        if review_source_aid is not None:
+            if isinstance(review_source_aid, bool) or not isinstance(review_source_aid, int):
+                raise ValueError("review source must be this parent's completed coder")
+            source = self.table.get(review_source_aid)
+            if (
+                role_collision_key(role) != "reviewer"
+                or source is None
+                or source.parent_aid != parent_aid
+                or role_collision_key(source.agent.name) != "coder"
+                or source.state.phase is not SessionPhase.DONE
+            ):
+                raise ValueError("review source must be this parent's completed coder")
+            review_source = getattr(self._sessions.get(review_source_aid), "env", None)
         aid = self.table.allocate_aid()
         startup_task = asyncio.current_task()
         if startup_task is not None:
@@ -154,7 +170,11 @@ class LifecycleMixin:
                     "Cannot spawn agent: team token budget is fully allocated."
                 )
 
-            env = await self._worktree_pool.acquire(role)
+            env = (
+                await self._worktree_pool.acquire(role, source=review_source)
+                if review_source is not None
+                else await self._worktree_pool.acquire(role)
+            )
             self._startup_envs[aid] = env
             if self._shutting_down:
                 raise RuntimeError("Cannot spawn agent: scheduler is shutting down.")

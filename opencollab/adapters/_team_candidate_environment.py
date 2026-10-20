@@ -14,8 +14,9 @@ from opencollab.adapters.git_patch import _git_command_and_config_guard, guarded
 class _TeamCandidateEnvironment:
     """Delegate execution while retaining the team's strict patch evidence."""
 
-    def __init__(self, lease: Any, source_workspace: str) -> None:
+    def __init__(self, lease: Any, source_workspace: str, *, source_owner: Any = None) -> None:
         self._lease = lease
+        self._source_owner = source_owner
         self.source_workspace = source_workspace
         self._delivery_pending = False
         self.delivery_diff: str | None = None
@@ -138,6 +139,8 @@ class _TeamCandidateEnvironment:
         if self._delivery_pending:
             raise RuntimeError(f"worktree changes await complete delivery; retained at {self.workspace}")
         await self._lease.cleanup()
+        if self._source_owner is not None:
+            await self._source_owner.cleanup()
 
     async def abort(self) -> None:
         # Stop processes and files before releasing any workspace. A failed

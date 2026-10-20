@@ -207,3 +207,37 @@ def test_scheduler_modules_do_not_import_bootstrap_safety():
 
 def test_scheduler_public_module_uses_plain_module_semantics():
     assert type(scheduler_mod) is types.ModuleType
+
+
+async def test_review_loop_keeps_injected_scheduler_spawn_compatible():
+    from opencollab.application.events import default_scheduler_event_factory
+    from opencollab.application.self_collaboration import run_spawn_with_review
+    from opencollab.domain.agent import Agent
+    from opencollab.domain.scheduler import SessionControlBlock, SessionTable
+    from opencollab.domain.session import SessionPhase, SessionState
+
+    class ExternalScheduler:
+        def __init__(self):
+            self.table = SessionTable()
+            self.events = default_scheduler_event_factory()
+            self.roles = []
+
+        async def spawn(self, parent_aid, role, task, context=""):
+            self.roles.append(role)
+            aid = self.table.allocate_aid()
+            answer = "implementation" if role == "coder" else "VERDICT: PASS"
+            self.table.add(SessionControlBlock(
+                aid=aid, parent_aid=parent_aid, agent=Agent(name=role, system_prompt=role),
+                state=SessionState(messages=[], phase=SessionPhase.DONE), result=answer,
+            ))
+            return aid
+
+        async def wait_until_terminal(self, aid):
+            pass
+
+        async def emit_scheduler_event(self, event):
+            pass
+
+    scheduler = ExternalScheduler()
+    assert "PASSED after 1 iteration" in await run_spawn_with_review(scheduler, 0, "implement")
+    assert scheduler.roles == ["coder", "reviewer"]

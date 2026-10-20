@@ -106,7 +106,7 @@ topology:
                     for m in messages if m["role"] == "user"
                 )
                 assert any(
-                    "answer = 0" in str(m.get("content", ""))
+                    "answer = 42" in str(m.get("content", ""))
                     for m in messages if m["role"] == "tool"
                 )
                 content = answer

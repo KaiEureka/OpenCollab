@@ -8,6 +8,13 @@ from opencollab.application.self_collaboration import run_spawn_with_review
 
 
 class SchedulerReviewMixin:
+    async def _spawn_review_from(
+        self, parent_aid: int, coder_aid: int, task: str, context: str,
+    ) -> int:
+        return await self.spawn(
+            parent_aid, "reviewer", task, context, review_source_aid=coder_aid,
+        )
+
     async def wait_for(self, aid: int) -> None:
         """Wait until ``aid``'s current driving task settles.
 

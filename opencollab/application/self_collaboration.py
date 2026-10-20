@@ -180,11 +180,11 @@ async def run_spawn_with_review(
         )
         stage = "reviewer_spawn"
         try:
-            reviewer_aid = await scheduler.spawn(
-                parent_aid,
-                "reviewer",
-                review_prompt,
-                context,
+            spawn_review = getattr(scheduler, "_spawn_review_from", None)
+            reviewer_aid = (
+                await spawn_review(parent_aid, coder_aid, review_prompt, context)
+                if callable(spawn_review)
+                else await scheduler.spawn(parent_aid, "reviewer", review_prompt, context)
             )
             stage = "reviewer_wait"
             await scheduler.wait_until_terminal(reviewer_aid)

@@ -630,7 +630,7 @@ class WorktreePoolPort(Protocol):
         """Apply an increment to the delivery workspace, preserving its index."""
         ...
 
-    async def acquire(self, role: str) -> Any:
+    async def acquire(self, role: str, *, source: EnvironmentPort | None = None) -> Any:
         ...
 
     async def release(self) -> None:
