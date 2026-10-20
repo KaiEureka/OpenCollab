@@ -741,9 +741,11 @@ async def test_cancelled_checkout_removes_registered_worktree_before_return(
     env = WorktreeEnvironment(str(source), branch_name="cancelled-checkout")
     owner = asyncio.create_task(env.setup())
     try:
-        async with asyncio.timeout(5):
+        async def wait_for_hook() -> None:
             while not entered.exists():
                 await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_for_hook(), 5)
         candidate = Path(env._worktree_dir) if env._worktree_dir is not None else None
         owner.cancel()
         with pytest.raises(asyncio.CancelledError):

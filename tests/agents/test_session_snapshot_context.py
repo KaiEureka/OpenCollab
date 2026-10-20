@@ -151,9 +151,11 @@ async def test_snapshot_during_native_tool_execution_resumes_without_replaying_i
     await source.add_user_message("Run the local command")
     running = asyncio.create_task(source.run_loop())
     try:
-        async with asyncio.timeout(3):
+        async def wait_for_start() -> None:
             while not (source_dir / "started").exists():
                 await asyncio.sleep(.01)
+
+        await asyncio.wait_for(wait_for_start(), 3)
         assert source.state.phase is SessionPhase.EXECUTING_TOOLS
         branch = snapshot_session(source)
         source.save(str(tmp_path / "active.json"))
