@@ -100,7 +100,7 @@ async def test_adopt_updates_initialized_submodule_to_the_target_gitlink(handoff
     assert _git(handoff.source, "status", "--porcelain=v1") == ""
 
 
-@pytest.mark.parametrize("handoff", [('vendor/库 "quoted"\npath', False)], indirect=True)
+@pytest.mark.parametrize("handoff", [('vendor/\u5e93 "quoted"\npath', False)], indirect=True)
 @pytest.mark.parametrize("backend", ["local", "container"])
 async def test_adopt_decodes_git_quoted_submodule_paths(handoff, backend, worktree_transport):
     environment = (
