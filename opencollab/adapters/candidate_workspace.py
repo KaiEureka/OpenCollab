@@ -277,6 +277,50 @@ class EnvCandidateWorkspace:
             "candidate workspace location",
         ).removesuffix("\n")
 
+    async def _source_patch(
+        self, repository_root: str, base_revision: str,
+        exclude_paths: Sequence[str] = (),
+    ) -> str:
+        # A fresh index reads tracked bytes hidden by the source index's skip flags.
+        source_index = _complete(
+            await self._environment.exec_cmd(
+                "mktemp", timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+            ),
+            "candidate source temporary index",
+        ).removesuffix("\n")
+        try:
+            git = (
+                f"GIT_INDEX_FILE={shlex.quote(source_index)} "
+                f"git -c core.filemode=true -C {shlex.quote(repository_root)}"
+            )
+            _complete(
+                await self._environment.exec_cmd(
+                    f"{git} read-tree {shlex.quote(base_revision)} && {git} add -u",
+                    timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                ),
+                "candidate source contents staging",
+            )
+            await _assert_patchable_submodules(
+                self._environment, repository_root, base_revision,
+                index_file=source_index, reject_ignored_untracked=False,
+            )
+            return await _raw_diff_at(
+                self._environment, repository_root, exclude_paths,
+                base_revision=base_revision, index_file=source_index,
+                untracked_exclude_paths=self._owned_untracked_paths(repository_root),
+            )
+        finally:
+            async def remove_index() -> None:
+                _complete(
+                    await self._environment.exec_cmd(
+                        f"rm -f -- {shlex.quote(source_index)}",
+                        timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                    ),
+                    "candidate source temporary index cleanup",
+                )
+
+            await await_owned_operation(remove_index(), propagate_cancellation=True)
+
     async def _candidate_environment(self, path: str) -> Any:
         if isinstance(self._environment, LocalEnvironment):
             return LocalEnvironment(path)
@@ -334,13 +378,7 @@ class EnvCandidateWorkspace:
                 base_revision, None, captured_blobs=True,
             )
         else:
-            await _assert_patchable_submodules(
-                self._environment, repository_root, base_revision, reject_ignored_untracked=False,
-            )
-            source_patch = await _raw_diff_at(
-                self._environment, repository_root, base_revision=base_revision,
-                untracked_exclude_paths=self._owned_untracked_paths(repository_root),
-            )
+            source_patch = await self._source_patch(repository_root, base_revision)
         lease = _CandidateLease(
             base_environment=self._environment,
             environment=None,
@@ -478,12 +516,8 @@ class EnvCandidateWorkspace:
     async def source_diff(self, exclude_paths: Sequence[str] = ()) -> str:
         repository_root = await self._repository_root()
         excluded = _repository_exclusions(await self._workspace_prefix(), exclude_paths) if exclude_paths else ()
-        return await _raw_diff_at(
-            self._environment,
-            repository_root,
-            excluded,
-            untracked_exclude_paths=self._owned_untracked_paths(repository_root),
-        )
+        base_revision = await self.source_revision()
+        return await self._source_patch(repository_root, base_revision, excluded)
 
     async def _source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
         repository_root = await self._repository_root()
@@ -503,10 +537,11 @@ class EnvCandidateWorkspace:
             "candidate source status",
         )
         owned = tuple(path + "/" for path in self._owned_untracked_paths(repository_root))
-        return any(
+        changed = any(
             record and not (record.startswith("?? ") and record[3:].startswith(owned))
             for record in status.split("\0")
         )
+        return changed or bool(await self.source_diff(exclude_paths))
 
     async def source_revision(self) -> str:
         return _complete(
