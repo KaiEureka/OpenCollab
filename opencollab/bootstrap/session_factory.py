@@ -51,6 +51,7 @@ from opencollab.bootstrap.team_config import (
 )
 from opencollab.domain.agent import Agent
 from opencollab.domain.identity import role_storage_slug, validate_role_identity
+from opencollab.domain.session import SessionPhase
 
 
 class SnapshotSessionError(RuntimeError):
@@ -327,10 +328,12 @@ def snapshot_session(
         aid=session.state.aid,
         run_id=session.run_id,
     )
-    _, snapshot_meta = session._snapshot_for_save()
     state = _clone_snapshot_component(session.state, label="session state")
-    new._normalize_forked_state(state, snapshot_meta["session_state"])
-    new.runner.reset_for_restore()
+    if state.phase not in {
+        SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
+    }:
+        new._normalize_forked_state(state, session._fork_runtime_metadata())
+        new.runner.reset_for_restore()
     new.state = state
     new.runner.state = state
     new.tool_execution.state = state

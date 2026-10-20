@@ -641,6 +641,24 @@ class Session:
         )
         self._normalize_interrupted_snapshot_state(state, raw_state, turn_start)
 
+    def _fork_runtime_metadata(self) -> dict[str, Any]:
+        state = self.state
+        completed = (
+            [dict(row) for row in (*self._loop_checkpoint_prefix, *self._loop_checkpoint_results)]
+            if state.step_count == self._loop_checkpoint_step
+            and state.phase not in {SessionPhase.AUTOSAVING, SessionPhase.AWAITING_EVENTS}
+            else []
+        )
+        return {
+            "phase": state.phase.value,
+            "pending_events": [_serialize_pending_row(row) for row in state.pending_events.rows.values()],
+            "active_turn_start_message_index": state.active_turn_start_message_index,
+            "pending_step_latency": state.pending_step_latency,
+            "submitted_summary": state.submitted_summary,
+            "terminal_reason": state.terminal_reason,
+            "loop_checkpoint_results": completed,
+        }
+
     def _restore_auto_save_tracking(self, snapshot: dict[str, Any]) -> None:
         sequence = _snapshot_nonnegative_int(snapshot.get("_autosave_sequence"))
         self._auto_save_sequence = sequence
