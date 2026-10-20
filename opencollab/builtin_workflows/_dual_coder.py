@@ -48,7 +48,7 @@ async def _coder_candidate(
         label=label,
         tools=tools,
         budget=None,
-        timeout=coder_role_timeout_seconds(),
+        timeout=coder_role_timeout_seconds(ctx),
     )
     records = [
         dual._public_record(record)
@@ -94,7 +94,7 @@ async def _review_and_select(
                 label="dual-coder-contract-adjudicator" + ("-recheck" if attempt else ""),
                 tools=tools,
                 budget=None,
-                timeout=structured_role_timeout_seconds(),
+                timeout=structured_role_timeout_seconds(ctx),
             )
         except Exception as exc:  # noqa: BLE001
             await ctx.log(f"Duo adjudicator unavailable after {type(exc).__name__}")

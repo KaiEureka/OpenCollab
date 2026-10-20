@@ -16,7 +16,7 @@ from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.bootstrap import _workflow_runtime_session as workflow_session
 from opencollab.bootstrap.single2_prompt import SINGLE2_SYSTEM_PROMPT
 from opencollab.bootstrap.workflow_runtime import run_workflow
-from opencollab.builtin_workflows import _file_selection
+from opencollab.builtin_workflows import _dual_coder, _file_selection
 
 
 def _git(path, *args):
@@ -205,6 +205,32 @@ async def test_duo_named_sdk_executes_candidates_and_adopts_verified_patch(
     completed = subprocess.run(shlex.split(command), cwd=repo, capture_output=True, text=True)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "1 passed" in completed.stdout
+
+async def test_duo_role_deadline_uses_resolved_sdk_model_timeout(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENCOLLAB_LLM_TIMEOUT", raising=False)
+    monkeypatch.delenv("OPENCOLLAB_PROVIDER_ERROR_TIME_BUDGET", raising=False)
+    repo = _repository(tmp_path / "repo", both_pass=False)
+    command = f"{shlex.quote(sys.executable)} -m pytest -q -p no:cacheprovider test_public.py"
+    _script_sessions(monkeypatch, repo / "source.py", command)
+    deadlines = []
+    original = _dual_coder.coder_role_timeout_seconds
+
+    def record_deadline(ctx):
+        deadline = original(ctx)
+        deadlines.append(deadline)
+        return deadline
+
+    monkeypatch.setattr(_dual_coder, "coder_role_timeout_seconds", record_deadline)
+    app = OpenCollab(repo, model="scripted-local-model", provider="openai", config={
+        "llm_timeout": 2400, "provider_error_time_budget": 600,
+    })
+    result = await app.workflow(
+        "duo", {"goal": "value() must return 3", "allow_unisolated_shell": True},
+        budget=10_000, max_steps=8, trace=False,
+    )
+
+    assert result.ok and result.output["adopted"] == "B"
+    assert deadlines == [3060, 3060]
 
 async def test_runtime_resolves_cli_profile_name_in_composition_root(tmp_path, monkeypatch):
     observed = []

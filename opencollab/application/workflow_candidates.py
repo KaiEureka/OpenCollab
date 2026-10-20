@@ -112,6 +112,10 @@ class _CandidateWorkflowSessionFactory:
         self._isolated_environments: list[tuple[Any, Any]] = []
         self._isolated_sessions: list[Any] = []
 
+    def model_request_window(self) -> tuple[float | None, float] | None:
+        read = getattr(self._factory, "model_request_window", None)
+        return read() if callable(read) else None
+
     @property
     def environment_revoked(self) -> bool:
         return bool(getattr(self._environment, "revoked", False))

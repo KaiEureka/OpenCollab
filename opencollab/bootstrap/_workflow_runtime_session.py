@@ -155,6 +155,9 @@ class WorkflowSessionFactory:
         self._candidate_isolation_leases: list[tuple[Any, Any]] = []
         self._owned_source_environment: LocalEnvironment | None = None
 
+    def model_request_window(self) -> tuple[float | None, float]:
+        return self._llm_timeout, self._provider_error_time_budget
+
     @property
     def environment_revoked(self) -> bool:
         return self._env is not None and bool(getattr(self._env, "revoked", False))
