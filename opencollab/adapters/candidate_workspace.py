@@ -212,8 +212,6 @@ class _CandidateLease:
         if self.physical_base_revision is None and not force_physical:
             converted = await _has_worktree_conversions(
                 self.base_environment, self.candidate_workspace, strict=self.strict_capture,
-            ) or await _has_worktree_conversions(
-                self.base_environment, self.source_workspace, strict=self.strict_capture,
             )
             if not converted:
                 patch = await self.diff(exclude_paths)
@@ -738,11 +736,12 @@ class EnvCandidateWorkspace:
             _repository_exclusions(await self._workspace_prefix(), preserve_paths)
             if preserve_paths else ()
         )
+        root = await self._repository_root()
         await _apply_increment(
-            self._environment, await self._repository_root(), patch, preserved,
+            self._environment, root, patch, preserved,
             physical_paths=tuple(dict.fromkeys((
                 *candidate.delivery_paths,
-                *await _physical_paths(self._environment, await self._repository_root(), patch),
+                *await _physical_paths(self._environment, root, patch),
             ))),
         )
 

@@ -82,7 +82,6 @@ class _TeamCandidateEnvironment:
         self._delivery_pending = True
         if self._lease.physical_base_revision is None and not (
             await _has_worktree_conversions(self._lease.base_environment, self._lease.candidate_workspace, strict=True)
-            or await _has_worktree_conversions(self._lease.base_environment, self._lease.source_workspace, strict=True)
         ):
             self.delivery_diff, self.delivery_paths = validated, ()
             self._delivery_pending = False

@@ -506,7 +506,10 @@ async def test_converting_candidate_uses_one_owned_metadata_directory_per_stage(
 
     repo = _repository(tmp_path)
     (repo / ".gitattributes").write_text("*.sh text eol=crlf\n")
-    _git(repo, "add", ".gitattributes")
+    initial = b'#!/bin/sh\nprintf "source baseline\\n"\n'
+    (repo / "existing.sh").write_bytes(initial)
+    (repo / "existing.sh").chmod(0o755)
+    _git(repo, "add", ".gitattributes", "existing.sh")
     _git(repo, "commit", "-m", "准备私有元数据生命周期")
     initialized = []
     original_exec = LocalEnvironment.exec_cmd
@@ -522,6 +525,9 @@ async def test_converting_candidate_uses_one_owned_metadata_directory_per_stage(
     lease = await workspace.acquire("metadata-lifetime")
     try:
         assert len(initialized) == 1
+        assert Path(lease.environment.workspace, "existing.sh").read_bytes() == initial
+        tested = await lease.environment.exec_cmd("./existing.sh")
+        assert tested.returncode == 0 and tested.stdout == "source baseline\n"
         script = Path(lease.environment.workspace, "run.sh")
         script.write_bytes(b'#!/bin/sh\nprintf "42\\n"\n')
         script.chmod(0o755)
@@ -536,3 +542,109 @@ async def test_converting_candidate_uses_one_owned_metadata_directory_per_stage(
         await lease.cleanup()
         await environment.cleanup()
     assert not list((repo / ".git").glob("opencollab-candidate-*"))
+
+
+@pytest.mark.parametrize("scope", ["local", "global"])
+@pytest.mark.parametrize("backend", ["workflow", "team"])
+async def test_private_git_context_does_not_activate_conditional_configuration(tmp_path, monkeypatch, scope, backend):
+    from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
+    from opencollab.application.workflow_candidates import CandidateRun
+
+    repo = _repository(tmp_path)
+    (repo / ".gitattributes").write_text("*.sh text eol=crlf filter=conditional\n")
+    (repo / "existing.sh").write_bytes(b'#!/bin/sh\nprintf "existing\\n"\n')
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "准备私有上下文条件配置")
+    markers = [tmp_path / name for name in ("monitor-ran", "hook-ran", "filter-ran")]
+    monitor = tmp_path / "monitor"
+    monitor.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(markers[0]))}\nprintf 'token\\0'\n")
+    monitor.chmod(0o755)
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    hook = hooks / "post-index-change"
+    hook.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(markers[1]))}\n")
+    hook.chmod(0o755)
+    conditional = tmp_path / "conditional-config"
+    conditional.write_text(
+        f"[core]\n\tfsmonitor = {monitor}\n\thooksPath = {hooks}\n"
+        f'[filter "conditional"]\n\tclean = touch {shlex.quote(str(markers[2]))}; cat\n'
+        f"\tsmudge = touch {shlex.quote(str(markers[2]))}; cat\n"
+    )
+    key = f"includeIf.gitdir:{repo.resolve()}/.git/opencollab-candidate-*/**.path"
+    if scope == "local":
+        _git(repo, "config", key, str(conditional))
+    else:
+        global_config = tmp_path / "global-config"
+        _git(repo, "config", "--file", str(global_config), key, str(conditional))
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    control = subprocess.run(
+        ["git", "-C", str(repo), "config", "--includes", "--get", "core.fsmonitor"], capture_output=True,
+    )
+    assert control.returncode == 1
+    source_index = (repo / ".git/index").read_bytes()
+    environment = LocalEnvironment(str(repo))
+    workspace = EnvCandidateWorkspace(environment)
+    lease = pool = None
+    try:
+        if backend == "workflow":
+            lease = await workspace.acquire("conditional-config")
+            child = lease.environment
+        else:
+            pool = WorktreePool(str(repo), use_worktrees=True, enable_adoption=True)
+            child = await pool.acquire("coder")
+        assert not any(path.exists() for path in markers)
+        script = Path(child.workspace, "run.sh")
+        script.write_bytes(b'#!/bin/sh\nprintf "42\\n"\n')
+        script.chmod(0o755)
+        if lease is not None:
+            canonical = await lease.capture_changes()
+            captured = CandidateRun("conditional", "tested", canonical, (), (), delivery_diff=lease.delivery_diff,
+                                    delivery_paths=lease.delivery_paths, delivery_source_diff=canonical)
+            await workspace.adopt_run(captured)
+        else:
+            scheduler = _adoption_scheduler(pool, child)
+            await scheduler._append_worktree_diff(child, "tested", aid=7, role="coder")
+            await scheduler.adopt_agent(0, 7)
+        assert not any(path.exists() for path in markers)
+        assert subprocess.run([str(repo / "run.sh")], check=True, capture_output=True).stdout == b"42\n"
+        assert (repo / ".git/index").read_bytes() == source_index
+    finally:
+        if lease is not None:
+            await lease.cleanup()
+        if pool is not None:
+            await pool.release()
+        await environment.cleanup()
+
+
+async def test_physical_capture_streams_index_larger_than_process_capture_limit(tmp_path):
+    from opencollab.adapters._env_process import PROCESS_OUTPUT_CAPTURE_BYTES
+    from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
+    from opencollab.application.workflow_candidates import CandidateRun
+
+    repo = _repository(tmp_path)
+    (repo / ".gitattributes").write_text("*.py text eol=lf\n")
+    for number in range(6_500):
+        (repo / f"module{number:05d}_{'x' * 100}.py").write_text("value = 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "准备超过输出上限的暂存清单")
+    assert len(_git(repo, "ls-files", "--stage", "-z").encode()) > PROCESS_OUTPUT_CAPTURE_BYTES
+    source_index = (repo / ".git/index").read_bytes()
+    environment = LocalEnvironment(str(repo))
+    workspace = EnvCandidateWorkspace(environment)
+    lease = None
+    try:
+        truncated = await environment.exec_cmd("git ls-files --stage -z")
+        assert truncated.stdout_truncated
+        lease = await workspace.acquire("large-index")
+        await lease.environment.write_file("source.py", "print(42)\n")
+        canonical = await lease.capture_changes()
+        captured = CandidateRun("large", "tested", canonical, (), (), delivery_diff=lease.delivery_diff,
+                                delivery_paths=lease.delivery_paths, delivery_source_diff=canonical)
+        await workspace.adopt_run(captured)
+        tested = await environment.exec_cmd(f"{shlex.quote(sys.executable)} -B source.py")
+        assert tested.returncode == 0 and tested.stdout == "42\n"
+        assert (repo / ".git/index").read_bytes() == source_index
+    finally:
+        if lease is not None:
+            await lease.cleanup()
+        await environment.cleanup()

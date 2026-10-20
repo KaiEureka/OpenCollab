@@ -31,53 +31,35 @@ def _git_prefix(workspace: str, strict: bool = False) -> str:
 
 async def _has_worktree_conversions(environment: Any, workspace: str, *, strict: bool = False) -> bool:
     git = _git_prefix(workspace, strict)
-    files = _complete(await environment.exec_cmd(
-        f"{git} ls-files --cached --others --exclude-standard -z",
-    ), "candidate attribute files")
-    if any(posixpath.basename(path) == ".gitattributes" for path in files.split("\0") if path):
-        return True
-    if files:
-        async with _patch_temporary(
-            environment, workspace, files, prefix=".candidate-attribute-probe-",
-        ) as paths_file:
-            result = await environment.exec_cmd(
-                f"{git} check-attr --all -z --stdin < {shlex.quote(paths_file)}",
-            )
-            if result.stdout_truncated or result.stderr_truncated:
-                return True
-            values = _complete(result, "candidate effective attributes").split("\0")
-            for offset in range(0, len(values) - 2, 3):
-                _path, attribute, value = values[offset:offset + 3]
-                if attribute in {"text", "eol", "filter", "ident", "working-tree-encoding"} and value not in {
-                    "unspecified", "unset", "false",
-                }:
-                    return True
-    autocrlf = await environment.exec_cmd(f"{git} config --get core.autocrlf")
-    _complete(autocrlf, "candidate line-ending configuration", allowed=(0, 1))
-    if autocrlf.returncode == 0 and autocrlf.stdout.strip().lower() not in ("false", "0", "off", ""):
-        return True
-    attributes = _complete(await environment.exec_cmd(
-        f"{git} rev-parse --git-path info/attributes",
-    ), "candidate local attributes").removesuffix("\n")
-    paths = [attributes if posixpath.isabs(attributes) else posixpath.join(workspace, attributes)]
-    variables = ["GIT_ATTR_SYSTEM"]
-    if not strict:
-        explicit = await environment.exec_cmd(f"{git} config --path --get core.attributesFile")
-        _complete(explicit, "candidate global attributes", allowed=(0, 1))
-        if explicit.returncode == 0:
-            path = explicit.stdout.removesuffix("\n")
-            if path:
-                paths.append(path if posixpath.isabs(path) else posixpath.join(workspace, path))
-        else:
-            variables.append("GIT_ATTR_GLOBAL")
-    for variable in variables:
-        result = await environment.exec_cmd(f"{git} var {variable}")
-        if result.returncode != 0 or result.stdout_truncated or result.stderr_truncated:
+    ignored = "--exclude-per-directory=.gitignore" if strict else "--exclude-standard"
+    async with _patch_temporary(
+        environment, workspace, "", prefix=".candidate-attribute-probe-", repository=False,
+    ) as paths_file:
+        result = await environment.exec_cmd(
+            f"{git} ls-files --cached --others {ignored} -z > {shlex.quote(paths_file)} && "
+            f"{git} check-attr --all -z --stdin < {shlex.quote(paths_file)} && printf '\\0\\0' && "
+            f"({git} config --null --get-regexp '^(core\\.autocrlf|extensions\\.worktreeconfig)$' "
+            '|| [ "$?" -eq 1 ])',
+        )
+        if result.stdout_truncated or result.stderr_truncated:
             return True
-        paths.append(result.stdout.removesuffix("\n"))
-    result = await environment.exec_cmd(" || ".join(f"test -s {shlex.quote(path)}" for path in paths))
-    _complete(result, "candidate attribute storage inspection", allowed=(0, 1))
-    return result.returncode == 0
+        attributes, configuration = _complete(result, "candidate conversion settings").rsplit("\0\0", 1)
+        values = attributes.split("\0")
+        for offset in range(0, len(values) - 2, 3):
+            _path, attribute, value = values[offset:offset + 3]
+            if attribute in {"text", "eol", "filter", "ident", "working-tree-encoding"} and value not in {
+                "unspecified", "unset", "false",
+            }:
+                return True
+        for record in configuration.split("\0"):
+            if not record:
+                continue
+            _key, separator, value = record.partition("\n")
+            if not separator:
+                value = "true"
+            if value.lower() not in ("false", "0", "off", "no", ""):
+                return True
+        return False
 
 
 def _attribute_pattern(path: str) -> str:
@@ -98,13 +80,11 @@ async def _physical_git(
         yield metadata
         return
     real_git = _git_prefix(workspace, strict)
-    locations = []
-    for name in ("objects", "config", "config.worktree", "info/attributes"):
-        value = _complete(await environment.exec_cmd(
-            f"{real_git} rev-parse --git-path {name}",
-        ), "physical candidate Git location").removesuffix("\n")
-        locations.append(value if posixpath.isabs(value) else posixpath.join(workspace, value))
-    objects, config, worktree_config, source_attributes = locations
+    objects = _complete(await environment.exec_cmd(
+        f"{real_git} rev-parse --git-path objects",
+    ), "physical candidate objects").removesuffix("\n")
+    if not posixpath.isabs(objects):
+        objects = posixpath.join(workspace, objects)
     object_format = _complete(await environment.exec_cmd(
         f"{real_git} config --local --get extensions.objectFormat",
     ), "physical candidate object format", allowed=(0, 1)).strip() or "sha1"
@@ -119,25 +99,22 @@ async def _physical_git(
         directory = attribute_file + ".git"
         quoted = shlex.quote(directory)
         try:
+            isolated = (
+                "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_PARAMETERS= GIT_CONFIG_COUNT=0 "
+                "GIT_ATTR_NOSYSTEM=1 GIT_EXTERNAL_DIFF= GIT_NO_REPLACE_OBJECTS=1 "
+                f"GIT_DIR={quoted} GIT_COMMON_DIR={quoted} GIT_INDEX_FILE={quoted}/index "
+            )
             _complete(await environment.exec_cmd(
-                f"{_git_prefix(workspace, strict)} init --bare --quiet --template= "
-                f"{format_option} {quoted} && mkdir -p -- {quoted}/info && "
-                f"{{ if [ -f {shlex.quote(source_attributes)} ]; then "
-                f"cat -- {shlex.quote(source_attributes)}; fi; printf '\\n'; "
-                f"cat -- {shlex.quote(attribute_file)}; }} > {quoted}/info/attributes",
+                f"{isolated} GIT_OBJECT_DIRECTORY={quoted}/objects "
+                f"git init --bare --quiet --template= {format_option} {quoted} && "
+                f"mkdir -p -- {quoted}/info && cat -- {shlex.quote(attribute_file)} > {quoted}/info/attributes",
             ), "physical candidate metadata setup")
             command = (
-                f"GIT_OBJECT_DIRECTORY={shlex.quote(objects)} {real_git} "
-                f"--git-dir={quoted} --work-tree={shlex.quote(workspace)} "
-                f"-c include.path={shlex.quote(config)} "
-                f"-c include.path={shlex.quote(worktree_config)} "
+                f"{isolated} GIT_OBJECT_DIRECTORY={shlex.quote(objects)} "
+                f"git -C {shlex.quote(workspace)} --git-dir={quoted} --work-tree={shlex.quote(workspace)} "
                 f"-c safe.directory= -c safe.directory={shlex.quote(workspace)} "
-                "-c core.bare=false -c core.filemode=true"
+                "-c core.bare=false -c core.filemode=true -c core.autocrlf=false -c core.attributesFile=/dev/null"
             )
-            if paths is None:
-                command += " -c core.autocrlf=false -c core.attributesFile=/dev/null"
-            if strict:
-                command += " -c core.attributesFile=/dev/null -c diff.ignoreSubmodules=none"
             yield command, directory
         finally:
             _complete(await await_owned_operation(environment.exec_cmd(
@@ -151,22 +128,23 @@ async def _physical_tree(
     metadata: tuple[str, str] | None = None,
 ) -> str:
     real_git = _git_prefix(workspace, strict)
-    staged = _complete(await environment.exec_cmd(
-        f"{real_git} ls-files --stage -z",
-    ), "physical candidate indexed files")
     ignored = "--exclude-per-directory=.gitignore" if strict else "--exclude-standard"
-    untracked = _complete(await environment.exec_cmd(
-        f"{real_git} ls-files --others {ignored} -z",
-    ), "physical candidate untracked files")
-    excluded = tuple(path.rstrip("/") + "/" for path in exclude_paths)
-    remaining = "".join(
-        path + "\0" for path in untracked.split("\0")
-        if path and not any(path == prefix[:-1] or path.startswith(prefix) for prefix in excluded)
-    )
-    async with _patch_temporary(environment, workspace, staged, prefix=".candidate-physical-index-") as staged_file:
+    exclusions = ""
+    if exclude_paths:
+        exclusions = " -- . " + " ".join(
+            shlex.quote(f":(exclude,literal){path}") for path in exclude_paths
+        )
+    async with _patch_temporary(
+        environment, workspace, "", prefix=".candidate-physical-index-", repository=False,
+    ) as staged_file:
         async with _patch_temporary(
-            environment, workspace, remaining, prefix=".candidate-physical-paths-",
+            environment, workspace, "", prefix=".candidate-physical-paths-", repository=False,
         ) as paths_file:
+            _complete(await environment.exec_cmd(
+                f"{real_git} ls-files --stage -z > {shlex.quote(staged_file)} && "
+                f"{real_git} ls-files --others {ignored} -z{exclusions} > {shlex.quote(paths_file)}",
+                timeout=900,
+            ), "physical candidate file enumeration")
             async with _physical_git(environment, workspace, strict=strict, metadata=metadata) as (git, _directory):
                 _complete(await environment.exec_cmd(
                     f"{git} read-tree {shlex.quote(base_revision)} && "
@@ -262,19 +240,29 @@ async def _physical_paths(
     paths = patch_paths(patch)
     if not paths:
         return ()
-    async with _patch_temporary(
-        environment, workspace, "\0".join(paths) + "\0", prefix=".candidate-physical-attributes-",
-    ) as paths_file:
-        git = _git_prefix(workspace, strict)
+    git = _git_prefix(workspace, strict)
+    attributes = "text eol filter ident working-tree-encoding"
+
+    async def inspect(command: str) -> tuple[str, ...]:
         output = _complete(await environment.exec_cmd(
-            f"{git} check-attr -z --stdin text eol filter ident working-tree-encoding < {shlex.quote(paths_file)}",
-        ), "candidate conversion attributes").split("\0")
+            f"{command} && printf '\\0\\0' && ({git} config --get core.autocrlf || [ \"$?\" -eq 1 ])",
+        ), "candidate conversion attributes")
+        values, autocrlf = output.rsplit("\0\0", 1)
         selected = set()
-        for offset in range(0, len(output) - 2, 3):
-            path, _attribute, value = output[offset:offset + 3]
+        records = values.split("\0")
+        for offset in range(0, len(records) - 2, 3):
+            path, _attribute, value = records[offset:offset + 3]
             if value not in ("unspecified", "unset", "false"):
                 selected.add(path)
-        autocrlf = await environment.exec_cmd(f"{git} config --get core.autocrlf")
-        if autocrlf.returncode == 0 and autocrlf.stdout.strip().lower() not in ("false", "0", "off"):
+        if autocrlf.strip().lower() not in ("false", "0", "off", "no", ""):
             selected.update(paths)
         return tuple(path for path in paths if path in selected)
+
+    command = f"{git} check-attr -z {attributes} -- {shlex.join(paths)}"
+    if len(command.encode("utf-8", errors="surrogateescape")) <= 32_768:
+        return await inspect(command)
+    async with _patch_temporary(
+        environment, workspace, "\0".join(paths) + "\0",
+        prefix=".candidate-physical-attributes-", repository=False,
+    ) as paths_file:
+        return await inspect(f"{git} check-attr -z --stdin {attributes} < {shlex.quote(paths_file)}")
