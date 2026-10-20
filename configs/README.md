@@ -44,20 +44,22 @@ OPENCOLLAB_API_KEY=<your-api-key>
 OPENCOLLAB_LLM_TIMEOUT=600
 ```
 
-API-key fallback is provider and endpoint specific.
+Credential fallback is provider and endpoint specific.
 
 | Route | Resolution order |
 | --- | --- |
 | OpenAI-compatible, non-DashScope | `OPENCOLLAB_API_KEY`, then `OPENAI_API_KEY` |
-| Native Anthropic | `ANTHROPIC_API_KEY`, then `OPENCOLLAB_API_KEY` |
+| Native Anthropic | `ANTHROPIC_API_KEY`, then `ANTHROPIC_AUTH_TOKEN`, then `OPENCOLLAB_API_KEY` |
 | DashScope-compatible base URL | `DASHSCOPE_API_KEY`, then `OPENCOLLAB_API_KEY` |
 
 Keys from another provider are not used as fallbacks. Process-environment
 values beat the same variable in an env file, and blank values are ignored.
 Provider-specific key priority applies across both sources. For example, a
 `DASHSCOPE_API_KEY` in the selected env file precedes an exported generic
-`OPENCOLLAB_API_KEY`. An explicit CLI or SDK `api_key` takes precedence over
-both. Base URLs also accept `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` for the
+`OPENCOLLAB_API_KEY`. An explicit CLI or SDK `api_key` takes precedence.
+An explicit `auth_token` in the SDK configuration follows it and precedes
+environment credentials. Native bearer tokens use the `Authorization` header.
+Base URLs also accept `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` for the
 selected provider after `OPENCOLLAB_BASE_URL`.
 
 ## Wire protocol

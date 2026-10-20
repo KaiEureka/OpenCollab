@@ -423,15 +423,20 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         if "base_url" in selected_overrides
         else resolve("OPENCOLLAB_BASE_URL", provider_base_url_key)
     )
+    api_key_names = api_key_env_precedence(provider_value, base_url_value)
+    if is_anthropic(provider_value):
+        api_key_names = tuple(name for name in api_key_names if name != "OPENCOLLAB_API_KEY")
     api_key_value = selected_overrides.get("api_key") or (
         None if selected_overrides.get("auth_token") else resolve_ordered(
-            *api_key_env_precedence(provider_value, base_url_value)
+            *api_key_names
         )
     )
     auth_token_value = (
         selected_overrides.get("auth_token") or resolve_ordered("ANTHROPIC_AUTH_TOKEN")
         if is_anthropic(provider_value) and not api_key_value else None
     )
+    if is_anthropic(provider_value) and not api_key_value and not auth_token_value:
+        api_key_value = resolve_ordered("OPENCOLLAB_API_KEY")
 
     defaults = {
         "model": "gpt-4o",

@@ -92,6 +92,7 @@ async def test_native_credentials_complete_sdk_and_cli_requests(
     monkeypatch, tmp_path, native_server, entry, credential_env,
 ):
     monkeypatch.setenv(credential_env, CONTROLLED_CREDENTIAL)
+    monkeypatch.setenv("OPENCOLLAB_API_KEY", "controlled-generic-key")  # pragma: allowlist secret
     base_url, requests = native_server
     config = build_config(str(tmp_path), overrides={"provider": "anthropic"})
     assert config.api_key == (CONTROLLED_CREDENTIAL if credential_env == "ANTHROPIC_API_KEY" else None)
@@ -115,13 +116,19 @@ async def test_native_credentials_complete_sdk_and_cli_requests(
 
 
 @pytest.mark.parametrize("entry", ["team", "workflow"])
+@pytest.mark.parametrize("generic_source", [None, "environment", "dotenv"])
 async def test_dotenv_token_completes_sdk_and_cli_requests(
-    tmp_path, native_server, entry,
+    monkeypatch, tmp_path, native_server, entry, generic_source,
 ):
     base_url, requests = native_server
     configs = tmp_path / "configs"
     configs.mkdir()
-    (configs / ".env").write_text(f"ANTHROPIC_AUTH_TOKEN={CONTROLLED_CREDENTIAL}\n")
+    dotenv = f"ANTHROPIC_AUTH_TOKEN={CONTROLLED_CREDENTIAL}\n"
+    if generic_source == "environment":
+        monkeypatch.setenv("OPENCOLLAB_API_KEY", "controlled-generic-key")  # pragma: allowlist secret
+    elif generic_source == "dotenv":
+        dotenv += "OPENCOLLAB_API_KEY=controlled-generic-key\n"  # pragma: allowlist secret
+    (configs / ".env").write_text(dotenv)
     oc = OpenCollab(tmp_path, provider="anthropic", model="fixture-model", base_url=base_url)
     result = await oc.agent("Answer briefly", tools=(), trace=False)
     assert result.ok and result.output == "Native credential accepted." and result.tokens == 5

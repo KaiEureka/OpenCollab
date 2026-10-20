@@ -169,6 +169,50 @@ async def test_explicit_api_key_precedes_a_native_environment_token(
     assert native_requests == [(SECOND_CREDENTIAL, None)]
 
 
+@pytest.mark.parametrize("entry", ["agent", "create_model_client", "workflow", "team"])
+@pytest.mark.parametrize("token_source", ["environment", "dotenv"])
+@pytest.mark.parametrize("generic_source", ["environment", "dotenv"])
+async def test_native_bearer_precedes_a_generic_key(
+    monkeypatch, tmp_path, native_requests, entry, token_source, generic_source,
+):
+    dotenv = []
+    for source, name, value in (
+        (token_source, "ANTHROPIC_AUTH_TOKEN", FIRST_CREDENTIAL),
+        (generic_source, "OPENCOLLAB_API_KEY", SECOND_CREDENTIAL),
+    ):
+        if source == "environment":
+            monkeypatch.setenv(name, value)
+        else:
+            dotenv.append(f"{name}={value}")
+    (tmp_path / ".env").write_text("\n".join(dotenv))
+    client = OpenCollab(
+        tmp_path, model="fixture-model", provider="anthropic", base_url="https://controlled.invalid",
+    )
+    await _run(client, entry, tmp_path / "native-bearer")
+    assert native_requests == [(None, f"Bearer {FIRST_CREDENTIAL}")]
+
+
+@pytest.mark.parametrize("entry", ["agent", "create_model_client"])
+@pytest.mark.parametrize("explicit_key", [False, True])
+async def test_explicit_bearer_precedes_environment_credentials(
+    monkeypatch, tmp_path, native_requests, entry, explicit_key,
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", SECOND_CREDENTIAL)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", SECOND_CREDENTIAL)
+    monkeypatch.setenv("OPENCOLLAB_API_KEY", SECOND_CREDENTIAL)
+    config = {"auth_token": FIRST_CREDENTIAL}
+    if explicit_key:
+        config["api_key"] = SECOND_CREDENTIAL
+    client = OpenCollab(
+        tmp_path, model="fixture-model", provider="anthropic", base_url="https://controlled.invalid",
+        config=config,
+    )
+    await _run(client, entry, tmp_path / "explicit-bearer")
+    assert native_requests == [
+        (SECOND_CREDENTIAL, None) if explicit_key else (None, f"Bearer {FIRST_CREDENTIAL}"),
+    ]
+
+
 def test_resolved_bearer_is_excluded_from_config_repr(monkeypatch, tmp_path, native_requests):
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", FIRST_CREDENTIAL)
     config = build_config(str(tmp_path), overrides={"provider": "anthropic"})
