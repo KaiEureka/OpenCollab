@@ -212,3 +212,53 @@ async def test_independent_anthropic_client_keeps_native_auth_token(monkeypatch,
         "model": "initial-model",
         "api_key": CHANGED_API_KEY,
     }]
+
+
+@pytest.mark.parametrize("entry_point", ["agent", "create_model_client"])
+@pytest.mark.parametrize("endpoint", [
+    "https://service.cn-hangzhou.pai-eas.aliyuncs.com/api/predict/qwen/v1",
+    "https://gateway.example/dashscope/v1",
+    "https://gateway.example/v1?upstream=dashscope",
+    "https://dashscope.proxy.example/v1",
+    "https://dashscope.aliyuncs.com.proxy.example/v1",
+    "https://workspace.cn-beijing.maas.aliyuncs.com.proxy.example/v1",
+])
+async def test_ordinary_compatible_endpoints_keep_openai_environment_key(
+    monkeypatch, tmp_path, requests, entry_point, endpoint,
+):
+    monkeypatch.delenv("OPENCOLLAB_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", INITIAL_API_KEY)
+    client = OpenCollab(tmp_path, provider="openai", base_url=endpoint)
+
+    await _complete(client, entry_point)
+
+    assert len(requests) == 1
+    assert requests[0]["api_key"] == INITIAL_API_KEY
+
+
+@pytest.mark.parametrize("endpoint", [
+    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+    "https://coding.dashscope.aliyuncs.com/v1",
+    "https://vpc-ap-southeast-1.dashscope.aliyuncs.com/compatible-mode/v1",
+    "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "https://workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+    "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+])
+async def test_model_studio_endpoints_keep_provider_specific_credentials(
+    monkeypatch, tmp_path, requests, endpoint,
+):
+    monkeypatch.delenv("OPENCOLLAB_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", INITIAL_API_KEY)
+    client = OpenCollab(tmp_path, provider="openai", base_url=endpoint)
+
+    with pytest.raises(ValueError, match="no API key configured"):
+        client.create_model_client()
+    assert requests == []
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", CHANGED_API_KEY)
+    configured = OpenCollab(tmp_path, provider="openai", base_url=endpoint)
+    await _complete(configured, "create_model_client")
+
+    assert requests == [_request(endpoint, "openai") | {"api_key": CHANGED_API_KEY}]

@@ -9,6 +9,7 @@ before they silently fall through to the OpenAI-compatible path.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,12 @@ ANTHROPIC = "anthropic"
 CHAT_COMPLETIONS = "chat_completions"
 RESPONSES = "responses"
 WIRE_PROTOCOLS = frozenset({CHAT_COMPLETIONS, RESPONSES})
+_MODEL_STUDIO_DOMAINS = (
+    "dashscope.aliyuncs.com",
+    "dashscope-intl.aliyuncs.com",
+    "dashscope-us.aliyuncs.com",
+    "maas.aliyuncs.com",
+)
 
 # Provider strings that look like a user meant Anthropic but don't normalize to
 # ``anthropic`` — treating these as OpenAI-compatible would silently send the
@@ -43,8 +50,11 @@ def required_env_key(provider: str | None) -> str:
     return "ANTHROPIC_API_KEY" if is_anthropic(provider) else "OPENAI_API_KEY"
 
 def is_dashscope_endpoint(base_url: str | None) -> bool:
-    lowered = (base_url or "").lower()
-    return "dashscope" in lowered or "aliyuncs" in lowered
+    hostname = (urlsplit(base_url or "").hostname or "").rstrip(".")
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in _MODEL_STUDIO_DOMAINS
+    )
 
 def warn_provider_near_miss(provider: str | None) -> None:
     """Warn when ``provider`` resembles Anthropic but won't take that path."""
