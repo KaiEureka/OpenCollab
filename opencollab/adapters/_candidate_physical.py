@@ -13,7 +13,7 @@ from opencollab.adapters._env_worktree_submodules import _source_available_submo
 from opencollab.adapters._git_patch_bytes import _complete, _complete_patch, _patch_temporary
 from opencollab.adapters.git_patch import _submodule_patch_guard
 from opencollab.application.async_timeout import await_owned_operation
-from opencollab.patches import patch_paths
+from opencollab.patches import patch_paths, split_patch_blocks
 
 _RAW_ATTRIBUTES = "-text -eol -filter -ident -working-tree-encoding"
 
@@ -75,11 +75,21 @@ async def _has_worktree_conversions(
         ), "candidate symlink configuration", allowed=(0, 1)).strip()
         if symlinks != "false":
             return False
+        physical_links = shlex.join((
+            "bash", "-c",
+            'while IFS= read -r -d "" path; do '
+            'if [ -L "$1/$path" ]; then printf true; break; fi; done',
+            "bash", workspace,
+        ))
         result = await environment.exec_cmd(
+            # A POSIX-only host can conservatively capture a physical snapshot.
+            f"if command -v bash >/dev/null 2>&1; then {physical_links} < {shlex.quote(paths_file)}; "
+            "else printf true; fi && printf '\\0\\0' && "
             f"{git} -c core.quotePath=true ls-files --stage{pathspec(exclude_paths)} > {shlex.quote(paths_file)} && "
             f"(grep -q '^120000 ' {shlex.quote(paths_file)} && printf true || [ \"$?\" -eq 1 ])",
         )
-        return _complete(result, "candidate symlink index") == "true"
+        physical, indexed = _complete(result, "candidate symlink contents").split("\0\0", 1)
+        return bool(physical or indexed)
 
 
 def _attribute_pattern(path: str) -> str:
@@ -325,9 +335,10 @@ async def _physical_paths(
 
     async def inspect(command: str) -> tuple[str, ...]:
         output = _complete(await environment.exec_cmd(
-            f"{command} && printf '\\0\\0' && ({git} config --get core.autocrlf || [ \"$?\" -eq 1 ])",
+            f"{command} && printf '\\0\\0' && ({git} config --get core.autocrlf || [ \"$?\" -eq 1 ]) && "
+            f"printf '\\0\\0' && ({git} config --type=bool --get core.symlinks || [ \"$?\" -eq 1 ])",
         ), "candidate conversion attributes")
-        values, autocrlf = output.rsplit("\0\0", 1)
+        values, autocrlf, symlinks = output.rsplit("\0\0", 2)
         selected = set()
         records = values.split("\0")
         for offset in range(0, len(records) - 2, 3):
@@ -336,6 +347,21 @@ async def _physical_paths(
                 selected.add(path)
         if autocrlf.strip().lower() not in ("false", "0", "off", "no", ""):
             selected.update(paths)
+        if symlinks.strip() == "false":
+            for block in split_patch_blocks(patch):
+                metadata = []
+                for line in block:
+                    if line.startswith(("@@", "GIT binary patch", "Binary files ")):
+                        break
+                    metadata.append(line.rstrip("\r\n"))
+                # Pure renames and copies omit their mode, so preserve both paths.
+                if any(
+                    line.endswith(" 120000") and line.startswith(("index ", "old mode ", "new mode ",
+                                                                 "new file mode ", "deleted file mode "))
+                    or line.startswith(("rename from ", "copy from "))
+                    for line in metadata
+                ):
+                    selected.update(patch_paths("".join(block)))
         return tuple(path for path in paths if path in selected)
 
     command = f"{git} check-attr -z {attributes} -- {shlex.join(paths)}"
