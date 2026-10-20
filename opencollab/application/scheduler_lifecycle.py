@@ -377,6 +377,7 @@ class LifecycleMixin:
         if scb is None:
             return
 
+        scb.answer = None
         start = self._turn_started_at.setdefault(aid, time.monotonic())
 
         try:
@@ -482,6 +483,9 @@ class LifecycleMixin:
                 await self._drain_ready_message_inboxes()
             await self._drain_own_inbox_late(aid)
             return
+
+        if scb.state.phase is SessionPhase.DONE:
+            scb.answer = result
 
         # A completed coding task still needs its patch evidence. Tracing and
         # event delivery are observational, but a missing diff is a technical

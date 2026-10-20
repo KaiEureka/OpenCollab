@@ -94,6 +94,7 @@ class SessionControlBlock:
     agent: Agent
     state: SessionState
     result: str = ""
+    answer: str | None = None
 
 @dataclass
 class SessionTable:

@@ -208,7 +208,8 @@ async def run_spawn_with_review(
         review_result = reviewer_scb.result if reviewer_scb else ""
         last_feedback = review_result
 
-        verdict = ReviewVerdict.parse(review_result)
+        review_answer = getattr(reviewer_scb, "answer", None)
+        verdict = ReviewVerdict.parse(review_result if review_answer is None else review_answer)
         reviewer_completed = (
             reviewer_scb is not None
             and reviewer_scb.state.phase is SessionPhase.DONE
