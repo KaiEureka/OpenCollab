@@ -69,7 +69,16 @@ async def _has_worktree_conversions(
                 value = "true"
             if value.lower() not in ("false", "0", "off", "no", ""):
                 return True
-        return False
+        symlinks = _complete(await environment.exec_cmd(
+            f"{git} config --type=bool --get core.symlinks",
+        ), "candidate symlink configuration", allowed=(0, 1)).strip()
+        if symlinks != "false":
+            return False
+        result = await environment.exec_cmd(
+            f"{git} -c core.quotePath=true ls-files --stage{pathspec(exclude_paths)} > {shlex.quote(paths_file)} && "
+            f"(grep -q '^120000 ' {shlex.quote(paths_file)} && printf true || [ \"$?\" -eq 1 ])",
+        )
+        return _complete(result, "candidate symlink index") == "true"
 
 
 def _attribute_pattern(path: str) -> str:
