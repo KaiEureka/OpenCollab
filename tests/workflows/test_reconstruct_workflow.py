@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +154,51 @@ def test_random_mapping_and_reordered_agent_mapping_count_as_one_input(tmp_path:
     assert result["known_examples"] == 2
     assert [row[0] for row in result["examples"]] == [{"x": 2, "y": 3}, {"x": 4, "y": 3}]
     assert any("repeat" in event.get("rejected", "") for event in result["events"])
+
+
+def test_random_generator_equivalent_mapping_is_replaced_by_new_proposals(tmp_path: Path) -> None:
+    class MappingContext(ScriptedContext):
+        def __init__(self, workspace: Path) -> None:
+            super().__init__(workspace, programs=["def solve(data):\n    return sum(data.values())\n"])
+            self.requested: list[int] = []
+
+        async def agent(self, prompt: str, *, schema=None, **kwargs):
+            if schema is not None:
+                n = int(prompt.split("exactly ")[1].split()[0])
+                self.requested.append(n)
+                values = ([{"x": 1, "y": 2}] if len(self.requested) == 1 else [
+                    {"x": 3, "y": 4}, {"x": 4, "y": 5}, {"x": 5, "y": 6},
+                ])
+                return {"inputs": values[:n]}
+            return await super().agent(prompt, schema=schema, **kwargs)
+
+    class MappingGenerator:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, count: int, exclude: set[str]) -> list[dict[str, int]]:
+            self.calls += 1
+            values = ([{"x": 0, "y": 0}] if self.calls == 1 else [
+                {"y": 2, "x": 1}, {"x": 7, "y": 8},
+            ])
+            assert len(values) == count and all(repr(value) not in exclude for value in values)
+            return values
+
+    async def evaluate(_program: Path, inputs: list[Any]) -> list[dict[str, Any]]:
+        return [{"ok": True, "output": sum(value.values())} for value in inputs]
+
+    task = make_task(
+        tmp_path, input_type="mapping", kind="other", oracle=lambda value: sum(value.values()),
+        evaluate=evaluate, random_inputs=MappingGenerator(),
+    )
+    ctx = MappingContext(tmp_path)
+    result = _run(task, ctx, initial_batch=2, batch_step=2, max_iterations=2,
+                  early_stop=2, random_share=0.5)
+
+    keys = [json.dumps(row[0], sort_keys=True) for row in result["examples"]]
+    assert ctx.requested == [1, 3]
+    assert result["known_examples"] == len(set(keys)) == 6
+    assert result["random_inputs"] == 2
 
 
 def make_task(workspace: Path, **overrides: Any) -> ReconstructionTask:

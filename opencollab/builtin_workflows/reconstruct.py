@@ -308,11 +308,18 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
         n_random = int(round(n * random_share)) if random_share > 0 else 0
         if n_random and task.random_inputs is not None:
             batch = []
+            random_keys: set[str] = set()
             for inp in task.random_inputs(n_random, set(seen)):
+                key = _input_key(inp)
+                if key in seen_equivalent or key in random_keys:
+                    continue
                 try:
                     batch.append(observe(inp))
                 except Exception:  # noqa: BLE001 - the generator may produce inputs the oracle rejects
                     continue
+                random_keys.add(key)
+                if len(batch) == n_random:
+                    break
             accept(batch, "random")
             events.append({"propose": round_no, "random": len(batch)})
             n -= len(batch)
