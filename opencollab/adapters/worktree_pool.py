@@ -162,6 +162,8 @@ class WorktreePool:
             except BaseException as cleanup_exc:
                 async with self._lifecycle:
                     self._envs.append(env if env is not None else source_owner)
+                    if env is None and source_owner is not None and source is not None:
+                        self._source_dependencies[source_owner] = source
                 logger.warning("partial worktree cleanup failed", exc_info=True)
                 add_exception_note(
                     original,

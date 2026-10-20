@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sys
 from pathlib import Path
 
 import pytest
 
 from opencollab.adapters import candidate_workspace, worktree_pool
+from opencollab.adapters._env_process import ProcessCleanupError
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.worktree_pool import WorktreePool
 from opencollab.environments import attach_container
@@ -210,4 +213,88 @@ async def test_plain_directory_review_copies_the_completed_coder_state(tmp_path)
         assert not Path(coder.workspace, "review.txt").exists()
         assert (source / "answer.txt").read_text() == "base\n"
     finally:
+        await pool.release()
+
+
+@pytest.mark.parametrize("attempts", [1, 3])
+@pytest.mark.parametrize("retry", ["pool", "owner"])
+async def test_early_source_cleanup_failure_retains_coder_until_native_process_finishes(
+    tmp_path, monkeypatch, attempts, retry,
+):
+    source = make_repo(tmp_path / "source")
+    (source / "answer.py").write_text("answer = 0\n")
+    git(source, "add", "answer.py")
+    git(source, "commit", "-qm", "建立来源故障对照")
+    pool = WorktreePool(str(source), use_worktrees=True)
+    coder = await pool.acquire("coder")
+    await coder.write_file("answer.py", "answer = 42\n")
+    await coder.get_diff()
+    process = None
+    owner = None
+    release = tmp_path / "release"
+
+    class BorrowedView(LocalEnvironment):
+        async def exec_cmd(self, command, timeout=120):
+            nonlocal process, owner
+            result = await super().exec_cmd(command, timeout)
+            if process is None:
+                owner = self
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable, "-c",
+                    "import pathlib,sys,time\n"
+                    "while not pathlib.Path(sys.argv[2]).exists(): time.sleep(0.01)\n"
+                    "print(pathlib.Path(sys.argv[1]).read_text(), end='')\n",
+                    str(Path(coder.workspace) / "answer.py"), str(release),
+                    cwd=coder.workspace, stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                raise ProcessCleanupError("controlled source command did not quiesce")
+            return result
+
+        async def cleanup(self):
+            if process is not None and process.returncode is None:
+                raise ProcessCleanupError("controlled source command remains active")
+            await super().cleanup()
+
+    monkeypatch.setattr(worktree_pool, "LocalEnvironment", BorrowedView)
+    try:
+        with pytest.raises(ProcessCleanupError, match="did not quiesce"):
+            await pool.acquire("reviewer", source=coder)
+        assert process is not None and owner is not None
+        assert pool._envs == [coder, owner]
+        assert pool._source_dependencies == {owner: coder}
+        for _ in range(attempts):
+            if retry == "pool":
+                with pytest.raises(OSError, match="controlled source command remains active"):
+                    await pool.release()
+            else:
+                with pytest.raises(ProcessCleanupError, match="remains active"):
+                    await pool.release_env(owner)
+            assert Path(coder.workspace).is_dir()
+            assert pool._source_dependencies == {owner: coder}
+            assert pool._envs == [coder, owner]
+        release.touch()
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 5)
+        assert process.returncode == 0, stderr.decode()
+        assert stdout == b"answer = 42\n"
+        if retry == "owner":
+            await pool.release_env(owner)
+            assert pool._envs == [coder]
+            assert pool._source_dependencies == {}
+            assert Path(coder.workspace).is_dir()
+        await pool.release()
+        assert pool._envs == []
+        assert pool._source_dependencies == {}
+        assert not Path(coder.workspace).exists()
+        assert _registered_count(source) == 1
+        print(json.dumps({
+            "attempts": attempts, "retry": retry, "native_returncode": process.returncode,
+            "native_stdout": stdout.decode(), "native_stderr": stderr.decode(),
+            "remaining_environments": len(pool._envs),
+            "remaining_dependencies": len(pool._source_dependencies),
+        }))
+    finally:
+        release.touch()
+        if process is not None:
+            await process.communicate()
         await pool.release()
