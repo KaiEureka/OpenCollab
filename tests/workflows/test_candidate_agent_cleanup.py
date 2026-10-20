@@ -66,6 +66,75 @@ def _client(repository):
         base_url="https://provider.example.invalid/v1", config={"llm_max_retries": 0},
     )
 
+@pytest.mark.parametrize("background", [False, True])
+async def test_cancelled_candidate_workflow_stops_owned_agent_before_release(
+    repository, background,
+):
+    class RememberedWorkspace(EnvCandidateWorkspace):
+        async def acquire(self, label):
+            lease = await super().acquire(label)
+            self.lease = lease
+            return lease
+
+    class HeldModel:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.cancelled = asyncio.Event()
+            self.release = asyncio.Event()
+            self.calls = 0
+
+        async def complete(self, messages, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                self.started.set()
+                try:
+                    await self.release.wait()
+                except asyncio.CancelledError:
+                    self.cancelled.set()
+                    raise
+                return LLMResponse(tool_calls=[{
+                    "id": "late-write", "type": "function", "function": {
+                        "name": "file_write", "arguments": json.dumps({
+                            "path": "late.txt", "mode": "create", "content": "late write",
+                        }),
+                    },
+                }], usage=Usage(2, 2), finish_reason="tool_calls")
+            return LLMResponse(content="finished", usage=Usage(2, 2))
+
+    workspace = RememberedWorkspace(LocalEnvironment(str(repository)))
+    model = HeldModel()
+
+    async def workflow(parent, _args):
+        async def nested(child, _inputs):
+            if background:
+                asyncio.create_task(child.agent(
+                    "write late.txt", tools=list(builtin_tools("file_write", headless=False)),
+                ))
+                await asyncio.Event().wait()
+            return await child.agent(
+                "write late.txt", tools=list(builtin_tools("file_write", headless=False)),
+            )
+
+        return await parent.candidate_workflow(nested, {}, label="candidate")
+
+    task = asyncio.create_task(_client(repository).workflow(
+        workflow, llm=model, candidate_workspace=workspace, trace=False,
+        budget=10_000, cleanup_timeout=1,
+    ))
+    try:
+        await asyncio.wait_for(model.started.wait(), timeout=5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+        assert model.cancelled.is_set()
+        assert model.calls == 1
+        assert workspace.lease.cleaned
+        assert not Path(workspace.lease.candidate_workspace).exists()
+        assert not (repository / "late.txt").exists()
+    finally:
+        model.release.set()
+        await asyncio.gather(task, return_exceptions=True)
+
 @pytest.mark.parametrize("concurrency", [1, 2])
 async def test_public_candidate_and_ordinary_agent_complete(repository, provider_calls, concurrency):
     async def workflow(ctx, _args):

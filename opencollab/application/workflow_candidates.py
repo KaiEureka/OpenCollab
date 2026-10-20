@@ -513,6 +513,12 @@ class WorkflowCandidatesMixin:
                 try:
                     if child is not None:
                         try:
+                            if isinstance(failure, asyncio.CancelledError):
+                                child._agent_run_environment_unsafe = True
+                                current = asyncio.current_task()
+                                for active in tuple(child._active_call_tasks):
+                                    if active is not current:
+                                        active.cancel()
                             await child.wait_for_pending_cleanup()
                             await child.release_isolated_workspaces()
                         except Exception as exc:
