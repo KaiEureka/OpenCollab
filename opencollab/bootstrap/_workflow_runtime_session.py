@@ -82,6 +82,7 @@ class WorkflowSessionFactory:
         provider: str,
         wire_protocol: str = "chat_completions",
         api_key: str | None,
+        auth_token: str | None = None,
         base_url: str | None,
         workspace: str | None = None,
         tracer: TracePort | None = None,
@@ -115,6 +116,7 @@ class WorkflowSessionFactory:
         self._provider = provider
         self._wire_protocol = wire_protocol
         self._api_key = api_key
+        self._auth_token = auth_token
         self._base_url = base_url
         self._workspace = workspace
         self._tracer = tracer
@@ -319,6 +321,7 @@ class WorkflowSessionFactory:
             provider=self._provider,
             wire_protocol=self._wire_protocol,
             api_key=self._api_key,
+            auth_token=self._auth_token,
             base_url=self._base_url,
             temperature=self._temperature,
             top_p=self._top_p,
@@ -470,6 +473,7 @@ def build_workflow_context(
         provider=cfg["provider"],
         wire_protocol=cfg.get("wire_protocol", "chat_completions"),
         api_key=cfg.get("api_key"),
+        auth_token=cfg.get("auth_token"),
         base_url=cfg.get("base_url"),
         workspace=workspace,
         tracer=tracer,

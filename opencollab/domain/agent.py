@@ -36,6 +36,7 @@ class Agent:
     provider: str = "openai"
     wire_protocol: str = "chat_completions"
     api_key: str | None = None
+    auth_token: str | None = field(default=None, repr=False, kw_only=True)
     base_url: str | None = None
     context_window: int | None = None
     max_tokens_per_step: int = DEFAULT_MAX_TOKENS_PER_STEP

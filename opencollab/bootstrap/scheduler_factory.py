@@ -162,6 +162,7 @@ def build_scheduler(
             provider=cfg["provider"],
             wire_protocol=cfg.get("wire_protocol", "chat_completions"),
             api_key=cfg["api_key"],
+            auth_token=cfg.get("auth_token"),
             base_url=cfg["base_url"],
             llm_timeout=cfg.get("llm_timeout", 600.0),
             temperature=cfg.get("temperature", DEFAULT_TEMPERATURE),

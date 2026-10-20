@@ -129,6 +129,7 @@ class OpenCollabConfig(BaseModel):
     provider: str = Field(default="openai", min_length=1)
     wire_protocol: str = Field(default="chat_completions", min_length=1)
     api_key: str | None = Field(default=None, repr=False)
+    auth_token: str | None = Field(default=None, repr=False)
     base_url: str | None = None
     budget: int = Field(default=1_000_000, ge=1)
     temperature: float = Field(default=DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
@@ -243,7 +244,7 @@ class OpenCollabConfig(BaseModel):
             )
         return normalized
 
-    @field_validator("api_key", "base_url", mode="before")
+    @field_validator("api_key", "auth_token", "base_url", mode="before")
     @classmethod
     def _empty_string_as_none(cls, value: Any) -> Any:
         return _optional_string(value)
@@ -402,7 +403,7 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
 
     selected_overrides: dict[str, Any] = {}
     for key, value in (overrides or {}).items():
-        if key in {"api_key", "base_url"}:
+        if key in {"api_key", "auth_token", "base_url"}:
             value = _optional_string(value)
         if value is not None:
             selected_overrides[key] = value
@@ -417,8 +418,14 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         if "base_url" in selected_overrides
         else resolve("OPENCOLLAB_BASE_URL", provider_base_url_key)
     )
-    api_key_value = selected_overrides.get("api_key") or resolve_ordered(
-        *api_key_env_precedence(provider_value, base_url_value)
+    api_key_value = selected_overrides.get("api_key") or (
+        None if selected_overrides.get("auth_token") else resolve_ordered(
+            *api_key_env_precedence(provider_value, base_url_value)
+        )
+    )
+    auth_token_value = (
+        selected_overrides.get("auth_token") or _optional_string(os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+        if is_anthropic(provider_value) and not api_key_value else None
     )
 
     defaults = {
@@ -445,7 +452,8 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         key: resolve(f"OPENCOLLAB_{key.upper()}", default=default)
         for key, default in defaults.items()
     }
-    values.update(provider=provider_value, api_key=api_key_value, base_url=base_url_value)
+    values.update(provider=provider_value, api_key=api_key_value,
+                  auth_token=auth_token_value, base_url=base_url_value)
     values.update(selected_overrides)
     # Defaults share the same payload as an explicit DashScope protocol. Keep
     # its source before validation replaces None with that default mapping.

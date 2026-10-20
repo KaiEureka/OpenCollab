@@ -349,6 +349,7 @@ async def run_agent(
         provider=config["provider"],
         wire_protocol=config.get("wire_protocol", "chat_completions"),
         api_key=config.get("api_key"),
+        auth_token=config.get("auth_token"),
         base_url=config.get("base_url"),
         context_window=config.get("context_window"),
         max_tokens_per_step=config.get("max_output_tokens", 8_192),

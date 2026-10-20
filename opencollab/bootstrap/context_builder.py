@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from opencollab.adapters.llm.providers import RESPONSES
 from opencollab.adapters.llm.types import model_capabilities
@@ -70,6 +70,7 @@ class SpawnConfig:
     provider_error_time_budget: float = 0.0
     llm_stream_chat: bool = False
     thinking_params_explicit: bool | None = None
+    auth_token: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.thinking_params_explicit is None:
@@ -233,6 +234,7 @@ class ContextBuilder:
             provider=cfg.provider,
             wire_protocol=cfg.wire_protocol,
             api_key=cfg.api_key,
+            auth_token=cfg.auth_token,
             base_url=cfg.base_url,
             temperature=temperature,
             top_p=cfg.top_p,
