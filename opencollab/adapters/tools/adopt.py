@@ -70,7 +70,7 @@ class AdoptTool(Tool):
             return "Error: adopt is disabled because this execution environment does not provide an OS process sandbox."
         git_command, config_check = _git_command_and_config_guard()
         git_command += " -c core.hooksPath=/dev/null -c core.fsmonitor=false"
-        checkout_command = config_check + f"{git_command} checkout --quiet --detach {sha}"
+        checkout_command = config_check + f"{git_command} checkout --quiet --detach --no-overwrite-ignore {sha}"
         if runtime.safety_policy is not None:
             await runtime.safety_policy.check_cmd_interactive(checkout_command, runtime.confirm_fn())
         checked = await env.exec_cmd(config_check, timeout=30)
@@ -92,7 +92,9 @@ class AdoptTool(Tool):
         if resolved.returncode != 0 or not commit:
             return f"Error: no commit {sha} in this repository's object store."
 
-        checkout = await env.exec_cmd(config_check + f"{git_command} checkout --quiet --detach {commit}", timeout=900)
+        checkout = await env.exec_cmd(
+            config_check + f"{git_command} checkout --quiet --detach --no-overwrite-ignore {commit}", timeout=900
+        )
         if checkout.returncode != 0:
             error = (checkout.stderr or checkout.stdout).strip()
             return "Error: git checkout refused; HEAD is unchanged.\n" + truncate(

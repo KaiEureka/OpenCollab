@@ -111,6 +111,33 @@ def test_uncommitted_work_that_a_checkout_would_overwrite_is_not_discarded(repo)
     assert _git(repo, "rev-parse", "HEAD") == start
     assert (repo / "app.py").read_text(encoding="utf-8") == "def f():\n    return 3\n"
 
+@pytest.mark.parametrize("ignored", [False, True])
+def test_adopt_preserves_untracked_files_when_the_candidate_starts_tracking_them(repo, ignored):
+    name = "settings.local"
+    if ignored:
+        (repo / ".gitignore").write_text(name + "\n", encoding="utf-8")
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-q", "-m", "Ignore local settings")
+    start = _git(repo, "rev-parse", "HEAD")
+    settings = repo / name
+    settings.write_text("candidate settings\n", encoding="utf-8")
+    _git(repo, "add", "--force", name)
+    _git(repo, "commit", "-q", "-m", "Add candidate settings")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "--detach", start)
+    settings.write_text("user private settings\n", encoding="utf-8")
+    index = (repo / ".git" / "index").read_bytes()
+    application = (repo / "app.py").read_bytes()
+
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": candidate}, _runtime(repo)))
+
+    assert result.startswith("Error")
+    assert "would be overwritten by checkout" in result
+    assert _git(repo, "rev-parse", "HEAD") == start
+    assert settings.read_text(encoding="utf-8") == "user private settings\n"
+    assert (repo / "app.py").read_bytes() == application
+    assert (repo / ".git" / "index").read_bytes() == index
+
 def test_adopt_is_a_tool_a_team_file_can_name():
     assert "adopt" in KNOWN_TOOL_NAMES
     (tool,) = build_tools_for_role(["adopt"])
@@ -145,6 +172,7 @@ def test_adopt_applies_command_policy_before_mutation(repo):
         run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": candidate}, runtime))
     assert len(commands) == 1
     assert "checkout" in commands[0]
+    assert "--no-overwrite-ignore" in commands[0]
     assert _git(repo, "rev-parse", "HEAD") == start
 
 def test_adopt_suppresses_repository_checkout_hooks(repo, tmp_path):
