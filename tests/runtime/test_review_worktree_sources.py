@@ -30,7 +30,7 @@ def review_pool(request, tmp_path, monkeypatch, worktree_transport):
     dependency = make_repo(tmp_path / "dependency")
     git(source, "-c", "protocol.file.allow=always", "submodule", "add", str(dependency), "vendor/library")
     git(source, "add", "source.py")
-    git(source, "commit", "-qm", "添加源码与依赖")
+    git(source, "commit", "-qm", "Add source and dependency")
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
     monkeypatch.setattr(worktree_pool, "CONTAINER_WORKTREE_ROOT", str(tmp_path / "worktrees"))
     backend = request.param
@@ -224,7 +224,7 @@ async def test_early_source_cleanup_failure_retains_coder_until_native_process_f
     source = make_repo(tmp_path / "source")
     (source / "answer.py").write_text("answer = 0\n")
     git(source, "add", "answer.py")
-    git(source, "commit", "-qm", "建立来源故障对照")
+    git(source, "commit", "-qm", "Prepare source failure control")
     pool = WorktreePool(str(source), use_worktrees=True)
     coder = await pool.acquire("coder")
     await coder.write_file("answer.py", "answer = 42\n")
