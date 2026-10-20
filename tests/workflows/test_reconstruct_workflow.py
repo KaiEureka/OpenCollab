@@ -71,6 +71,22 @@ async def _evaluate(program: Path, inputs: list[Any]) -> list[dict[str, Any]]:
     return results
 
 
+@pytest.mark.parametrize("returned_count", [0, 3])
+def test_candidate_evaluator_must_cover_every_observed_input(
+    tmp_path: Path, returned_count: int
+) -> None:
+    async def incomplete_evaluation(_program: Path, inputs: list[Any]) -> list[dict[str, Any]]:
+        return [{"ok": True, "output": 0} for _ in range(returned_count)]
+
+    task = make_task(tmp_path, evaluate=incomplete_evaluation)
+    ctx = ScriptedContext(tmp_path, programs=["def solve(xs):\n    return -12345\n"])
+
+    with pytest.raises(RuntimeError, match=rf"returned {returned_count} results for 2 inputs"):
+        _run(task, ctx, max_iterations=1, early_stop=1)
+
+    assert (tmp_path / task.candidate_file).is_file()
+
+
 def make_task(workspace: Path, **overrides: Any) -> ReconstructionTask:
     fields: dict[str, Any] = dict(
         input_type="list of integers",

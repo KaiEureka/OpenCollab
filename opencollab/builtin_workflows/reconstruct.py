@@ -281,6 +281,10 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
         if not path.is_file():
             return [f"{task.candidate_file} is missing"]
         results = await task.evaluate(path, [i for i, _ in examples])
+        if len(results) != len(examples):
+            raise RuntimeError(
+                f"candidate evaluator returned {len(results)} results for {len(examples)} inputs"
+            )
         out = []
         for (inp, expected), res in zip(examples, results):
             if not res.get("ok"):
