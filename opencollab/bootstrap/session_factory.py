@@ -331,7 +331,7 @@ def snapshot_session(
     state = _clone_snapshot_component(session.state, label="session state")
     if state.phase not in {
         SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
-    }:
+    } or new._open_tool_call_ids(state):
         new._normalize_forked_state(state, session._fork_runtime_metadata())
         new.runner.reset_for_restore()
     new.state = state

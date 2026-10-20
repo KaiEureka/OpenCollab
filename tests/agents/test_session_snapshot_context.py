@@ -151,6 +151,38 @@ async def test_snapshot_marks_deferred_work_without_a_branch_producer_as_interru
         await source.aclose()
 
 
+async def test_stopped_snapshot_closes_an_open_deferred_tool_call(tmp_path):
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    source = build_session(
+        agent=Agent(name="worker", system_prompt="Work."),
+        env=_ForkableEnvironment(str(workspace)), llm=_MarkerProvider(),
+    )
+    source.state.append_message({"role": "user", "content": "Continue"})
+    source.state.append_message({
+        "role": "assistant", "content": None, "tool_calls": [{
+            "id": "child", "type": "function",
+            "function": {"name": "spawn_agent", "arguments": "{}"},
+        }],
+    })
+    source.state.pending_events.add(PendingRow(
+        tool_call_id="child", kind=RowKind.CHILD_AGENT, order=0,
+        ref=9, status=RowStatus.PENDING,
+    ))
+    source.state.set_phase(SessionPhase.STOPPED)
+    source.state.terminal_reason = "cancelled"
+    branch = snapshot_session(source)
+    try:
+        assert source.state.pending_events.rows["child"].status is RowStatus.PENDING
+        assert branch.state.pending_events.is_empty()
+        assert branch._open_tool_call_ids() == []
+        assert await branch.run_loop() == "MISSING"
+        assert branch.state.phase is SessionPhase.DONE
+    finally:
+        await branch.aclose()
+        await source.aclose()
+
+
 async def test_snapshot_events_follow_registered_lead_identity(tmp_path):
     workspace = tmp_path / "source"
     workspace.mkdir()
