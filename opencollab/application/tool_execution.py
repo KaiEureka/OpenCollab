@@ -326,7 +326,7 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
         self.state = state
         self.event_publisher = event_publisher
         self.event_factory = event_factory or default_session_event_factory(
-            lambda: state.aid
+            lambda: self.state.aid
         )
         self.tracer = tracer
         self.permission_policy = permission_policy

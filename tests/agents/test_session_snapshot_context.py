@@ -18,6 +18,7 @@ from opencollab.bootstrap.context_policy import ContextPolicy
 from opencollab.domain.agent import Agent
 from tests.runtime.test_async_compaction import history
 from tests.runtime.test_compaction_accounting import AccountingModel
+from tests.support.scheduler_awaiting_test_support import build_scheduler
 from tests.support.session_characterization_test_support import llm_response
 
 _MARKER = "END_OF_FIXTURE"
@@ -44,6 +45,27 @@ class _MarkerProvider:
                 "function": {"name": "file_read", "arguments": '{"path":"fixture.txt"}'},
             }], finish_reason="tool_calls")
         return llm_response(content="FOUND" if any(_MARKER in result for result in results) else "MISSING")
+
+
+async def test_snapshot_events_follow_registered_lead_identity(tmp_path):
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "fixture.txt").write_text(_MARKER)
+    events = []
+    source = build_session(
+        agent=Agent(name="reader", system_prompt="Inspect the file.", tools=[FileReadTool()]),
+        env=_ForkableEnvironment(str(workspace)), llm=_MarkerProvider(), aid=7,
+    )
+    snapshot = snapshot_session(source, event_sink=events.append)
+    scheduler, _ = build_scheduler(snapshot, [])
+    try:
+        assert snapshot.state.aid == 0
+        assert await scheduler.run("Read the fixture") == "FOUND"
+        assert {event.data["aid"] for event in events if "aid" in event.data} == {0}
+        assert {event.type for event in events} >= {"step_start", "text_delta", "tool_start", "tool_end"}
+    finally:
+        await scheduler.cleanup()
+        await source.aclose()
 
 @pytest.mark.parametrize("configuration", ["policy", "injected", "profile"])
 async def test_snapshot_keeps_the_configured_tool_result_view(tmp_path, configuration):

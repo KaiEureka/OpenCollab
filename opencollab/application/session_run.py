@@ -112,7 +112,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         self._response_session_id = uuid.uuid4().hex
         self.event_publisher = event_publisher
         self.event_factory = event_factory or default_session_event_factory(
-            lambda: state.aid
+            lambda: self.state.aid
         )
         self.tool_execution = tool_execution
         self.tracer = tracer
