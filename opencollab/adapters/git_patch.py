@@ -6,7 +6,7 @@ import shlex
 from collections.abc import Sequence
 
 
-def _git_command_and_config_guard() -> tuple[str, str]:
+def _git_command_and_config_guard(*, allow_core_worktree: bool = False) -> tuple[str, str]:
     """Share existing repository configuration restrictions with Git tools."""
     git_env = (
         "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "
@@ -27,6 +27,7 @@ def _git_command_and_config_guard() -> tuple[str, str]:
         f'{git_env} git -c safe.directory="$PWD" -c core.filemode=true'
         f"{neutralized_config}"
     )
+    worktree_setting = "" if allow_core_worktree else "|worktree"
     unsafe_config_guard = (
         "config_scopes=--local; "
         f'if [ "$({git_command} config --local --includes --type=bool '
@@ -35,7 +36,7 @@ def _git_command_and_config_guard() -> tuple[str, str]:
         "for config_scope in $config_scopes; do "
         f"unsafe_config=$({git_command} config \"$config_scope\" --includes --name-only --get-regexp "
         "'^(diff\\..*\\.(command|textconv)|filter\\..*|"
-        "core\\.(excludesfile|sparsecheckout|sparsecheckoutcone|worktree))$' "
+        f"core\\.(excludesfile|sparsecheckout|sparsecheckoutcone{worktree_setting}))$' "
         "2>/dev/null); "
         'config_rc=$?; if [ "$config_rc" -eq 0 ]; then '
         "echo \"unsafe repository Git configuration: $unsafe_config\" >&2; exit 125; "
