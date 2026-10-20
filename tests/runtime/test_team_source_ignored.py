@@ -15,6 +15,31 @@ from opencollab.adapters.worktree_pool import WorktreePool
 from tests.runtime.test_team_candidate_delivery import _git, _project
 
 
+@pytest.mark.parametrize("ignore_before_staging", [False, True])
+async def test_team_inherits_new_staged_file_after_ignore_rule(tmp_path, ignore_before_staging):
+    source = _project(tmp_path / "project", True)
+    target = source / "generated/schema.json"
+    target.parent.mkdir()
+    if ignore_before_staging:
+        (source / ".gitignore").write_text("generated/\n", encoding="utf-8")
+        _git(source, "add", ".gitignore")
+        _git(source, "commit", "-qm", "ignore generated output")
+    target.write_text('{"revision":2}\n', encoding="utf-8")
+    _git(source, "add", "-f", "generated/schema.json")
+    if not ignore_before_staging:
+        (source / ".gitignore").write_text("generated/\n", encoding="utf-8")
+        _git(source, "add", ".gitignore")
+    source_index = (source / ".git/index").read_bytes()
+    pool = WorktreePool(str(source), use_worktrees=True, enable_adoption=True)
+    coder = await pool.acquire("coder")
+    try:
+        assert (Path(coder.workspace) / "generated/schema.json").read_bytes() == target.read_bytes()
+        assert await coder.get_diff() == ""
+        assert (source / ".git/index").read_bytes() == source_index
+    finally:
+        await pool.release()
+
+
 def _native_test_command() -> list[str]:
     return [sys.executable, "-B", "-m", "pytest", "-q", "-o", "cache_dir=.pytest_cache", "test_native.py"]
 

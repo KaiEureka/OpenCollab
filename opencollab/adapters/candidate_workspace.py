@@ -281,21 +281,27 @@ class EnvCandidateWorkspace:
         self, repository_root: str, base_revision: str,
         exclude_paths: Sequence[str] = (),
     ) -> str:
-        # A fresh index reads tracked bytes hidden by the source index's skip flags.
+        # Keep staged additions in a temporary index without its skip hints,
+        # then stage the current tracked bytes without changing the source index.
         source_index = _complete(
             await self._environment.exec_cmd(
                 "mktemp", timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
             ),
             "candidate source temporary index",
         ).removesuffix("\n")
+        source_paths = source_index + ".tracked"
         try:
+            repository_git = f"git -C {shlex.quote(repository_root)}"
             git = (
                 f"GIT_INDEX_FILE={shlex.quote(source_index)} "
                 f"git -c core.filemode=true -C {shlex.quote(repository_root)}"
             )
             _complete(
                 await self._environment.exec_cmd(
-                    f"{git} read-tree {shlex.quote(base_revision)} && {git} add -u",
+                    f"{git} read-tree {shlex.quote(base_revision)} && "
+                    f"{repository_git} ls-files --stage -z > {shlex.quote(source_paths)} && "
+                    f"{git} update-index -z --index-info < {shlex.quote(source_paths)} && "
+                    f"{git} add -u",
                     timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
                 ),
                 "candidate source contents staging",
@@ -313,7 +319,7 @@ class EnvCandidateWorkspace:
             async def remove_index() -> None:
                 _complete(
                     await self._environment.exec_cmd(
-                        f"rm -f -- {shlex.quote(source_index)}",
+                        f"rm -f -- {shlex.quote(source_index)} {shlex.quote(source_paths)}",
                         timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
                     ),
                     "candidate source temporary index cleanup",

@@ -187,13 +187,17 @@ def guarded_staged_diff_command(
         git_command, base_revision, indexed_git_command=git_index_command,
         reject_ignored_untracked=reject_ignored_untracked,
     )
+    # Overlay staged additions without carrying source-index skip hints.
     return (
         'idx=$(mktemp) || exit 125; '
         'untracked=$(mktemp) || { rm -f -- "$idx"; exit 125; }; '
         'ignored=$(mktemp) || { rm -f -- "$idx" "$untracked"; exit 125; }; '
-        'trap \'rm -f -- "$idx" "$untracked" "$ignored"\' EXIT; '
+        'tracked=$(mktemp) || { rm -f -- "$idx" "$untracked" "$ignored"; exit 125; }; '
+        'trap \'rm -f -- "$idx" "$untracked" "$ignored" "$tracked"\' EXIT; '
         f"{unsafe_config_guard}"
         f"{git_index_command} read-tree {shlex.quote(base_revision)} && "
+        f'{git_command} ls-files --stage -z > "$tracked" && '
+        f'{git_index_command} update-index -z --index-info < "$tracked" && '
         f'{git_index_command} add -u && '
         f"{ignored_guard}"
         f"{stage_untracked}"
