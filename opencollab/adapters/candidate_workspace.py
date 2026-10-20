@@ -169,16 +169,28 @@ class _CandidateLease:
                 strict=self.strict_capture,
             )).strip():
                 return True
-        if self.physical_base_revision is None:
-            return False
+        original_tree = self.physical_base_revision
+        if original_tree is None:
+            if not await _has_worktree_conversions(
+                self.base_environment, self.source_workspace, strict=self.strict_capture,
+                exclude_paths=excluded, exclude_untracked_paths=self.source_untracked_exclusions,
+            ):
+                return False
+            # Without initial conversions, the ordinary source tree already
+            # records the source's physical contents.
+            original_tree = _complete(await self.base_environment.exec_cmd(
+                f"git -C {shlex.quote(self.source_workspace)} rev-parse --verify "
+                f"{shlex.quote(self.base_revision + '^{tree}')}",
+                timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+            ), "candidate original source tree").strip()
         current = await _physical_tree(
             self.base_environment, self.source_workspace, self.base_revision,
             exclude_paths=self.source_untracked_exclusions, strict=self.strict_capture,
         )
         if not exclude_paths:
-            return current != self.physical_base_revision
+            return current != original_tree
         return bool((await _tree_patch(
-            self.base_environment, self.source_workspace, self.physical_base_revision, current,
+            self.base_environment, self.source_workspace, original_tree, current,
             exclude_paths=excluded,
             strict=self.strict_capture,
         )).strip())
