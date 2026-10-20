@@ -597,9 +597,10 @@ class WorkflowCandidatesMixin:
         if callable(adopt_run):
             # Full-environment backends must retain the chosen candidate's
             # identity even when two candidates have identical file diffs.
-            await adopt_run(candidate, preserve_paths)
+            operation = adopt_run(candidate, preserve_paths)
         else:
-            await self._candidate_workspace.adopt(candidate.diff, preserve_paths)
+            operation = self._candidate_workspace.adopt(candidate.diff, preserve_paths)
+        await await_owned_operation(operation, propagate_cancellation=True)
 
 __all__ = [
     "CandidateCaptureError",
