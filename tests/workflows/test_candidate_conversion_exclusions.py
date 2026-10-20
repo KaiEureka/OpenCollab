@@ -175,7 +175,8 @@ async def test_duo_adopts_after_creating_evidence_with_conversion_attributes(tmp
                            usage=Usage(1, 1), finish_reason="tool_calls")
 
     monkeypatch.setattr(LLMClient, "complete", complete)
-    result = await OpenCollab(source, model="test-model", provider="openai", api_key="test-key").workflow(  # pragma: allowlist secret
+    client = OpenCollab(source, model="test-model", provider="openai", api_key="test-key")  # pragma: allowlist secret
+    result = await client.workflow(
         "duo", {"goal": "app.py prints 3", "candidate_evidence_dir": str(source / "evidence")},
         budget=100_000, trace=False,
     )
