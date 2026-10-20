@@ -114,7 +114,7 @@ def main_callback(
         raise typer.BadParameter("--hold requires --prompt or --prompt-file.")
 
     cfg = resolve_config(workspace, model, provider, api_key, base_url, budget)
-    if missing_api_key_for(cfg["provider"], cfg["api_key"], cfg["base_url"]):
+    if missing_api_key_for(cfg["provider"], cfg["api_key"], cfg["base_url"], cfg.get("auth_token")):
         print_missing_key_hint(console, cfg["provider"], cfg["base_url"])
         raise typer.Exit(code=1)
 

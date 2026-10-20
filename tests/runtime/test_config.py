@@ -356,6 +356,27 @@ def test_missing_api_key_true_when_no_key_anywhere(monkeypatch):
 def test_missing_api_key_false_for_resolved_key(monkeypatch):
     assert missing_api_key("openai", "resolved-key") is False
 
+@pytest.mark.parametrize("provider", ["anthropic", "openai", "deepseek"])
+@pytest.mark.parametrize("token", ["resolved-bearer", " \t "])
+def test_missing_api_key_checks_resolved_bearer_for_native_provider(provider, token):
+    expected_missing = provider != "anthropic" or not token.strip()
+    assert missing_api_key(provider, None, auth_token=token) is expected_missing
+
+@pytest.mark.parametrize("environment", [None, " \t ", "environment-bearer"])
+def test_dotenv_bearer_uses_existing_source_precedence(monkeypatch, tmp_path, environment):
+    (tmp_path / ".env").write_text("ANTHROPIC_AUTH_TOKEN=file-bearer\n")
+    if environment is not None:
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", environment)
+    config = build_config(str(tmp_path), overrides={"provider": "anthropic"})
+    assert config.api_key is None
+    assert config.auth_token == (
+        environment if environment and environment.strip() else "file-bearer"
+    )
+    explicit = build_config(str(tmp_path), overrides={
+        "provider": "anthropic", "auth_token": "explicit-bearer",
+    })
+    assert explicit.auth_token == "explicit-bearer"
+
 def test_missing_api_key_treats_whitespace_only_key_as_missing(monkeypatch):
     assert missing_api_key("openai", "   ") is True
     monkeypatch.setenv("OPENAI_API_KEY", "   ")

@@ -97,6 +97,40 @@ async def test_sdk_credentials_follow_their_owner(
 
 
 @pytest.mark.parametrize("entry", ["agent", "create_model_client", "workflow", "team"])
+async def test_sdk_captures_dotenv_bearer_before_the_file_changes(
+    monkeypatch, tmp_path, native_requests, caplog, entry,
+):
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    config_file = configs / ".env"
+
+    def client(credential):
+        config_file.write_text(f"ANTHROPIC_AUTH_TOKEN={credential}\n")
+        return OpenCollab(
+            tmp_path, model="fixture-model", provider="anthropic",
+            base_url="https://controlled.invalid", config={"llm_max_retries": 0},
+        )
+
+    first = client(FIRST_CREDENTIAL)
+    second = client(SECOND_CREDENTIAL)
+    for owner, name in ((first, "first"), (second, "second"), (first, "first-again")):
+        await _run(owner, entry, tmp_path / name)
+        public = json.dumps(dict(owner.configuration))
+        assert FIRST_CREDENTIAL not in public and SECOND_CREDENTIAL not in public
+    assert native_requests == [
+        (None, f"Bearer {FIRST_CREDENTIAL}"),
+        (None, f"Bearer {SECOND_CREDENTIAL}"),
+        (None, f"Bearer {FIRST_CREDENTIAL}"),
+    ]
+    artifacts = "\n".join(
+        path.read_text() for name in ("first", "second", "first-again")
+        for path in (tmp_path / name).rglob("*") if path.is_file()
+    )
+    assert FIRST_CREDENTIAL not in artifacts and SECOND_CREDENTIAL not in artifacts
+    assert FIRST_CREDENTIAL not in caplog.text and SECOND_CREDENTIAL not in caplog.text
+
+
+@pytest.mark.parametrize("entry", ["agent", "create_model_client", "workflow", "team"])
 async def test_captured_bearer_ignores_a_later_environment_api_key(
     monkeypatch, tmp_path, native_requests, entry,
 ):
@@ -112,10 +146,14 @@ async def test_captured_bearer_ignores_a_later_environment_api_key(
 
 @pytest.mark.parametrize("entry", ["agent", "create_model_client"])
 @pytest.mark.parametrize("source", ["argument", "config", "environment"])
+@pytest.mark.parametrize("token_source", ["environment", "dotenv"])
 async def test_explicit_api_key_precedes_a_native_environment_token(
-    monkeypatch, tmp_path, native_requests, entry, source,
+    monkeypatch, tmp_path, native_requests, entry, source, token_source,
 ):
-    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", FIRST_CREDENTIAL)
+    if token_source == "environment":
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", FIRST_CREDENTIAL)
+    else:
+        (tmp_path / ".env").write_text(f"ANTHROPIC_AUTH_TOKEN={FIRST_CREDENTIAL}\n")
     options = {}
     if source == "argument":
         options["api_key"] = SECOND_CREDENTIAL

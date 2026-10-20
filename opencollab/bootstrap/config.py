@@ -355,9 +355,14 @@ def accepted_api_key_envs(provider: str | None, base_url: str | None = None) -> 
         names.append("ANTHROPIC_AUTH_TOKEN")
     return list(dict.fromkeys(names))
 
-def missing_api_key(provider: str | None, api_key: str | None, base_url: str | None = None) -> bool:
+def missing_api_key(
+    provider: str | None, api_key: str | None, base_url: str | None = None,
+    auth_token: str | None = None,
+) -> bool:
     """Whether the resolved key and provider environment lack credentials."""
     if api_key and api_key.strip():
+        return False
+    if is_anthropic(provider) and auth_token and auth_token.strip():
         return False
     for key in api_key_env_precedence(provider, base_url):
         value = os.environ.get(key)
@@ -424,7 +429,7 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         )
     )
     auth_token_value = (
-        selected_overrides.get("auth_token") or _optional_string(os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+        selected_overrides.get("auth_token") or resolve_ordered("ANTHROPIC_AUTH_TOKEN")
         if is_anthropic(provider_value) and not api_key_value else None
     )
 

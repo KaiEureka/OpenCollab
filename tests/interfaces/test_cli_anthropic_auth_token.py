@@ -115,6 +115,34 @@ async def test_native_credentials_complete_sdk_and_cli_requests(
 
 
 @pytest.mark.parametrize("entry", ["team", "workflow"])
+async def test_dotenv_token_completes_sdk_and_cli_requests(
+    tmp_path, native_server, entry,
+):
+    base_url, requests = native_server
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / ".env").write_text(f"ANTHROPIC_AUTH_TOKEN={CONTROLLED_CREDENTIAL}\n")
+    oc = OpenCollab(tmp_path, provider="anthropic", model="fixture-model", base_url=base_url)
+    result = await oc.agent("Answer briefly", tools=(), trace=False)
+    assert result.ok and result.output == "Native credential accepted." and result.tokens == 5
+    async with oc.create_model_client() as model:
+        response = await model.complete([{"role": "user", "content": "Answer briefly"}])
+    assert response.content == "Native credential accepted."
+
+    cli = subprocess.run(
+        [sys.executable, "-m", "opencollab", *_arguments(tmp_path, entry, "anthropic", base_url)],
+        cwd=tmp_path, env={**os.environ, "PYTHONPATH": str(PACKAGE_ROOT), "NO_COLOR": "1"},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert cli.returncode == 0, cli.stdout + cli.stderr
+    assert "Native credential accepted." in cli.stdout
+    assert requests == [{
+        "path": "/v1/messages", "authorization": f"Bearer {CONTROLLED_CREDENTIAL}", "api_key": None,
+    }] * 3
+    assert CONTROLLED_CREDENTIAL not in cli.stdout + cli.stderr
+
+
+@pytest.mark.parametrize("entry", ["team", "workflow"])
 @pytest.mark.parametrize("token", ["", " \t "])
 def test_blank_native_token_keeps_missing_credential_diagnostic(monkeypatch, tmp_path, entry, token):
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", token)

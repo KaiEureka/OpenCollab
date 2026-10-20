@@ -11,8 +11,11 @@ from rich.console import Console
 from opencollab.bootstrap.config import accepted_api_key_envs, missing_api_key
 
 
-def missing_api_key_for(provider: str | None, api_key: str | None, base_url: str | None = None) -> bool:
-    return missing_api_key(provider, api_key, base_url)
+def missing_api_key_for(
+    provider: str | None, api_key: str | None, base_url: str | None = None,
+    auth_token: str | None = None,
+) -> bool:
+    return missing_api_key(provider, api_key, base_url, auth_token)
 
 def print_missing_key_hint(
     console: Console, provider: str | None, base_url: str | None = None

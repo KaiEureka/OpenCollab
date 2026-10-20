@@ -386,7 +386,7 @@ def test_anthropic_tool_choice_named_function_maps_to_named_tool():
     assert kwargs["tool_choice"] == {"type": "tool", "name": "structured_output"}
 
 def test_llm_client_forwards_anthropic_base_url(monkeypatch):
-    from anthropic import Timeout
+    from anthropic import Omit, Timeout
 
     captured = {}
 
@@ -397,7 +397,7 @@ def test_llm_client_forwards_anthropic_base_url(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
         "anthropic",
-        SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic, Timeout=Timeout),
+        SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic, Timeout=Timeout, Omit=Omit),
     )
 
     from opencollab.adapters.llm.client import LLMClient
