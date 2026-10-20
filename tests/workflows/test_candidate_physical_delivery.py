@@ -50,7 +50,7 @@ async def test_candidate_delivery_keeps_tested_physical_contents(tmp_path, backe
     (repo / "data.txt").write_bytes(text)
     (repo / "data.bin").write_bytes(b"original\0\xff\r\n")
     _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "准备物理候选交付测试")
+    _git(repo, "commit", "-m", "Prepare physical candidate delivery")
     _git(repo, "config", "core.filemode", "false")
     original_index = (repo / ".git/index").read_bytes()
     initial_text = (repo / "data.txt").read_bytes()
@@ -165,7 +165,7 @@ async def test_linked_team_tester_repeats_the_adopted_lf_script(tmp_path):
     original = _repository(tmp_path)
     (original / ".gitattributes").write_text("*.sh text eol=crlf\n")
     _git(original, "add", ".gitattributes")
-    _git(original, "commit", "-m", "准备关联工作树属性")
+    _git(original, "commit", "-m", "Prepare linked worktree attributes")
     source = tmp_path / "linked"
     _git(original, "worktree", "add", "--detach", str(source), "HEAD")
     metadata = Path(_git(source, "rev-parse", "--absolute-git-dir").removesuffix("\n"))
@@ -265,7 +265,7 @@ async def test_changed_public_candidate_diff_adopts_the_current_canonical_patch(
     if converted:
         (repo / ".gitattributes").write_text("*.py text eol=crlf\n")
         _git(repo, "add", ".gitattributes")
-        _git(repo, "commit", "-m", "准备公开补丁改写对照")
+        _git(repo, "commit", "-m", "Prepare public patch replacement")
 
     async def flow(ctx, inputs):
         async def edit(child, arguments):
@@ -297,7 +297,7 @@ async def test_duo_selects_and_adopts_a_physical_only_change(tmp_path):
     (repo / "run.sh").write_bytes(before)
     (repo / "run.sh").chmod(0o755)
     _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "准备只有换行变化的候选")
+    _git(repo, "commit", "-m", "Prepare line ending only candidate")
 
     async def flow(ctx, inputs):
         async def edit(child, arguments):
@@ -342,8 +342,8 @@ async def test_physical_attribute_overrides_keep_literal_quoted_paths(tmp_path):
     repo = _repository(tmp_path)
     (repo / ".gitattributes").write_text("*.sh text eol=crlf\n")
     _git(repo, "add", ".gitattributes")
-    _git(repo, "commit", "-m", "准备带引号换行的脚本名")
-    name = '目录 [x]*/名称 "空 格\n.sh'
+    _git(repo, "commit", "-m", "Prepare quoted and newline script name")
+    name = 'dir [x]*/name "a space\n.sh'
     content = b'#!/bin/sh\nprintf "42\\n"\n'
 
     async def flow(ctx, inputs):
@@ -435,15 +435,20 @@ async def test_strict_capture_keeps_scoped_trust_for_an_existing_foreign_reposit
     if converted:
         (repo / ".gitattributes").write_text("*.sh text eol=crlf\n")
         _git(repo, "add", ".gitattributes")
-        _git(repo, "commit", "-m", "准备异所有权属性仓库")
+        _git(repo, "commit", "-m", "Prepare foreign ownership attributes")
     trusted = tmp_path / "trusted-config"
     trusted.write_text("[safe]\n\tdirectory = *\n")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(trusted))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "0")
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "")
     monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
     control = subprocess.run(
         ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True,
         env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null"},
     )
+    if control.returncode == 0:
+        pytest.skip("Git does not emulate foreign ownership in this environment")
     assert control.returncode == 128 and b"dubious ownership" in control.stderr
     original_config = (repo / ".git/config").read_bytes()
     original_index = (repo / ".git/index").read_bytes()
@@ -470,7 +475,7 @@ async def test_both_candidate_patches_use_the_same_completed_physical_snapshot(t
     repo = _repository(tmp_path)
     (repo / ".gitattributes").write_text("*.sh text eol=crlf\n")
     _git(repo, "add", ".gitattributes")
-    _git(repo, "commit", "-m", "准备单次物理快照")
+    _git(repo, "commit", "-m", "Prepare single physical snapshot")
     original = physical._normalize_tree
     late_writes = []
 
@@ -510,7 +515,7 @@ async def test_converting_candidate_uses_one_owned_metadata_directory_per_stage(
     (repo / "existing.sh").write_bytes(initial)
     (repo / "existing.sh").chmod(0o755)
     _git(repo, "add", ".gitattributes", "existing.sh")
-    _git(repo, "commit", "-m", "准备私有元数据生命周期")
+    _git(repo, "commit", "-m", "Prepare private metadata lifecycle")
     initialized = []
     original_exec = LocalEnvironment.exec_cmd
 
@@ -554,7 +559,7 @@ async def test_private_git_context_does_not_activate_conditional_configuration(t
     (repo / ".gitattributes").write_text("*.sh text eol=crlf filter=conditional\n")
     (repo / "existing.sh").write_bytes(b'#!/bin/sh\nprintf "existing\\n"\n')
     _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "准备私有上下文条件配置")
+    _git(repo, "commit", "-m", "Prepare conditional private context")
     markers = [tmp_path / name for name in ("monitor-ran", "hook-ran", "filter-ran")]
     monitor = tmp_path / "monitor"
     monitor.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(markers[0]))}\nprintf 'token\\0'\n")
@@ -626,7 +631,7 @@ async def test_physical_capture_streams_index_larger_than_process_capture_limit(
     for number in range(6_500):
         (repo / f"module{number:05d}_{'x' * 100}.py").write_text("value = 1\n")
     _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "准备超过输出上限的暂存清单")
+    _git(repo, "commit", "-m", "Prepare index above output limit")
     assert len(_git(repo, "ls-files", "--stage", "-z").encode()) > PROCESS_OUTPUT_CAPTURE_BYTES
     source_index = (repo / ".git/index").read_bytes()
     environment = LocalEnvironment(str(repo))
