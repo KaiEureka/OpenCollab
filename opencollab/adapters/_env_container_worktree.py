@@ -8,10 +8,16 @@ import shlex
 import uuid
 from collections.abc import Callable
 
+from opencollab.adapters._candidate_physical import (
+    _checkout_physical_tree,
+    _physical_submodule_trees,
+    _physical_tree,
+    _submodule_base_tree,
+)
 from opencollab.adapters._env_base import ExecResult
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_worktree_submodules import _initialize_source_available_submodules
-from opencollab.adapters._git_patch_bytes import _complete_patch
+from opencollab.adapters._git_patch_bytes import _complete, _complete_patch
 from opencollab.adapters.git_patch import guarded_staged_diff_command
 from opencollab.adapters.git_worktree_evidence import (
     ABSENT_REF_OLD_VALUE,
@@ -74,6 +80,7 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
         self._worktree_files_pending = False
         self._registered_worktree_path: str | None = None
         self._git_diff_delivery_pending = False
+        self._submodule_checkout_trees: dict[tuple[str, str | None], str] = {}
         self._base_commit: str | None = None
         self._diff_base: str | None = None
         self._head_commit: str | None = None
@@ -221,6 +228,11 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
             require_initialized=False, local_filesystem=False,
             git_marker_exists=self._source_git_marker_exists,
         )
+        for path, tree in await _physical_submodule_trees(
+            self, self._worktree_dir, source_prefix=self._source_subdir,
+        ):
+            original = await _submodule_base_tree(self, self._worktree_dir, self._base_commit, path)
+            self._submodule_checkout_trees[path, original] = tree
 
     def retain_changes(self) -> str:
         """Keep the worktree when a bounded delivery omitted part of its patch."""
@@ -253,12 +265,45 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
                 f"container worktree diff extraction failed: {detail}; "
                 f"worktree retained at {self._worktree_dir}"
             )
+        await self._assert_physical_submodules(self._diff_base)
         patch = await _complete_patch(
             result, "container worktree diff conversion", self,
             self._worktree_dir, self._diff_base, None, captured_blobs=True,
         )
         self._git_diff_delivery_pending = False
         return patch
+
+    async def _assert_physical_submodules(self, base_revision: str) -> None:
+        for path, tree in await _physical_submodule_trees(
+            self, self._worktree_dir,
+            include_paths=tuple(path for path, _original in self._submodule_checkout_trees),
+        ):
+            original = await _submodule_base_tree(self, self._worktree_dir, base_revision, path)
+            expected = self._submodule_checkout_trees.get((path, original), original)
+            if tree != expected and original is not None and (path, original) not in self._submodule_checkout_trees:
+                source_module = posixpath.join(self._repository_root, path)
+                available = await self._git(source_module, "rev-parse", "--show-toplevel")
+                if (
+                    available.returncode != 0 or available.stdout_truncated or available.stderr_truncated
+                    or posixpath.normpath(available.stdout.removesuffix("\n")) != source_module
+                ):
+                    raise RuntimeError(
+                        "source submodule is unavailable for physical comparison; "
+                        f"worktree retained at {self._worktree_dir}"
+                    )
+                source_tree = _complete(await self._git(
+                    source_module, "rev-parse", "--verify", "HEAD^{tree}",
+                ), "source submodule revision").strip()
+                expected = (
+                    await _physical_tree(self, source_module, original) if source_tree == original else
+                    await _checkout_physical_tree(self, source_module, original)
+                )
+                self._submodule_checkout_trees[path, original] = expected
+            if tree != expected:
+                raise RuntimeError(
+                    "submodule physical changes cannot be delivered as a repository patch; "
+                    f"worktree retained at {self._worktree_dir}"
+                )
 
     async def _resolve_diff_base(self) -> str:
         assert self._base_commit is not None
