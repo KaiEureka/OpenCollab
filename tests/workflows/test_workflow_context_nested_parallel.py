@@ -194,7 +194,8 @@ async def test_nested_parallel_cancellation_releases_extra_task_slots():
     assert ctx._task_semaphore._value == 4
 
 @pytest.mark.asyncio
-async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap():
+@pytest.mark.parametrize("composition", ["direct", "gather", "task"])
+async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap(composition):
     ctx = WorkflowContext(FakeFactory([]), task_concurrency=3)
     running = 0
     high_water = 0
@@ -217,7 +218,12 @@ async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap
             running -= 1
 
     async def group():
-        return await ctx.parallel([lambda i=i: unit(i) for i in range(2_000)])
+        operation = ctx.parallel([lambda i=i: unit(i) for i in range(2_000)])
+        if composition == "gather":
+            return (await asyncio.gather(operation))[0]
+        if composition == "task":
+            return await asyncio.create_task(operation)
+        return await operation
 
     task = asyncio.create_task(ctx.parallel([group] * 4))
     try:
@@ -229,7 +235,8 @@ async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap
     assert high_water == 3
     # Each parent slot may own an inline worker and an allocator. The
     # collection caller and admission waiter add two tasks on Python 3.10.
-    assert peak_tasks <= 3 * ctx._task_concurrency + 2
+    wrapper_tasks = 0 if composition == "direct" else ctx._task_concurrency
+    assert peak_tasks <= 3 * ctx._task_concurrency + 2 + wrapper_tasks
     assert results == [list(range(2_000))] * 4
 
 @pytest.mark.asyncio

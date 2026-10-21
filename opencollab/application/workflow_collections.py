@@ -179,11 +179,7 @@ class WorkflowCollectionsMixin:
                 await execute(index)
 
         active = self._active_task_concurrency_permit.get()
-        if (
-            active is not None
-            and not active.closed
-            and active.owner is asyncio.current_task()
-        ):
+        if active is not None and not active.closed:
             # Keep one worker on the parent's live slot. A single allocator can
             # admit extra workers as siblings release slots, without creating
             # a waiting worker for every nested item.

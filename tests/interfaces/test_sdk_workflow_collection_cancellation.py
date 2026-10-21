@@ -184,7 +184,10 @@ async def test_caller_cancellation_preserves_awaited_worker_cleanup(tmp_path, ki
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["parallel", "pipeline"])
 @pytest.mark.parametrize("order", ["external-first", "upstream-first", "same-turn"])
-async def test_nested_collection_cancellation_race_preserves_worker_cleanup(tmp_path, kind, order):
+@pytest.mark.parametrize("composition", ["direct", "gather", "task"])
+async def test_nested_collection_cancellation_race_preserves_worker_cleanup(
+    tmp_path, kind, order, composition,
+):
     lease = tmp_path / "lease.txt"
     closed = tmp_path / "closed.txt"
     lease.write_text("open\n")
@@ -221,12 +224,17 @@ async def test_nested_collection_cancellation_race_preserves_worker_cleanup(tmp_
 
         async def collection():
             if kind == "parallel":
-                return await ctx.parallel([writer, receiver])
+                operation = ctx.parallel([writer, receiver])
+            else:
+                async def stage(_previous, operation, _index):
+                    return await operation()
 
-            async def stage(_previous, operation, _index):
-                return await operation()
-
-            return await ctx.pipeline([writer, receiver], stage)
+                operation = ctx.pipeline([writer, receiver], stage)
+            if composition == "gather":
+                return (await asyncio.gather(operation))[0]
+            if composition == "task":
+                return await asyncio.create_task(operation)
+            return await operation
 
         return await ctx.parallel([collection])
 
