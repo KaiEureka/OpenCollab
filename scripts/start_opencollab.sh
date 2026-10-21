@@ -105,7 +105,10 @@ main() {
     ensure_venv
 
     cd "$REPO_ROOT"
-    exec "$VENV_DIR/bin/opencollab" --workspace "$REPO_ROOT" "$@"
+    case "${1:-}" in
+        ""|-*) set -- --workspace "$REPO_ROOT" "$@" ;;
+    esac
+    exec "$VENV_DIR/bin/opencollab" "$@"
 }
 
 main "$@"
