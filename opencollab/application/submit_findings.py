@@ -240,7 +240,11 @@ def harvest_findings(
         for message in msgs
         if (
             message.get("role") == "tool"
-            or (message.get("role") == "assistant" and message.get("content"))
+            or (
+                message.get("role") == "assistant"
+                and message.get("content")
+                and message.get("_opencollab_placeholder") is not True
+            )
         )
     ]
     if not candidates:
