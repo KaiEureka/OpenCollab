@@ -551,6 +551,14 @@ class WorktreeEnvironment(Environment):
                 f"worktree diff extraction failed: {detail}; "
                 f"worktree retained at {self.workspace}"
             )
+        ignored = _complete(await self._git_in(
+            self._worktree_dir, "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
+        ), "ignored worktree file inspection")
+        if ignored:
+            raise RuntimeError(
+                "ignored untracked files cannot be delivered as a repository patch; "
+                f"worktree retained at {self.workspace}"
+            )
         for path, tree in await _physical_submodule_trees(
             owner, self._worktree_dir,
             include_paths=tuple(path for path, _original in self._submodule_checkout_trees),
