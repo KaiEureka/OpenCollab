@@ -649,7 +649,9 @@ def test_empty_stop_retries_once_with_nudge_then_succeeds():
         for m in state.messages
     )
     assert _no_consecutive_same_role(state.messages)
-    assert {"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER} in state.messages
+    assert {
+        "role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER, "_opencollab_placeholder": True,
+    } in state.messages
     assert all(
         not (m["role"] == "assistant" and not m.get("content") and not m.get("tool_calls"))
         for m in state.messages
@@ -675,11 +677,12 @@ def test_whitespace_only_stop_uses_empty_turn_rescue():
     )
     assert state.messages[-1] == {"role": "assistant", "content": "recovered"}
 
-def test_empty_stop_retries_at_most_once_then_gives_up():
+@pytest.mark.parametrize("max_budget_tokens", [500, None])
+def test_empty_stop_retries_at_most_once_then_gives_up(max_budget_tokens):
     # A third provider call would exhaust FakeLLM, exposing an unbounded retry.
     state = SessionState(messages=_convo())
     llm = FakeLLM([llm_response(content=None), llm_response(content=None)])
-    runner = build_runner(state=state, llm=llm)
+    runner = build_runner(state=state, llm=llm, max_budget_tokens=max_budget_tokens)
 
     result = run(runner.run_loop())
 

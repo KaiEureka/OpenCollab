@@ -25,6 +25,7 @@ from opencollab.application._session_run_shared import (
     GenerationTimeoutError,
     PendingStep,
     _ContextOverflowStop,
+    _last_assistant_answer,
     _submit_tool_choice,
     _TeamBudgetStop,
     _TokenBudgetStop,
@@ -333,15 +334,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
             self.state.submitted_summary = None
 
     def _last_turn_answer(self) -> str:
-        """Return the last real assistant text produced by the current turn."""
-        turn_start = self._turn_start_message_index
-        if turn_start is None:
-            return ""
-        for message in reversed(self.state.messages[turn_start:]):
-            content = message.get("content")
-            if message["role"] == "assistant" and content and content != _EMPTY_STOP_PLACEHOLDER:
-                return content
-        return ""
+        return _last_assistant_answer(self.state.messages, self._turn_start_message_index)
 
     def is_terminal_phase(self) -> bool:
         """Whether the session has finished its turn (done/failed/limits)."""
@@ -799,7 +792,10 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
                         latency=pending.latency,
                     )
                 if not has_content:
-                    self.state.append_message({"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER})
+                    self.state.append_message({
+                        "role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER,
+                        "_opencollab_placeholder": True,
+                    })
                 self.state.append_message({"role": "user", "content": _REQUIRED_TOOL_RETRY_NUDGE})
                 self.state.transition_to(SessionPhase.AUTOSAVING)
                 return
@@ -828,7 +824,10 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
             # The empty turn was omitted. Insert an assistant placeholder before the
             # nudge to avoid consecutive user messages, which Anthropic rejects.
             if self.state.messages and self.state.messages[-1]["role"] in ("user", "tool"):
-                self.state.append_message({"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER})
+                self.state.append_message({
+                    "role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER,
+                    "_opencollab_placeholder": True,
+                })
             self.state.append_message({"role": "user", "content": _EMPTY_STOP_NUDGE})
             self.state.transition_to(SessionPhase.AUTOSAVING)
             return
