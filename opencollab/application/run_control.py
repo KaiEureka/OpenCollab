@@ -97,6 +97,8 @@ class _SessionRunControlMixin:
         self._run_terminal_emitted = False
         self._run_cleanup_requested = False
         self._run_cleanup_emitted = False
+        self._run_cleanup_tasks: Callable[[], tuple[asyncio.Task[Any], ...]] | None = None
+        self._run_cleanup_observers: set[asyncio.Task[Any]] = set()
         self._run_final_prompt: str | None = None
         if control is not None and control.initial_soft_budget_tokens is not None:
             self.max_budget_tokens = (
@@ -207,16 +209,35 @@ class _SessionRunControlMixin:
                              reason=self.state.terminal_reason,
                              pending_provider_requests=len(self.pending_cleanup_tasks))
 
-    def finish_run_control(self) -> None:
+    def finish_run_control(
+        self,
+        pending_cleanup_tasks: Callable[[], tuple[asyncio.Task[Any], ...]] | None = None,
+    ) -> None:
         """Release this run's receiver after its existing cleanup owners settle."""
+        if self._run_cleanup_emitted:
+            return
+        if pending_cleanup_tasks is not None:
+            self._run_cleanup_tasks = pending_cleanup_tasks
         self._run_cleanup_requested = True
         self._finish_run_control_if_quiesced()
 
+    def _run_cleanup_task_done(self, task: asyncio.Task[Any]) -> None:
+        self._run_cleanup_observers.discard(task)
+        self._finish_run_control_if_quiesced()
+
     def _finish_run_control_if_quiesced(self) -> None:
-        if not self._run_cleanup_requested or self._run_cleanup_emitted or self.pending_cleanup_tasks:
+        if not self._run_cleanup_requested or self._run_cleanup_emitted:
+            return
+        pending = self._run_cleanup_tasks() if self._run_cleanup_tasks is not None else ()
+        for task in pending:
+            if task not in self._run_cleanup_observers:
+                self._run_cleanup_observers.add(task)
+                task.add_done_callback(self._run_cleanup_task_done)
+        if self.pending_cleanup_tasks or pending:
             return
         self._run_cleanup_emitted = True
         self._record_run_terminal()
         self._emit_run_event("cleanup_completed", pending_provider_requests=0)
         self._run_event_receiver = None
         self._run_control = None
+        self._run_cleanup_tasks = None

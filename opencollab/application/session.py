@@ -257,7 +257,7 @@ class Session:
         if self._llm_close_error is not None:
             raise self._llm_close_error
         if not self._owns_llm or self._llm_closed:
-            self.runner.finish_run_control()
+            self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
             return
         self._llm_closed = True
         close = getattr(self._llm, "close", None)
@@ -272,7 +272,7 @@ class Session:
                 self._llm_close_error = exc
                 self.runner._emit_run_event("error", error_type=type(exc).__name__, message=str(exc))
                 raise
-        self.runner.finish_run_control()
+        self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
 
     @property
     def messages(self) -> list[dict]:
