@@ -45,6 +45,7 @@ class WorkflowBudget:
         self._total = total
         self._sessions = sessions
         self._leases: list[_BudgetLease] = []
+        self._parent_allocation: tuple[WorkflowBudget, _BudgetLease] | None = None
 
     @property
     def total(self) -> int | None:
@@ -56,8 +57,13 @@ class WorkflowBudget:
     def remaining(self) -> float:
         if self._total is None:
             return float("inf")
+        total = self._total
+        if self._parent_allocation is not None:
+            parent, allocation = self._parent_allocation
+            # A sibling can overspend while this workflow waits for an agent slot.
+            total = min(total, parent.remaining() + allocation.remaining())
         reserved_unspent = sum(lease.remaining() for lease in self._leases)
-        return self._total - self.spent() - reserved_unspent
+        return total - self.spent() - reserved_unspent
 
     def reserve(self, lease: _BudgetLease) -> None:
         self._leases.append(lease)

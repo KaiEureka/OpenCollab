@@ -498,6 +498,7 @@ class WorkflowCandidatesMixin:
                 child._task_semaphore = self._task_semaphore
                 child._active_task_concurrency_permit = self._active_task_concurrency_permit
                 child._budget_escape_state = self._budget_escape_state
+                child.budget._parent_allocation = (self.budget, budget_lease)
                 try:
                     output = await workflow_fn(child, dict(args))
                 except Exception as exc:  # noqa: BLE001 - preserve candidate edits
