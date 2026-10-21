@@ -200,7 +200,7 @@ async def test_removed_or_replaced_submodule_is_retained(tmp_path, replacement):
             module = candidate / module_path
             module.mkdir()
             (module / "source.py").write_text("replacement = True\n")
-        with pytest.raises(RuntimeError, match="submodule changes"):
+        with pytest.raises(RuntimeError, match="submodule physical changes"):
             await lease.diff()
         assert candidate.is_dir()
         assert (source / module_path / "source.py").read_text() == "value = 1\n"
