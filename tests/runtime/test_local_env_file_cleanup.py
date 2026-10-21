@@ -176,7 +176,7 @@ def test_atomic_write_closes_parent_fd_when_temporary_unlink_fails(
     real_unlink = safe_anchored_files.os.unlink
 
     def fail_temporary_unlink(path, *args, **kwargs):
-        if str(path).startswith(".state."):
+        if str(path).endswith(".tmp"):
             parent_fds.append(kwargs["dir_fd"])
             raise PermissionError("forced temporary unlink failure")
         return real_unlink(path, *args, **kwargs)

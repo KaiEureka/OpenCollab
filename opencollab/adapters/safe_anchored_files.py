@@ -313,7 +313,7 @@ def write_regular_file_atomic_at(
         path,
         create=True,
     )
-    temporary = f".{name}.{uuid.uuid4().hex}.tmp"
+    temporary = f".oc-{uuid.uuid4().hex}.tmp"
     fd = -1
     try:
         current = _current_regular_at(parent_fd, name, context=context)
