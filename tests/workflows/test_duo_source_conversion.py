@@ -23,7 +23,7 @@ async def _run(tmp_path, monkeypatch, initial, final, *, crlf=False, mutation=No
     (source / "source.py").write_bytes(original)
     (source / "notes.txt").write_text("original\n")
     _git(source, "add", ".")
-    _git(source, "commit", "-qm", "准备来源配置切换")
+    _git(source, "commit", "-qm", "Prepare source conversion change")
     (source / "notes.txt").write_text("staged\n")
     _git(source, "add", "notes.txt")
     (source / "notes.txt").write_text("user edit\n")
@@ -47,7 +47,7 @@ async def _run(tmp_path, monkeypatch, initial, final, *, crlf=False, mutation=No
             arguments = {"command": f"git config core.autocrlf {str(final).lower()} && "
                          f"{shlex.quote(sys.executable)} -B app.py"}
         elif calls in (3, 5):
-            return LLMResponse(content="完成", usage=Usage(1, 1), finish_reason="stop")
+            return LLMResponse(content="Done", usage=Usage(1, 1), finish_reason="stop")
         else:
             if mutation == "bytes":
                 (source / "source.py").write_bytes(original.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
@@ -60,12 +60,12 @@ async def _run(tmp_path, monkeypatch, initial, final, *, crlf=False, mutation=No
             elif mutation == "untracked-remove":
                 (source / "user.txt").unlink()
             elif mutation == "head":
-                _git(source, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "移动来源提交")
+                _git(source, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "Move source revision")
             name = "structured_output"
             arguments = {"winner": "B", "requirements_complete": True, "requirements": [
                 {"requirement": "app.py prints 43", "a_coverage": "not_covered", "b_coverage": "covered",
                  "a_evidence": ["app.py prints 42"], "b_evidence": ["app.py prints 43"]},
-            ], "rationale": "B 输出所需结果"}
+            ], "rationale": "B produces the required result"}
         return LLMResponse(tool_calls=[{"id": f"call-{calls}", "type": "function", "function": {
             "name": name, "arguments": json.dumps(arguments),
         }}], usage=Usage(1, 1), finish_reason="tool_calls")
