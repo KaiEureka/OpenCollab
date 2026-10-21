@@ -326,6 +326,27 @@ async def _tree_patch(
     )
 
 
+async def _checkout_physical_tree(environment: Any, workspace: str, tree: str) -> str:
+    async with _physical_git(environment, workspace) as (raw_git, directory):
+        snapshot = directory + "/checkout"
+        checkout = (
+            f"GIT_INDEX_FILE={shlex.quote(directory + '/checkout-index')} "
+            f"{_git_prefix(workspace)} --work-tree={shlex.quote(snapshot)}"
+        )
+        _complete(await environment.exec_cmd(
+            f"mkdir -- {shlex.quote(snapshot)} && "
+            f"{checkout} read-tree {shlex.quote(tree)} && {checkout} checkout-index --all",
+            timeout=900,
+        ), "submodule expected checkout")
+        physical = f"{raw_git} --work-tree={shlex.quote(snapshot)}"
+        _complete(await environment.exec_cmd(
+            f"{physical} read-tree {shlex.quote(tree)} && {physical} add -u", timeout=900,
+        ), "submodule expected physical contents")
+        return _complete(await environment.exec_cmd(
+            f"{physical} write-tree",
+        ), "submodule expected physical tree").strip()
+
+
 async def _normalize_tree(
     environment: Any, workspace: str, tree: str, *, strict: bool = False,
     metadata: tuple[str, str] | None = None,

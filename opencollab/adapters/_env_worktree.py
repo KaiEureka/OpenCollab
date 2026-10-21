@@ -12,11 +12,17 @@ from collections.abc import Sequence
 from contextlib import asynccontextmanager
 
 from opencollab.adapters._candidate_increment import _apply_increment
+from opencollab.adapters._candidate_physical import (
+    _checkout_physical_tree,
+    _physical_submodule_trees,
+    _physical_tree,
+    _submodule_base_tree,
+)
 from opencollab.adapters._env_base import Environment, ExecResult, TextFileRange
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import run_process
 from opencollab.adapters._env_worktree_submodules import _initialize_source_available_submodules
-from opencollab.adapters._git_patch_bytes import _complete_patch
+from opencollab.adapters._git_patch_bytes import _complete, _complete_patch
 from opencollab.adapters.git_patch import guarded_staged_diff_command
 from opencollab.adapters.git_worktree_evidence import (
     ABSENT_REF_OLD_VALUE,
@@ -98,6 +104,7 @@ class WorktreeEnvironment(Environment):
         self._source_subdir = ""
         self._repository_root: str | None = None
         self._git_diff_delivery_pending = False
+        self._submodule_checkout_trees: dict[tuple[str, str | None], str] = {}
         # Revision measured by the last ``get_diff`` and recorded in
         # ``worktree_changes``. ``None`` before a diff or on the non-Git copy path.
         self._diff_base: str | None = None
@@ -160,6 +167,16 @@ class WorktreeEnvironment(Environment):
             )
             if not os.path.isdir(exposed_workspace):
                 raise RuntimeError("source subdirectory is absent from the worktree")
+            if self._git_mode:
+                owner = LocalEnvironment(self._worktree_dir)
+                try:
+                    for path, tree in await _physical_submodule_trees(owner, self._worktree_dir):
+                        original = await _submodule_base_tree(
+                            owner, self._worktree_dir, self._base_commit, path,
+                        )
+                        self._submodule_checkout_trees[path, original] = tree
+                finally:
+                    await await_owned_operation(owner.cleanup(), propagate_cancellation=True)
         except BaseException as original:
             try:
                 await await_owned_operation(
@@ -478,6 +495,37 @@ class WorktreeEnvironment(Environment):
                 f"worktree diff extraction failed: {detail}; "
                 f"worktree retained at {self.workspace}"
             )
+        for path, tree in await _physical_submodule_trees(
+            owner, self._worktree_dir,
+            include_paths=tuple(path for path, _original in self._submodule_checkout_trees),
+        ):
+            original = await _submodule_base_tree(owner, self._worktree_dir, base_revision, path)
+            expected = self._submodule_checkout_trees.get((path, original), original)
+            if tree != expected and original is not None and (path, original) not in self._submodule_checkout_trees:
+                assert self._repository_root is not None
+                source_module = os.path.join(self._repository_root, path)
+                available = await self._git_in(source_module, "rev-parse", "--show-toplevel")
+                if (
+                    available.returncode != 0 or available.stdout_truncated or available.stderr_truncated
+                    or os.path.realpath(available.stdout.removesuffix("\n")) != os.path.realpath(source_module)
+                ):
+                    raise RuntimeError(
+                        "source submodule is unavailable for physical comparison; "
+                        f"worktree retained at {self.workspace}"
+                    )
+                source_tree = _complete(await self._git_in(
+                    source_module, "rev-parse", "--verify", "HEAD^{tree}",
+                ), "source submodule revision").strip()
+                if source_tree == original:
+                    expected = await _physical_tree(owner, source_module, original)
+                else:
+                    expected = await _checkout_physical_tree(owner, source_module, original)
+                self._submodule_checkout_trees[path, original] = expected
+            if tree != expected:
+                raise RuntimeError(
+                    "submodule physical changes cannot be delivered as a repository patch; "
+                    f"worktree retained at {self.workspace}"
+                )
         patch = await _complete_patch(
             result, "worktree diff conversion", owner,
             self._worktree_dir, base_revision, None, captured_blobs=True,
