@@ -19,7 +19,7 @@ from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.application.tool_execution import ToolExecutionUseCase
-from opencollab.application.workflow import WorkflowContext
+from opencollab.application.workflow import WorkflowBudgetExceeded, WorkflowContext
 from opencollab.bootstrap import _workflow_runtime_session as runtime
 from opencollab.tools import builtin_tools, evidence_tools
 from tests.support.workflow_context_test_support import FakeFactory, FakeSession
@@ -136,12 +136,20 @@ async def test_cancelled_candidate_workflow_stops_owned_agent_before_release(
         await asyncio.gather(task, return_exceptions=True)
 
 @pytest.mark.parametrize("concurrency", [1, 2])
-async def test_public_candidate_and_ordinary_agent_complete(repository, provider_calls, concurrency):
+@pytest.mark.parametrize("collection", ["parallel", "gather"])
+async def test_public_candidate_and_ordinary_agent_complete(repository, provider_calls, concurrency, collection):
+    contexts = []
+
     async def workflow(ctx, _args):
-        values = await ctx.parallel([
+        contexts.append(ctx)
+        calls = [
             lambda: ctx.candidate_agent("candidate", label="candidate"),
             lambda: ctx.agent("ordinary", label="ordinary"),
-        ])
+        ]
+        if collection == "parallel":
+            values = await ctx.parallel(calls)
+        else:
+            values = await asyncio.gather(*(call() for call in calls))
         return [values[0].output, values[1]]
 
     task = asyncio.create_task(_client(repository).workflow(
@@ -154,6 +162,8 @@ async def test_public_candidate_and_ordinary_agent_complete(repository, provider
         assert result.ok, result.reason
         assert result.output == ["answer", "answer"]
         assert len(provider_calls) == 2
+        assert result.tokens == 30
+        assert [session.max_budget_tokens for session in contexts[0].sessions] == [50_000, 50_000]
     finally:
         if not task.done():
             task.cancel()
@@ -501,3 +511,108 @@ async def test_candidate_keeps_lease_for_cleanup_spawned_by_cancelled_turn(repos
     assert context.tokens_remaining() == 93
     assert context.pending_cleanup_tasks == ()
     assert (repository / "source.txt").read_text() == "initial\n"
+
+@pytest.mark.parametrize("first_tokens", [50, 150, 200, 210])
+async def test_queued_candidate_refreshes_reserved_cap_after_prior_usage(repository, first_tokens):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def enter_first():
+        started.set()
+        await release.wait()
+
+    first = FakeSession(on_enter=enter_first)
+    factory = FakeFactory([first, FakeSession(reply="candidate answer", tokens=7)])
+    context = WorkflowContext(
+        factory, max_concurrency=1, budget_total=200,
+        candidate_workspace=EnvCandidateWorkspace(LocalEnvironment(str(repository))),
+    )
+    tasks = [asyncio.create_task(context.agent("ordinary", budget=100))]
+
+    async def wait_for_reservations():
+        while len(context.budget._leases) < 2:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        tasks.append(asyncio.create_task(context.candidate_agent("candidate", label="candidate", budget=100)))
+        await asyncio.wait_for(wait_for_reservations(), timeout=5)
+        assert context.tokens_remaining() == 0
+        assert len(factory.builds) == 1
+        first._tokens = first_tokens
+        release.set()
+        ordinary, candidate = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=5)
+        assert ordinary == "done"
+        if first_tokens >= 200:
+            assert isinstance(candidate, WorkflowBudgetExceeded)
+            assert [build["budget"] for build in factory.builds] == [100]
+        else:
+            assert candidate.output == "candidate answer"
+            assert [build["budget"] for build in factory.builds] == [100, min(100, 200 - first_tokens)]
+        spent = first_tokens + (7 if first_tokens < 200 else 0)
+        assert context.tokens_spent() == spent
+        assert context.tokens_remaining() == 200 - spent
+        assert context.budget._leases == []
+        assert context._semaphore._value == 1
+    finally:
+        release.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await context.wait_for_pending_cleanup()
+
+async def test_cancelled_queued_candidate_releases_reservation(repository):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def enter_first():
+        started.set()
+        await release.wait()
+
+    factory = FakeFactory([FakeSession(on_enter=enter_first)])
+    context = WorkflowContext(
+        factory, max_concurrency=1, budget_total=200,
+        candidate_workspace=EnvCandidateWorkspace(LocalEnvironment(str(repository))),
+    )
+    tasks = [asyncio.create_task(context.agent("ordinary", budget=100))]
+
+    async def wait_for_reservations():
+        while len(context.budget._leases) < 2:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        tasks.append(asyncio.create_task(context.candidate_agent("candidate", label="candidate", budget=60)))
+        await asyncio.wait_for(wait_for_reservations(), timeout=5)
+        assert context.tokens_remaining() == 40
+        tasks[-1].cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tasks[-1]
+        assert context.tokens_remaining() == 100
+        assert len(factory.builds) == 1
+        assert context._semaphore.locked()
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await context.wait_for_pending_cleanup()
+
+    assert context.budget._leases == []
+    assert context._active_call_tasks == set()
+    assert context._semaphore._value == 1
+
+@pytest.mark.parametrize("operation", ["source_diff", "acquire"])
+async def test_candidate_preparation_failure_releases_reserved_budget(repository, monkeypatch, operation):
+    workspace = EnvCandidateWorkspace(LocalEnvironment(str(repository)))
+
+    async def fail(*args):
+        raise RuntimeError("candidate preparation failed")
+
+    monkeypatch.setattr(workspace, operation, fail)
+    context = WorkflowContext(FakeFactory([]), max_concurrency=1, budget_total=100, candidate_workspace=workspace)
+    with pytest.raises(RuntimeError, match="candidate preparation failed"):
+        await context.candidate_agent("candidate", label="candidate", budget=60)
+
+    assert context.tokens_remaining() == 100
+    assert context.budget._leases == []
+    assert context.sessions == ()
+    assert context._active_call_tasks == set()
+    assert context._semaphore._value == 1

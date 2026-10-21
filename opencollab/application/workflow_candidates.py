@@ -314,22 +314,22 @@ class WorkflowCandidatesMixin:
             raise RuntimeError("candidate workspaces are not available")
         timeout = self._normalize_timeout(timeout)
         selected_tools = _candidate_verification_tools(tools or ())
+        budget_lease: _BudgetLease
 
-        async def run() -> CandidateRun:
+        async def run_candidate() -> CandidateRun:
+            nonlocal budget_lease
             self._raise_if_environment_revoked()
             source_before = await self._candidate_source_state()
             self._raise_if_environment_revoked()
             lease = await self._candidate_workspace.acquire(label)
-            budget_lease = None
             token = None
             candidate: CandidateRun | None = None
             failure: BaseException | None = None
             preserve_lease = False
             try:
                 self._raise_if_environment_revoked()
-                budget_lease = await self._acquire_budget_lease(
-                    budget,
-                    over_budget_ok=False,
+                budget_lease = await self._refresh_budget_lease(
+                    budget_lease, cap=budget, over_budget_ok=False, label=label,
                 )
                 token = self._active_budget_lease.set(budget_lease)
                 self._raise_if_environment_revoked()
@@ -410,21 +410,34 @@ class WorkflowCandidatesMixin:
             finally:
                 if token is not None:
                     self._active_budget_lease.reset(token)
-                if budget_lease is not None:
-                    try:
-                        await await_owned_operation(
-                            _wait_for_candidate_cleanup(budget_lease),
-                            propagate_cancellation=True,
-                        )
-                    except asyncio.CancelledError as exc:
-                        if failure is None:
-                            failure = exc
-                    self.budget.release(budget_lease)
+                try:
+                    await await_owned_operation(
+                        _wait_for_candidate_cleanup(budget_lease),
+                        propagate_cancellation=True,
+                    )
+                except asyncio.CancelledError as exc:
+                    if failure is None:
+                        failure = exc
             return await self._finish_candidate_run(
                 lease, candidate, failure, label=label, preserve_lease=preserve_lease,
             )
 
-        return await self._run_owned_candidate_call(lambda: self._run_with_concurrency_permit(run))
+        async def run() -> CandidateRun:
+            nonlocal budget_lease
+            permit = self._active_concurrency_permit.get()
+            if permit is not None and permit.owner is asyncio.current_task():
+                await asyncio.gather(
+                    *(asyncio.shield(task) for task in permit.pending_cleanup_tasks if not task.done()),
+                    return_exceptions=True,
+                )
+            # Register with gather siblings before candidate setup takes a session slot.
+            budget_lease = await self._acquire_budget_lease(budget, over_budget_ok=False, label=label)
+            try:
+                return await self._run_with_concurrency_permit(run_candidate)
+            finally:
+                self.budget.release(budget_lease)
+
+        return await self._run_owned_candidate_call(run)
 
     async def candidate_workflow(
         self,
