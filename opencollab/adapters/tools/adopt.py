@@ -25,7 +25,7 @@ MAX_DIFF_CHARS = 8_000
 MAX_ERROR_CHARS = 2_000
 #: A full or abbreviated commit id, and nothing git would read as anything else:
 #: no ref names, no revision syntax, no option.
-_SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
+_SHA = re.compile(r"^[0-9a-fA-F]{7,64}$")
 
 
 async def _check_submodule_checkout(environment: Any, git: str, module: str, target: str) -> None:
@@ -115,7 +115,7 @@ class AdoptTool(Tool):
     name = "adopt"
     description = (
         "Check out an existing commit in your repository -- the tree that is read "
-        "as the answer -- given its sha (7 to 40 hex characters), and show what that "
+        "as the answer -- given its sha (7 to 64 hex characters), and show what that "
         "commit changes from where this run started. "
         "Recursively updates initialized submodules with the selected commit. It uses the configured "
         "command policy and process isolation, and refuses when uncommitted changes would "
@@ -150,7 +150,7 @@ class AdoptTool(Tool):
         sha = str(params.get("sha") or "").strip()
         if not _SHA.match(sha):
             return (
-                f"Error: {sha!r} is not a commit sha. Pass the 7-40 hex characters "
+                f"Error: {sha!r} is not a commit sha. Pass the 7-64 hex characters "
                 "a teammate sent you; ref names and revision syntax are not accepted."
             )
 
@@ -179,7 +179,7 @@ class AdoptTool(Tool):
             f"{git_command} rev-parse --verify --quiet {sha}^{{commit}}", timeout=30
         )
         commit = resolved.stdout.strip()
-        if resolved.returncode != 0 or not commit:
+        if resolved.returncode != 0 or not commit.startswith(sha.lower()):
             return f"Error: no commit {sha} in this repository's object store."
 
         try:

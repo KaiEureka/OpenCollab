@@ -33,11 +33,11 @@ def _commit_on_side(repo, start: str, path: str, text: str, message: str) -> str
     _git(repo, "checkout", "-q", "--detach", start)
     return sha
 
-@pytest.fixture
-def repo(tmp_path):
+@pytest.fixture(params=["sha1", "sha256"])
+def repo(tmp_path, request):
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q")
+    _git(repo, "init", "-q", f"--object-format={request.param}")
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "Test")
     (repo / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
@@ -81,7 +81,8 @@ def test_a_second_adopt_is_shown_against_where_the_run_started(repo):
 
 @pytest.mark.parametrize(
     "sha",
-    ["", "abc", "HEAD", "HEAD~1", "--orphan=x", "z" * 40, "a" * 41, "abcdef1 && rm -rf .", "main"],
+    ["", "abc", "HEAD", "HEAD~1", "refs/heads/main", "--orphan=x", "z" * 40, "a" * 41, "z" * 64, "a" * 65,
+     "abcdef1 && rm -rf .", "main"],
 )
 def test_anything_but_a_commit_sha_is_refused_and_nothing_moves(repo, sha):
     start = _git(repo, "rev-parse", "HEAD")
@@ -91,13 +92,37 @@ def test_anything_but_a_commit_sha_is_refused_and_nothing_moves(repo, sha):
     assert result.startswith("Error")
     assert _git(repo, "rev-parse", "HEAD") == start
 
-def test_an_unknown_commit_is_reported_and_nothing_moves(repo):
+@pytest.mark.parametrize("full", [False, True])
+def test_an_unknown_commit_is_reported_and_nothing_moves(repo, full):
     start = _git(repo, "rev-parse", "HEAD")
+    target = "f" * len(start) if full else "deadbeef"
 
-    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": "deadbeef"}, _runtime(repo)))
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": target}, _runtime(repo)))
 
     assert result.startswith("Error")
-    assert "deadbeef" in result
+    assert f"no commit {target}" in result
+    assert _git(repo, "rev-parse", "HEAD") == start
+
+@pytest.mark.parametrize("kind", ["blob", "tree"])
+def test_a_full_object_id_must_resolve_to_a_commit(repo, kind):
+    start = _git(repo, "rev-parse", "HEAD")
+    target = _git(repo, "rev-parse", "HEAD:app.py" if kind == "blob" else "HEAD^{tree}")
+
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": target}, _runtime(repo)))
+
+    assert f"no commit {target}" in result
+    assert _git(repo, "rev-parse", "HEAD") == start
+
+@pytest.mark.parametrize("length", [10, 48, 64])
+def test_a_hex_ref_name_is_refused_and_nothing_moves(repo, length):
+    start = _git(repo, "rev-parse", "HEAD")
+    candidate = _commit_on_side(repo, start, "app.py", "return_two = 2\n", "candidate")
+    ref = "a" * length
+    _git(repo, "branch", ref, candidate)
+
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": ref}, _runtime(repo)))
+
+    assert f"no commit {ref}" in result
     assert _git(repo, "rev-parse", "HEAD") == start
 
 def test_uncommitted_work_that_a_checkout_would_overwrite_is_not_discarded(repo):
