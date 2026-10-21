@@ -195,11 +195,9 @@ async def _physical_tree(
                 ), "physical candidate tree").strip()
 
 
-async def _physical_submodule_trees(
+async def _initialized_submodule_paths(
     environment: Any, workspace: str, *, strict: bool = False, source_prefix: str = "",
-    include_paths: Sequence[str] = (), exclude_paths: Sequence[str] = (),
-    exclude_tree_paths: Sequence[str] = (),
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[str, ...]:
     async def git_in(directory: str, *arguments: str) -> Any:
         return await environment.exec_cmd(
             f"{_git_prefix(directory, strict)} {shlex.join(arguments)}", timeout=900,
@@ -211,10 +209,20 @@ async def _physical_submodule_trees(
         _complete(result, "physical source submodule metadata inspection", allowed=(0, 1))
         return result.returncode == 0
 
-    modules = await _source_available_submodule_paths(
+    return await _source_available_submodule_paths(
         workspace, git_in=git_in, source_prefix=source_prefix,
         local_filesystem=bool(getattr(environment, "local_filesystem", False)),
         git_marker_exists=git_marker_exists,
+    )
+
+
+async def _physical_submodule_trees(
+    environment: Any, workspace: str, *, strict: bool = False, source_prefix: str = "",
+    include_paths: Sequence[str] = (), exclude_paths: Sequence[str] = (),
+    exclude_tree_paths: Sequence[str] = (), module_paths: Sequence[str] | None = None,
+) -> tuple[tuple[str, str], ...]:
+    modules = module_paths if module_paths is not None else await _initialized_submodule_paths(
+        environment, workspace, strict=strict, source_prefix=source_prefix,
     )
     trees = []
     for path in modules:
@@ -233,8 +241,9 @@ async def _physical_submodule_trees(
             exclude_untracked_paths=module_untracked_exclusions,
         ):
             continue
-        revision = _complete(await git_in(module, "rev-parse", "--verify", "HEAD"),
-                             "physical source submodule revision").strip()
+        revision = _complete(await environment.exec_cmd(
+            f"{_git_prefix(module, strict)} rev-parse --verify HEAD", timeout=900,
+        ), "physical source submodule revision").strip()
         tree = await _physical_tree(
             environment, module, revision, strict=strict,
             exclude_paths=module_untracked_exclusions,
@@ -242,6 +251,35 @@ async def _physical_submodule_trees(
         )
         trees.append((path, tree))
     return tuple(sorted(trees))
+
+
+async def _submodule_base_tree(
+    environment: Any, workspace: str, base_revision: str, path: str, *, strict: bool = False,
+) -> str | None:
+    remaining = path.split("/")
+    revision = base_revision
+    while remaining:
+        git = _git_prefix(workspace, strict)
+        for count in range(1, len(remaining) + 1):
+            prefix = "/".join(remaining[:count])
+            entry = _complete(await environment.exec_cmd(
+                f"{git} --literal-pathspecs ls-tree -z {shlex.quote(revision)} -- {shlex.quote(prefix)}",
+            ), "original submodule gitlink")
+            if not entry:
+                return None
+            mode, _kind, oid = entry.split("\t", 1)[0].split()
+            if mode == "160000":
+                workspace = posixpath.join(workspace, prefix)
+                revision = oid
+                remaining = remaining[count:]
+                break
+            if mode != "040000":
+                return None
+        else:
+            return None
+    return _complete(await environment.exec_cmd(
+        f"{_git_prefix(workspace, strict)} rev-parse --verify {shlex.quote(revision + '^{tree}')}",
+    ), "original submodule tree").strip()
 
 
 async def _tree_patch(
