@@ -180,7 +180,7 @@ async def test_between_tools_rejects_unsupported_model_before_http(tmp_path, nat
 
 
 @pytest.mark.parametrize("model", [
-    "claude-sonnet-5", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
+    "claude-sonnet-5", "claude-haiku-5-5", "claude-sonnet-4-6", "claude-opus-4-7",
 ])
 async def test_effort_without_explicit_thinking_keeps_native_default(tmp_path, native_requests, model):
     result = await _app(tmp_path, model, {"reasoning_effort": "max"}).agent(
@@ -190,3 +190,47 @@ async def test_effort_without_explicit_thinking_keeps_native_default(tmp_path, n
     assert len(native_requests) == 1
     assert "thinking" not in native_requests[0]
     assert native_requests[0]["output_config"] == {"effort": "max"}
+
+
+@pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-opus-5-5"])
+@pytest.mark.parametrize("effort", [None, "high", "xhigh", "max"])
+@pytest.mark.parametrize("entry", ["agent", "create_model_client"])
+async def test_thinking_false_keeps_model_mode_with_effort(tmp_path, native_requests, model, effort, entry):
+    thinking = {"type": "between_tools" if model == "claude-sonnet-5-5" else "disabled"}
+    accepted = model == "claude-sonnet-5-5" and effort in {None, "high"}
+    error = ("between_tools thinking requires effort high or lower" if model == "claude-sonnet-5-5"
+             else "cannot disable adaptive thinking")
+    if accepted:
+        control = await _native(model, thinking, effort)
+        assert control.content[-1].text == "ok"
+    else:
+        with pytest.raises(anthropic.BadRequestError):
+            await _native(model, thinking, effort)
+
+    app = _app(tmp_path, model, {"thinking": False, "reasoning_effort": effort})
+    if entry == "agent":
+        result = await app.agent("Return ok", tools=(), trace=False, budget=10000, max_steps=1)
+        if accepted:
+            assert result.ok, result.error
+            assert result.output == "ok"
+        else:
+            assert result.status == "failed"
+            assert error in str(result.error)
+    else:
+        async with app.create_model_client() as client:
+            async def complete():
+                return await client.complete(
+                    [{"role": "user", "content": "Return ok"}], thinking=False, reasoning_effort=effort,
+                )
+
+            if accepted:
+                response = await complete()
+                assert response.content == "ok"
+            else:
+                with pytest.raises(ValueError, match=error):
+                    await complete()
+
+    assert len(native_requests) == (2 if accepted else 1)
+    if accepted:
+        assert native_requests[1]["thinking"] == thinking
+        assert native_requests[1].get("output_config", {}).get("effort") == effort

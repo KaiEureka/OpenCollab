@@ -279,15 +279,10 @@ def _build_request_kwargs(
         else {}
     )
     _merge_anthropic_reasoning_effort(thinking_kwargs, reasoning_effort)
-    if (
-        thinking_kwargs.get("thinking", {}).get("type") == "between_tools"
-        and thinking_kwargs.get("output_config", {}).get("effort") in {"xhigh", "max"}
-    ):
-        raise ValueError("Anthropic between_tools thinking requires effort high or lower")
-
+    version = _anthropic_model_version(model)
     if (
         not thinking
-        and reasoning_effort is None
+        and (reasoning_effort is None or version in {("sonnet", 5, 5), ("opus", 5, 5)})
         and _anthropic_defaults_to_thinking(model)
     ):
         if _anthropic_thinking_is_always_on(model):
@@ -296,9 +291,15 @@ def _build_request_kwargs(
                 'set thinking=True with thinking_params={"thinking": {"type": "adaptive"}}'
             )
         thinking_kwargs["thinking"] = {
-            "type": "between_tools" if _anthropic_model_version(model) == ("sonnet", 5, 5)
+            "type": "between_tools" if version == ("sonnet", 5, 5)
             else "disabled"
         }
+
+    if (
+        thinking_kwargs.get("thinking", {}).get("type") == "between_tools"
+        and thinking_kwargs.get("output_config", {}).get("effort") in {"xhigh", "max"}
+    ):
+        raise ValueError("Anthropic between_tools thinking requires effort high or lower")
 
     if not thinking and model_capabilities(model).chat_thinking_protocol == "thinking.type":
         thinking_kwargs["thinking"] = {"type": "disabled"}
@@ -314,7 +315,6 @@ def _build_request_kwargs(
     default_sampling_only = _anthropic_requires_default_sampling(model)
     if default_sampling_only and top_p == 0.99:
         top_p = None
-    version = _anthropic_model_version(model)
     claude_4_sampling = version is not None and version[0] in {"opus", "sonnet", "haiku"} and version[1] == 4
     # Claude 4 accepts at most one of temperature and top_p.
     if not thinking and not default_sampling_only and (top_p is None or not claude_4_sampling):
