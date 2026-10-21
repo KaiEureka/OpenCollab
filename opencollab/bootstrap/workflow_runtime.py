@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 
 from opencollab.adapters.llm.retry import _with_native_retry_budget_scope
@@ -94,6 +95,7 @@ async def run_workflow(
     candidate_workspace: Any | None = None,
     run_id: str | None = None,
     llm: Any | None = None,
+    session_builder: Callable[..., Any] | None = None,
     limit_mode: str = "environment",
 ) -> Any:
     """Run through one owned lifecycle with an optional wall-clock deadline."""
@@ -125,6 +127,7 @@ async def run_workflow(
                 system_prompt=system_prompt,
                 agent_profile=agent_profile,
                 llm=llm,
+                session_builder=session_builder,
                 limit_mode=limit_mode,
                 candidate_workspace=candidate_workspace,
                 run_id=run_id,

@@ -51,10 +51,12 @@ SCHEDULER_TOOL_FACTORIES: dict[str, Callable[[SchedulerPort], Tool]] = {
 SKILL_TOOL_FACTORIES: dict[str, Callable[[SkillStorePort], Tool]] = {
     "use_skill": UseSkillTool,
 }
+WORKFLOW_TOOL_NAMES = frozenset({"run_workflow"})
 KNOWN_TOOL_NAMES: frozenset[str] = (
     frozenset(STATELESS_TOOL_FACTORIES)
     | frozenset(SCHEDULER_TOOL_FACTORIES)
     | frozenset(SKILL_TOOL_FACTORIES)
+    | WORKFLOW_TOOL_NAMES
 )
 # Tools that let a role act on teammates — used to decide whether to render the
 # topology-aware "Your team" prompt section.
@@ -116,6 +118,7 @@ def build_tools_for_role(
     tool_names: list[str],
     *,
     scheduler: SchedulerPort | None = None,
+    workflow_tool: Tool | None = None,
     skill_store: SkillStorePort | None = None,
     ask_user_available: bool = False,
     allow_unisolated_shell: bool = False,
@@ -139,7 +142,11 @@ def build_tools_for_role(
     for name in tool_names:
         if name == "ask_user" and not ask_user_available:
             continue
-        if name in STATELESS_TOOL_FACTORIES:
+        if name in WORKFLOW_TOOL_NAMES:
+            if workflow_tool is None:
+                raise ValueError("run_workflow requires a Team session")
+            tools.append(workflow_tool)
+        elif name in STATELESS_TOOL_FACTORIES:
             tools.append(
                 _instantiate(
                     name,
