@@ -519,7 +519,7 @@ class DefaultSessionFactory:
                 role_name=role_name,
                 tools_present=bool(tool_names),
                 top_p=self._cfg.top_p,
-                reasoning_effort=self._cfg.reasoning_effort,
+                reasoning_effort=self._cfg.reasoning_effort_for_role(role),
             )
         fallback_tool_names = set(BASE_TOOL_NAMES) - {"ask_user"}
         if self._team.topology.allow_all:

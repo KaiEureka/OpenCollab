@@ -77,6 +77,14 @@ class SpawnConfig:
             self.thinking_params_explicit = self.thinking_params is not None
         self.thinking_params = dict(DEFAULT_THINKING_PARAMS if self.thinking_params is None else self.thinking_params)
 
+    def reasoning_effort_for_role(self, role: RoleConfig) -> str | None:
+        capabilities = model_capabilities(role.model or self.model)
+        if role.thinking is False and (
+            not self.thinking or capabilities.honors_workflow_thinking_override
+        ):
+            return None
+        return self.reasoning_effort
+
 
 class ContextBuilder:
     """Assemble role context and resolve tool names for entry and spawned agents.
@@ -218,8 +226,6 @@ class ContextBuilder:
         temperature = (
             role.temperature if role.temperature is not None else cfg.temperature
         )
-        # Thinking resolves the same way: an explicit per-role value (incl. an
-        # explicit False) wins; otherwise inherit the global SpawnConfig value.
         thinking = role.thinking if role.thinking is not None else cfg.thinking
         thinking_params = (
             role.thinking_params
@@ -245,7 +251,7 @@ class ContextBuilder:
             thinking_params_explicit=(
                 role.thinking_params is not None or cfg.thinking_params_explicit
             ),
-            reasoning_effort=cfg.reasoning_effort,
+            reasoning_effort=cfg.reasoning_effort_for_role(role),
             llm_max_retries=cfg.llm_max_retries,
             llm_connect_timeout=cfg.llm_connect_timeout,
             llm_first_event_timeout=cfg.llm_first_event_timeout,
