@@ -10,14 +10,17 @@ from collections.abc import Callable
 
 from opencollab.adapters._candidate_physical import (
     _checkout_physical_tree,
+    _has_worktree_conversions,
     _physical_submodule_trees,
     _physical_tree,
+    _replay_physical_tree,
     _submodule_base_tree,
+    _tree_patch,
 )
 from opencollab.adapters._env_base import ExecResult
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_worktree_submodules import _initialize_source_available_submodules
-from opencollab.adapters._git_patch_bytes import _complete, _complete_patch
+from opencollab.adapters._git_patch_bytes import _complete
 from opencollab.adapters.git_patch import guarded_staged_diff_command
 from opencollab.adapters.git_worktree_evidence import (
     ABSENT_REF_OLD_VALUE,
@@ -81,6 +84,7 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
         self._registered_worktree_path: str | None = None
         self._git_diff_delivery_pending = False
         self._submodule_checkout_trees: dict[tuple[str, str | None], str] = {}
+        self._physical_source_trees: dict[str, str] = {}
         self._base_commit: str | None = None
         self._diff_base: str | None = None
         self._head_commit: str | None = None
@@ -228,11 +232,20 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
             require_initialized=False, local_filesystem=False,
             git_marker_exists=self._source_git_marker_exists,
         )
+        await self._remember_physical_source(
+            self._base_commit, await _physical_tree(self, self._worktree_dir, self._base_commit, strict=True),
+        )
         for path, tree in await _physical_submodule_trees(
             self, self._worktree_dir, source_prefix=self._source_subdir,
         ):
             original = await _submodule_base_tree(self, self._worktree_dir, self._base_commit, path)
             self._submodule_checkout_trees[path, original] = tree
+
+    async def _remember_physical_source(self, revision: str, tree: str) -> None:
+        _complete(await self._git(
+            self._worktree_dir, "update-ref", f"refs/worktree/opencollab-physical-source/{revision}", tree,
+        ), "container worktree physical source reference")
+        self._physical_source_trees[revision] = tree
 
     def retain_changes(self) -> str:
         """Keep the worktree when a bounded delivery omitted part of its patch."""
@@ -252,8 +265,9 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
         self._diff_base = await self._resolve_diff_base()
         await self._resolve_own_commits(self._diff_base)
         result = await self.exec_cmd(
-            f"cd -- {shlex.quote(self._worktree_dir)} && "
+            f"cd -- {shlex.quote(self._worktree_dir)} && {{ "
             + guarded_staged_diff_command(base_revision=self._diff_base)
+            + "; } >/dev/null"
         )
         if result.stdout_truncated or result.stderr_truncated:
             raise RuntimeError(
@@ -266,10 +280,22 @@ class ContainerWorktreeEnvironment(DockerEnvironment):
                 f"worktree retained at {self._worktree_dir}"
             )
         await self._assert_physical_submodules(self._diff_base)
-        patch = await _complete_patch(
-            result, "container worktree diff conversion", self,
-            self._worktree_dir, self._diff_base, None, captured_blobs=True,
-        )
+        original = self._physical_source_trees.get(self._diff_base)
+        if original is None:
+            original = await _checkout_physical_tree(self, self._repository_root, self._diff_base)
+            await self._remember_physical_source(self._diff_base, original)
+        current = await _physical_tree(self, self._worktree_dir, self._diff_base, strict=True)
+        patch = await _tree_patch(self, self._worktree_dir, original, current)
+        if patch.strip() and (
+            await _has_worktree_conversions(self, self._worktree_dir)
+            or await _has_worktree_conversions(self, self._repository_root)
+        ):
+            replayed = await _replay_physical_tree(self, self._repository_root, original, patch)
+            if replayed != current:
+                raise RuntimeError(
+                    "container worktree physical changes cannot be delivered as a repository patch; "
+                    f"worktree retained at {self._worktree_dir}"
+                )
         self._git_diff_delivery_pending = False
         return patch
 
