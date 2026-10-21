@@ -26,7 +26,7 @@ async def test_public_candidate_exclusions_filter_submodule_observations(
         workspace = source / "package"
         (workspace / "vendor").mkdir(parents=True)
         _git(source, "mv", "vendor/dependency", "package/vendor/dependency")
-        _git(source, "commit", "-am", "将子模块移入公开工作目录")
+        _git(source, "commit", "-am", "Move submodule into exposed workspace")
         module_path = "package/" + module_path
     relative_module = (source / module_path).relative_to(workspace).as_posix()
     source_index, module_index = _index(source), _index(source / module_path)
