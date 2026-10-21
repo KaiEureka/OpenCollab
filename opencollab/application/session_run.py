@@ -319,7 +319,9 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         elif entry_phase is SessionPhase.DONE:
             # Re-entering an already-completed session is a compatibility
             # read-only query for its final answer, not a restored active turn.
-            self._turn_start_message_index = 0
+            self._turn_start_message_index = self.state.completed_turn_start_message_index
+            if self._turn_start_message_index is None:
+                self._turn_start_message_index = 0
         else:
             self._turn_start_message_index = len(self.state.messages)
             self.state.start_active_turn(self._turn_start_message_index)

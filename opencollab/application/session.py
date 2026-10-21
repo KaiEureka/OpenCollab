@@ -651,6 +651,13 @@ class Session:
                 restored.append_message(answer)
             restored.mark_done()
             restored.terminal_reason = "submitted"
+        if restored.phase is SessionPhase.DONE:
+            completed_turn_start = _restore_active_turn_start(
+                raw_state.get("completed_turn_start_message_index"), restored.messages,
+            )
+            restored.completed_turn_start_message_index = (
+                completed_turn_start if completed_turn_start is not None else restored_turn_start
+            )
 
     def _normalize_forked_state(self, state: SessionState, raw_state: dict[str, Any]) -> None:
         state.pending_events.clear()
@@ -678,6 +685,7 @@ class Session:
             "phase": state.phase.value,
             "pending_events": [_serialize_pending_row(row) for row in state.pending_events.rows.values()],
             "active_turn_start_message_index": state.active_turn_start_message_index,
+            "completed_turn_start_message_index": state.completed_turn_start_message_index,
             "pending_step_latency": state.pending_step_latency,
             "submitted_summary": state.submitted_summary,
             "terminal_reason": state.terminal_reason,
@@ -901,6 +909,7 @@ class Session:
                     state.pending_external_user_turn
                 ),
                 "active_turn_start_message_index": state.active_turn_start_message_index,
+                "completed_turn_start_message_index": state.completed_turn_start_message_index,
                 "pending_step_latency": state.pending_step_latency,
                 "submitted_summary": state.submitted_summary,
                 "anthropic_history": state.anthropic_history,
