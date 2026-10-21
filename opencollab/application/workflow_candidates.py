@@ -248,14 +248,20 @@ class WorkflowCandidatesMixin:
             if current is not None and not already_owned:
                 self._active_call_tasks.discard(current)
 
-    async def _candidate_source_state(self) -> tuple[str | None, str]:
+    async def _candidate_source_state(self) -> tuple[str | None, str, str | None]:
         read_revision = getattr(self._candidate_workspace, "source_revision", None)
         revision = await read_revision() if callable(read_revision) else None
-        return revision, await self._candidate_workspace.source_diff()
+        read_index = getattr(self._candidate_workspace, "source_index_revision", None)
+        index = await read_index() if callable(read_index) else None
+        return revision, await self._candidate_workspace.source_diff(), index
 
-    async def _candidate_source_changed(self, lease: Any, before: tuple[str | None, str]) -> bool:
-        if await self._candidate_source_state() != before:
+    async def _candidate_source_changed(self, lease: Any, before: tuple[str | None, str, str | None]) -> bool:
+        after = await self._candidate_source_state()
+        if after[0] != before[0] or after[2] != before[2]:
             return True
+        if after[1] != before[1]:
+            inspect_contents = getattr(lease, "source_contents_changed", None)
+            return bool(await inspect_contents()) if callable(inspect_contents) else True
         inspect_source = getattr(lease, "physical_source_changed", None)
         return bool(await inspect_source()) if callable(inspect_source) else False
 

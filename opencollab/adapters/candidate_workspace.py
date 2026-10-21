@@ -192,7 +192,10 @@ class _CandidateLease:
                 return True
         return False
 
-    async def physical_source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
+    async def source_contents_changed(self) -> bool:
+        return await self.physical_source_changed(force=True)
+
+    async def physical_source_changed(self, exclude_paths: Sequence[str] = (), *, force: bool = False) -> bool:
         excluded = _repository_exclusions(self.workspace_prefix, exclude_paths)
         if await self._submodule_contents_changed(
             self.source_workspace, self.physical_source_submodules,
@@ -202,7 +205,7 @@ class _CandidateLease:
             return True
         original_tree = self.physical_base_revision
         if original_tree is None:
-            if not await _has_worktree_conversions(
+            if not force and not await _has_worktree_conversions(
                 self.base_environment, self.source_workspace, strict=self.strict_capture,
                 exclude_paths=excluded, exclude_untracked_paths=self.source_untracked_exclusions,
             ):
@@ -803,6 +806,19 @@ class EnvCandidateWorkspace:
             ),
             "candidate source revision",
         ).strip()
+
+    async def source_index_revision(self) -> str:
+        root = await self._repository_root()
+        # Unmerged stages have no tree, and the entry list can exceed process capture.
+        async with _candidate_temporary(
+            self._environment, root, "", prefix=".candidate-source-state-",
+        ) as entries:
+            git = f"git -C {shlex.quote(root)}"
+            return _complete(await self._environment.exec_cmd(
+                f"{git} ls-files --stage -z > {shlex.quote(entries)} && "
+                f"{git} hash-object --no-filters --stdin < {shlex.quote(entries)}",
+                timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+            ), "candidate source index entries").strip()
 
     async def restore_source(self, patch: str) -> None:
         await self._replace_source_diff(patch)
