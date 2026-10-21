@@ -72,8 +72,14 @@ async def duo(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
             return _without_owned_evidence(source, directory.relative_to(evidence_root).as_posix())
 
     physical_source_reader = None
-    read_physical = getattr(getattr(ctx, "_candidate_workspace", None), "physical_source_revision", None)
-    if callable(read_physical):
+    source_tracker = None
+    candidate_workspace = getattr(ctx, "_candidate_workspace", None)
+    track_source = getattr(candidate_workspace, "track_source", None)
+    read_physical = getattr(candidate_workspace, "physical_source_revision", None)
+    if callable(track_source):
+        async def source_tracker(patch: str | None) -> Any:
+            return await track_source(patch, exclude_paths=evidence_exclusions)
+    elif callable(read_physical):
         async def physical_source_reader() -> str | None:
             return await read_physical(exclude_paths=evidence_exclusions)
 
@@ -85,6 +91,7 @@ async def duo(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
     result = await run_dual_coder(
         ctx, args, selector_prompt=SELECTION_PROMPT, adjudicator=adjudicator,
         source_reader=source_reader, physical_source_reader=physical_source_reader,
+        source_tracker=source_tracker,
     )
     result["prompt_revision"] = _PROMPT_REVISION
     return result

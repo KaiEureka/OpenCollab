@@ -135,6 +135,7 @@ async def run_dual_coder(
     role_rules: str = SHARED_RULES,
     source_reader: Callable[[], Awaitable[str | None]] | None = None,
     physical_source_reader: Callable[[], Awaitable[str | None]] | None = None,
+    source_tracker: Callable[[str | None], Awaitable[Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the existing candidate and selection sequence with a per-call prompt."""
     goal = _complete_goal(str(args.get("goal") or args.get("description") or ""))
@@ -154,6 +155,7 @@ async def run_dual_coder(
     prompts = coder_prompts or (MINIMAL_CODER_PROMPT, CROSS_COMPONENT_CODER_PROMPT)
     read_source = source_reader or ctx.diff
     source_before = await read_source()
+    source_snapshot = await source_tracker(source_before) if source_tracker is not None else None
     physical_before = await physical_source_reader() if physical_source_reader is not None else None
 
     await ctx.phase("dual-coder-a")
@@ -198,7 +200,11 @@ async def run_dual_coder(
 
     source_before_adoption = await read_source()
     physical_before_adoption = await physical_source_reader() if physical_source_reader is not None else None
-    if source_before_adoption != source_before or physical_before_adoption != physical_before:
+    source_changed = (
+        await source_snapshot.changed(source_before_adoption) if source_snapshot is not None else
+        source_before_adoption != source_before or physical_before_adoption != physical_before
+    )
+    if source_changed:
         raise RuntimeError("candidate_workspace_tracking_failure: source worktree changed before candidate adoption")
 
     candidates = {"A": candidate_a, "B": candidate_b}

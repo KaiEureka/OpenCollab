@@ -193,9 +193,13 @@ async def test_duo_source_revision_survives_coder_wrapper(tmp_path, monkeypatch,
             assert (repo / "source.py").read_text() == "def value():\n    return 1\n"
             assert (repo / "helper.sh").read_bytes() == helper.replace(b"\n", b"\r\n")
         elif mutate:
-            assert result.output.get("adopted") is None
+            current_revision = git(repo, "rev-parse", "HEAD").strip()
+            assert current_revision != original_revision
+            assert current_revision == git(repo, "rev-parse", "other").strip()
+            assert not result.ok
+            assert "source worktree changed before candidate adoption" in result.reason
             assert (repo / "source.py").read_text() == "def value():\n    return 1\n"
-            assert result.output["status"] == "incomplete"
+            assert (repo / "flags.py").read_text() == "ENABLED = False\n"
         else:
             assert result.output["adopted"] == "B"
             assert final.returncode == 0

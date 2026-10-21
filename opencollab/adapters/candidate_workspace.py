@@ -27,6 +27,7 @@ from opencollab.adapters._candidate_physical import (
     _submodule_base_tree,
     _tree_patch,
 )
+from opencollab.adapters._candidate_source import _source_snapshot
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import ProcessCleanupError
@@ -773,6 +774,9 @@ class EnvCandidateWorkspace:
                 exclude_tree_paths=excluded,
             )
         return json.dumps((revision, modules)) if modules else revision
+
+    async def track_source(self, patch: str | None, exclude_paths: Sequence[str] = ()) -> Any:
+        return await _source_snapshot(self, patch, tuple(_safe_path(path) for path in exclude_paths))
 
     async def _source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
         repository_root = await self._repository_root()
