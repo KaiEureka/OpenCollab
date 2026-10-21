@@ -14,15 +14,19 @@ from contextlib import asynccontextmanager
 from opencollab.adapters._candidate_increment import _apply_increment
 from opencollab.adapters._candidate_physical import (
     _checkout_physical_tree,
+    _has_worktree_conversions,
+    _physical_git,
     _physical_submodule_trees,
     _physical_tree,
+    _replay_physical_tree,
     _submodule_base_tree,
+    _tree_patch,
 )
 from opencollab.adapters._env_base import Environment, ExecResult, TextFileRange
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import run_process
 from opencollab.adapters._env_worktree_submodules import _initialize_source_available_submodules
-from opencollab.adapters._git_patch_bytes import _complete, _complete_patch
+from opencollab.adapters._git_patch_bytes import _complete, _complete_patch, _patch_temporary
 from opencollab.adapters.git_patch import guarded_staged_diff_command
 from opencollab.adapters.git_worktree_evidence import (
     ABSENT_REF_OLD_VALUE,
@@ -95,6 +99,7 @@ class WorktreeEnvironment(Environment):
         self._copy_exported_diff: str | None = None
         self._local_env: LocalEnvironment | None = None
         self._base_commit: str | None = None
+        self._physical_source_trees: dict[str, str] = {}
         self._git_mode = False
         self._branch_owned = False
         self._owned_branch_oid: str | None = None
@@ -170,6 +175,7 @@ class WorktreeEnvironment(Environment):
             if self._git_mode:
                 owner = LocalEnvironment(self._worktree_dir)
                 try:
+                    await self._copy_source_physical_contents(owner)
                     for path, tree in await _physical_submodule_trees(owner, self._worktree_dir):
                         original = await _submodule_base_tree(
                             owner, self._worktree_dir, self._base_commit, path,
@@ -294,6 +300,38 @@ class WorktreeEnvironment(Environment):
             raise RuntimeError(f"git worktree add failed: {added.stderr.strip()}")
         self._worktree_registered = True
         await self._initialize_available_submodules()
+
+    def _source_untracked_exclusions(self) -> tuple[str, ...]:
+        if self._owned_save_dir is None or self._repository_root is None:
+            return ()
+        relative = os.path.relpath(self._owned_save_dir, self._repository_root)
+        return (relative.replace(os.sep, "/"),) if relative != ".." and not relative.startswith(".." + os.sep) else ()
+
+    async def _remember_physical_source(self, revision: str, tree: str) -> None:
+        assert self._worktree_dir is not None
+        _complete(await self._git_in(
+            self._worktree_dir, "update-ref", f"refs/worktree/opencollab-physical-source/{revision}", tree,
+        ), "worktree physical source reference")
+        self._physical_source_trees[revision] = tree
+
+    async def _copy_source_physical_contents(self, owner: LocalEnvironment) -> None:
+        assert self._repository_root is not None and self._worktree_dir is not None
+        assert self._base_commit is not None
+        source_tree = await _physical_tree(
+            owner, self._repository_root, self._base_commit, exclude_paths=self._source_untracked_exclusions(),
+        )
+        current = await _physical_tree(owner, self._worktree_dir, self._base_commit)
+        if current != source_tree:
+            async with _patch_temporary(
+                owner, self._worktree_dir, "", prefix=".worktree-physical-source-", suffix=".patch",
+            ) as patch_file:
+                async with _physical_git(owner, self._worktree_dir) as (git, _directory):
+                    _complete(await owner.exec_cmd(
+                        f"{git} --no-pager diff --binary --full-index --no-ext-diff --no-textconv --no-color "
+                        f"--output={shlex.quote(patch_file)} {shlex.quote(current)} {shlex.quote(source_tree)} && "
+                        f"{git} apply --binary --whitespace=nowarn -- {shlex.quote(patch_file)}", timeout=900,
+                    ), "worktree physical source contents")
+        await self._remember_physical_source(self._base_commit, source_tree)
 
     async def _git_in(self, workspace: str, *args: str) -> ExecResult:
         result = await run_process(
@@ -480,10 +518,11 @@ class WorktreeEnvironment(Environment):
         base_revision = await self._resolve_diff_base()
         self._diff_base = base_revision
         await self._resolve_own_commits(base_revision)
-        # Enumerate new paths from the same repository root as the final diff.
+        # The guard patch can include source changes that predate this candidate.
         result = await owner.exec_cmd(
-            f"cd -- {shlex.quote(self._worktree_dir)} && "
+            f"cd -- {shlex.quote(self._worktree_dir)} && {{ "
             + guarded_staged_diff_command(base_revision=base_revision)
+            + "; } >/dev/null"
         )
         if result.stdout_truncated or result.stderr_truncated:
             raise RuntimeError(
@@ -526,10 +565,31 @@ class WorktreeEnvironment(Environment):
                     "submodule physical changes cannot be delivered as a repository patch; "
                     f"worktree retained at {self.workspace}"
                 )
-        patch = await _complete_patch(
-            result, "worktree diff conversion", owner,
-            self._worktree_dir, base_revision, None, captured_blobs=True,
-        )
+        original = self._physical_source_trees.get(base_revision)
+        if original is None:
+            assert self._repository_root is not None
+            source_revision = _complete(await self._git(
+                "rev-parse", "--verify", "HEAD^{commit}",
+            ), "source worktree revision").strip()
+            original = (
+                await _physical_tree(
+                    owner, self._repository_root, base_revision, exclude_paths=self._source_untracked_exclusions(),
+                ) if source_revision == base_revision else
+                await _checkout_physical_tree(owner, self._repository_root, base_revision)
+            )
+            await self._remember_physical_source(base_revision, original)
+        current = await _physical_tree(owner, self._worktree_dir, base_revision)
+        patch = await _tree_patch(owner, self._worktree_dir, original, current)
+        if patch.strip() and (
+            await _has_worktree_conversions(owner, self._worktree_dir)
+            or await _has_worktree_conversions(owner, self._repository_root)
+        ):
+            replayed = await _replay_physical_tree(owner, self._repository_root, original, patch)
+            if replayed != current:
+                raise RuntimeError(
+                    "worktree physical changes cannot be delivered as a repository patch; "
+                    f"worktree retained at {self.workspace}"
+                )
         self._git_diff_delivery_pending = False
         return patch
 

@@ -320,6 +320,8 @@ async def _tree_patch(
         f"{shlex.quote(before)} {shlex.quote(after)}{exclusions}"
     )
     result = await environment.exec_cmd(f"{_git_prefix(workspace, strict)} {options}", timeout=900)
+    if getattr(result, "stdout_truncated", False) or getattr(result, "stderr_truncated", False):
+        raise RuntimeError("captured candidate patch exceeded capture limit")
     return await _complete_patch(
         result, "captured candidate patch", environment, workspace, before, None,
         captured_blobs=True,
@@ -345,6 +347,37 @@ async def _checkout_physical_tree(environment: Any, workspace: str, tree: str) -
         return _complete(await environment.exec_cmd(
             f"{physical} write-tree",
         ), "submodule expected physical tree").strip()
+
+
+async def _replay_physical_tree(environment: Any, workspace: str, before: str, patch: str) -> str:
+    async with _physical_git(environment, workspace) as (raw_git, directory):
+        snapshot = directory + "/replay"
+        git_directory = _complete(await environment.exec_cmd(
+            f"{_git_prefix(workspace)} rev-parse --absolute-git-dir",
+        ), "worktree replay Git directory").removesuffix("\n")
+        physical = f"{raw_git} -C {shlex.quote(snapshot)} --work-tree={shlex.quote(snapshot)}"
+        replay = (
+            f"GIT_INDEX_FILE={shlex.quote(directory + '/replay-index')} "
+            f"{_git_prefix(workspace)} -C {shlex.quote(snapshot)} "
+            f"--git-dir={shlex.quote(git_directory)} --work-tree={shlex.quote(snapshot)}"
+        )
+        _complete(await environment.exec_cmd(
+            f"mkdir -- {shlex.quote(snapshot)} && {physical} read-tree {shlex.quote(before)} && "
+            f"{physical} checkout-index --all --prefix={shlex.quote(snapshot + '/')}", timeout=900,
+        ), "worktree physical replay setup")
+        async with _patch_temporary(
+            environment, workspace, patch, prefix=".worktree-replay-", suffix=".patch",
+        ) as patch_file:
+            _complete(await environment.exec_cmd(
+                f"{replay} read-tree {shlex.quote(before)} && "
+                f"{replay} apply --binary --whitespace=nowarn -- {shlex.quote(patch_file)}", timeout=900,
+            ), "worktree physical patch replay")
+        _complete(await environment.exec_cmd(
+            f"{physical} --literal-pathspecs add --all --force -- {shlex.join(patch_paths(patch))}", timeout=900,
+        ), "worktree replay contents capture")
+        return _complete(await environment.exec_cmd(
+            f"{physical} write-tree",
+        ), "worktree replay physical tree").strip()
 
 
 async def _normalize_tree(
