@@ -24,7 +24,7 @@ def _source(tmp_path, setting):
     if setting in {"lf", "crlf"}:
         (source / ".gitattributes").write_text(f"*.txt text eol={setting}\n")
     _git(source, "add", ".")
-    _git(source, "commit", "-qm", "准备源文件")
+    _git(source, "commit", "-qm", "Prepare source files")
     return source
 
 
@@ -69,7 +69,7 @@ async def test_default_pool_starts_with_source_physical_bytes(tmp_path, subdirec
         assert (tested.returncode, tested.stdout) == (0, "passed\n")
         if setting == "assume-unchanged":
             _git(folder, "add", ".")
-            _git(folder, "commit", "-qm", "保存候选修改")
+            _git(folder, "commit", "-qm", "Save candidate changes")
         candidate_index = _index(folder)
         patch = await candidate.get_diff()
         assert "diff --git a/data.txt" in patch
@@ -125,7 +125,7 @@ async def test_default_pool_delivers_own_commit_after_checkout_of_new_source_com
     try:
         (source / "data.txt").write_bytes(b"new\nparent\n")
         _git(source, "add", "data.txt")
-        _git(source, "commit", "-qm", "更新源提交")
+        _git(source, "commit", "-qm", "Update source revision")
         parent = _git(source, "rev-parse", "HEAD").strip()
         _git(folder, "checkout", "-q", "--force", parent)
         updated = b"new\r\nparent\r\ncandidate\r\n"
@@ -135,7 +135,7 @@ async def test_default_pool_delivers_own_commit_after_checkout_of_new_source_com
             f"assert Path('data.txt').read_bytes() == {updated!r}\nprint('passed')\n",
         )
         _git(folder, "add", ".")
-        _git(folder, "commit", "-qm", "保存候选修改")
+        _git(folder, "commit", "-qm", "Save candidate changes")
         own_commit = _git(folder, "rev-parse", "HEAD").strip()
         tested = await candidate.exec_cmd(shlex.join((sys.executable, "-B", "app/entry.py")))
         assert (tested.returncode, tested.stdout) == (0, "passed\n")
@@ -202,7 +202,7 @@ async def test_default_pool_copies_large_source_without_capturing_patch_stdout(t
     original = line * (400_000 // len(line))
     (source / "large.txt").write_bytes(original)
     _git(source, "add", "large.txt")
-    _git(source, "commit", "-qm", "准备中等大小的源文件")
+    _git(source, "commit", "-qm", "Prepare medium source file")
     assert _git(source, "--no-optional-locks", "status", "--porcelain") == ""
     index = _index(source)
     pool = WorktreePool(str(source), use_worktrees=True)
@@ -237,7 +237,7 @@ async def test_default_pool_exports_app_only_patch_from_large_hidden_source(tmp_
     original = b"y\n" * 200_000
     (source / "large.txt").write_bytes(b"x\n" * 200_000 if hidden else original)
     _git(source, "add", "large.txt")
-    _git(source, "commit", "-qm", "准备大文件来源对照")
+    _git(source, "commit", "-qm", "Prepare large source control")
     if hidden:
         _git(source, "update-index", "--assume-unchanged", "large.txt")
         (source / "large.txt").write_bytes(original)
