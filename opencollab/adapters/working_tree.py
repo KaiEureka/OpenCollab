@@ -10,7 +10,8 @@ import shlex
 from collections.abc import Sequence
 from typing import Any
 
-from opencollab.adapters.candidate_workspace import _safe_path
+from opencollab.adapters.candidate_workspace import _repository_exclusions, _safe_path
+from opencollab.adapters.git_patch import _submodule_status_command
 
 MAX_WORKING_TREE_DIFF_CHARS = 1_000_000
 WORKING_TREE_GIT_TIMEOUT_SECONDS = 900.0
@@ -75,13 +76,29 @@ class EnvWorkingTreeProbe:
         excludes = " ".join(shlex.quote(f":(exclude,literal){_safe_path(p)}") for p in paths)
         cmd = (
             f"git --no-optional-locks -C {shlex.quote(self._workspace)} status --porcelain "
-            f"--untracked-files=all -- ':(top)' {excludes}"
+            f"--untracked-files=all --ignore-submodules=dirty -- ':(top)' {excludes}"
         )
         result = await self._env.exec_cmd(
             cmd,
             timeout=WORKING_TREE_GIT_TIMEOUT_SECONDS,
         )
         _require_complete_result(result, "working-tree status")
+        if result.stdout.strip():
+            return True
+        git = f"git --no-optional-locks -C {shlex.quote(self._workspace)}"
+        root = await self._env.exec_cmd(f"{git} rev-parse --show-toplevel", timeout=WORKING_TREE_GIT_TIMEOUT_SECONDS)
+        _require_complete_result(root, "working-tree repository root")
+        prefix = await self._env.exec_cmd(f"{git} rev-parse --show-prefix", timeout=WORKING_TREE_GIT_TIMEOUT_SECONDS)
+        _require_complete_result(prefix, "working-tree workspace location")
+        repository = root.stdout.removesuffix("\n")
+        result = await self._env.exec_cmd(
+            _submodule_status_command(
+                f"git --no-optional-locks -C {shlex.quote(repository)}",
+                reject_ignored_untracked=False,
+                exclude_paths=_repository_exclusions(prefix.stdout.removesuffix("\n"), paths),
+            ), timeout=WORKING_TREE_GIT_TIMEOUT_SECONDS,
+        )
+        _require_complete_result(result, "working-tree submodule status")
         return bool(result.stdout.strip())
 
     async def diff(self) -> str:

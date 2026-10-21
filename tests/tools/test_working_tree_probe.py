@@ -68,7 +68,7 @@ def test_changed_excluding_issues_exclude_pathspec_and_returns_bool():
 
     assert result is True
     assert env.commands[-1] == (
-        "git --no-optional-locks -C /ws status --porcelain --untracked-files=all "
+        "git --no-optional-locks -C /ws status --porcelain --untracked-files=all --ignore-submodules=dirty "
         "-- ':(top)' ':(exclude,literal)tests/test_inj.py'"
     )
 
@@ -85,7 +85,7 @@ def test_changed_excluding_quotes_each_exclude_token_separately():
     run(probe.changed_excluding(["a/b.py", "c/d.py"]))
 
     assert env.commands[-1] == (
-        "git --no-optional-locks -C /ws status --porcelain --untracked-files=all "
+        "git --no-optional-locks -C /ws status --porcelain --untracked-files=all --ignore-submodules=dirty "
         "-- ':(top)' ':(exclude,literal)a/b.py' ':(exclude,literal)c/d.py'"
     )
 

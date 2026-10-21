@@ -68,6 +68,39 @@ def _git_command_and_config_guard(*, allow_core_worktree: bool = False) -> tuple
     )
     return git_command, unsafe_config_guard
 
+def _submodule_status_command(
+    git_command: str, *,
+    reject_ignored_untracked: bool = True,
+    exclude_untracked_paths: Sequence[str] = (),
+    exclude_paths: Sequence[str] = (),
+) -> str:
+    """Inspect initialized modules with repository-relative exclusions."""
+    ignored = " --ignored=matching" if reject_ignored_untracked else ""
+    module_status = f"git status --porcelain=v1 --untracked-files=normal{ignored} --ignore-submodules=none"
+    if exclude_untracked_paths or exclude_paths:
+        module_status = "set -- .; "
+        for paths, tracked in ((exclude_paths, True), (exclude_untracked_paths, False)):
+            for path in paths:
+                module_status += (
+                    f"excluded={shlex.quote(path)}; "
+                    'if [ "$excluded" = . ]; then excluded="$displaypath"; fi; '
+                    'case "$displaypath" in "$excluded"|"$excluded"/*) '
+                    'set -- "$@" ":(exclude,literal).";; '
+                    '*) case "$excluded" in "$displaypath"/*) '
+                    'set -- "$@" ":(exclude,literal)${excluded#"$displaypath"/}";; esac;; esac; '
+                )
+            if tracked:
+                # Owned output only excludes untracked files.
+                module_status += (
+                    "git --no-optional-locks status --porcelain=v1 --untracked-files=no "
+                    '--ignore-submodules=dirty -- "$@" || exit $?; '
+                )
+        module_status += (
+            "git --no-optional-locks status --porcelain=v1 --untracked-files=all"
+            f'{ignored} --ignore-submodules=dirty -- "$@"'
+        )
+    return f"{git_command} submodule foreach --quiet --recursive {shlex.quote(module_status)}"
+
 def _submodule_patch_guard(
     git_command: str,
     base_revision: str,
@@ -75,43 +108,31 @@ def _submodule_patch_guard(
     indexed_git_command: str | None = None,
     reject_ignored_untracked: bool = True,
     exclude_untracked_paths: Sequence[str] = (),
+    exclude_paths: Sequence[str] = (),
 ) -> str:
     """Reject module edits that an ordinary parent patch cannot deliver."""
     indexed_git = indexed_git_command or git_command
-    ignore_submodules = "dirty" if exclude_untracked_paths else "none"
+    ignore_submodules = "dirty" if exclude_untracked_paths or exclude_paths else "none"
     raw_options = f"--raw --no-renames --no-abbrev --no-color --ignore-submodules={ignore_submodules}"
+    pathspec = "--"
+    if exclude_paths:
+        pathspec += " . " + " ".join(shlex.quote(f":(exclude,literal){path}") for path in exclude_paths)
     inspections = [
         f"{indexed_git} -c core.quotePath=true diff-index --cached {raw_options} "
-        f"{shlex.quote(base_revision)} --",
-        f"{indexed_git} -c core.quotePath=true diff-files {raw_options} --",
+        f"{shlex.quote(base_revision)} {pathspec}",
+        f"{indexed_git} -c core.quotePath=true diff-files {raw_options} {pathspec}",
     ]
     if indexed_git_command is not None:
         # A module replaced by a directory may disappear from a temporary
         # index. Its removal is still visible in the workspace's real index.
         inspections.append(
             f"{git_command} -c core.quotePath=true diff-index --cached {raw_options} "
-            f"{shlex.quote(base_revision)} --"
+            f"{shlex.quote(base_revision)} {pathspec}"
         )
-    ignored = " --ignored=matching" if reject_ignored_untracked else ""
-    module_status = f"git status --porcelain=v1 --untracked-files=normal{ignored} --ignore-submodules=none"
-    if exclude_untracked_paths:
-        # Inspect tracked changes before applying untracked-only path exclusions.
-        module_status = (
-            "git --no-optional-locks status --porcelain=v1 --untracked-files=no "
-            "--ignore-submodules=dirty || exit $?; set -- .; "
-        )
-        for path in exclude_untracked_paths:
-            module_status += (
-                f"owned={shlex.quote(path)}; "
-                'case "$displaypath" in "$owned"|"$owned"/*) '
-                'set -- "$@" ":(exclude,literal).";; '
-                '*) case "$owned" in "$displaypath"/*) '
-                'set -- "$@" ":(exclude,literal)${owned#"$displaypath"/}";; esac;; esac; '
-            )
-        module_status += (
-            "git --no-optional-locks status --porcelain=v1 --untracked-files=all"
-            f'{ignored} --ignore-submodules=dirty -- "$@"'
-        )
+    module_status = _submodule_status_command(
+        git_command, reject_ignored_untracked=reject_ignored_untracked,
+        exclude_untracked_paths=exclude_untracked_paths, exclude_paths=exclude_paths,
+    )
     return (
         f"submodule_versions=$({' && '.join(inspections)}) || exit 125; "
         # Raw records have metadata before a tab. Git quotes control characters
@@ -123,8 +144,7 @@ def _submodule_patch_guard(
         'else submodule_rc=$?; [ "$submodule_rc" -eq 1 ] || exit 125; fi; '
         # Query every initialized module explicitly, including nested modules
         # whose parent has configured submodule.<name>.ignore=all.
-        f"submodule_contents=$({git_command} submodule foreach --quiet --recursive "
-        f"{shlex.quote(module_status)}) || exit 125; "
+        f"submodule_contents=$({module_status}) || exit 125; "
         'if [ -n "$submodule_contents" ]; then '
         "echo 'submodule changes cannot be delivered as a repository patch' >&2; exit 125; fi; "
     )

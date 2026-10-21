@@ -38,6 +38,7 @@ from opencollab.adapters.env import DockerWorkspaceEnvironment
 from opencollab.adapters.git_patch import (
     _git_command_and_config_guard,
     _submodule_patch_guard,
+    _submodule_status_command,
     guarded_staged_diff_command,
 )
 from opencollab.application.async_timeout import await_owned_operation
@@ -46,7 +47,7 @@ from opencollab.application.exception_notes import add_exception_note
 CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS = 900.0
 
 def _repository_exclusions(prefix: str, paths: Sequence[str]) -> tuple[str, ...]:
-    return tuple(posixpath.join(prefix, _safe_path(path)) for path in paths)
+    return tuple(posixpath.normpath(posixpath.join(prefix, _safe_path(path))) for path in paths)
 
 async def _raw_diff(environment: Any, exclude_paths: Sequence[str] = ()) -> str:
     workspace = getattr(environment, "workspace", None)
@@ -69,7 +70,7 @@ async def _raw_diff_at(
         pathspec = " -- . " + " ".join(
             shlex.quote(f":(exclude,literal){path}") for path in excluded
         )
-    git = f"git -c core.quotePath=true -C {shlex.quote(workspace)}"
+    git = f"git --no-optional-locks -c core.quotePath=true -C {shlex.quote(workspace)}"
     cached = ""
     if index_file is not None:
         git = f"GIT_INDEX_FILE={shlex.quote(index_file)} {git}"
@@ -119,8 +120,9 @@ async def _assert_patchable_submodules(
     index_file: str | None = None,
     reject_ignored_untracked: bool = True,
     exclude_untracked_paths: Sequence[str] = (),
+    exclude_paths: Sequence[str] = (),
 ) -> None:
-    git = f"git -C {shlex.quote(workspace)}"
+    git = f"git --no-optional-locks -C {shlex.quote(workspace)}"
     indexed_git = f"GIT_INDEX_FILE={shlex.quote(index_file)} {git}" if index_file is not None else None
     _complete(
         await environment.exec_cmd(
@@ -128,6 +130,7 @@ async def _assert_patchable_submodules(
                 git, base_revision, indexed_git_command=indexed_git,
                 reject_ignored_untracked=reject_ignored_untracked,
                 exclude_untracked_paths=exclude_untracked_paths,
+                exclude_paths=exclude_paths,
             ),
             timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
         ),
@@ -442,7 +445,7 @@ class EnvCandidateWorkspace:
         ).removesuffix("\n")
         source_paths = source_index + ".tracked"
         try:
-            repository_git = f"git -C {shlex.quote(repository_root)}"
+            repository_git = f"git --no-optional-locks -C {shlex.quote(repository_root)}"
             git = (
                 f"GIT_INDEX_FILE={shlex.quote(source_index)} "
                 f"git --no-optional-locks -c core.filemode=true -C {shlex.quote(repository_root)}"
@@ -461,6 +464,7 @@ class EnvCandidateWorkspace:
                 self._environment, repository_root, base_revision,
                 index_file=source_index, reject_ignored_untracked=False,
                 exclude_untracked_paths=self._owned_untracked_paths(repository_root),
+                exclude_paths=exclude_paths,
             )
             return await _raw_diff_at(
                 self._environment, repository_root, exclude_paths,
@@ -804,7 +808,7 @@ class EnvCandidateWorkspace:
             pathspec = " -- . " + " ".join(
                 shlex.quote(f":(exclude,literal){path}") for path in paths
             ) if paths else ""
-            ignore_modules = " --ignore-submodules=dirty" if owned else ""
+            ignore_modules = " --ignore-submodules=dirty" if owned or exclude_paths else ""
             status = _complete(
                 await self._environment.exec_cmd(
                     f"git --no-optional-locks -C {shlex.quote(workspace)} "
@@ -825,7 +829,17 @@ class EnvCandidateWorkspace:
 
         if await changed_in(repository_root, ""):
             return True
-        if owned:
+        if exclude_paths:
+            changed = bool(_complete(await self._environment.exec_cmd(
+                _submodule_status_command(
+                    f"git --no-optional-locks -C {shlex.quote(repository_root)}",
+                    reject_ignored_untracked=False, exclude_paths=excluded,
+                    exclude_untracked_paths=owned,
+                ), timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+            ), "candidate source submodule status").strip())
+            if changed:
+                return True
+        elif owned:
             for path in await _initialized_submodule_paths(self._environment, repository_root):
                 if await changed_in(posixpath.join(repository_root, path), path):
                     return True
