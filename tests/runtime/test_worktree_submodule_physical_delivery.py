@@ -13,6 +13,13 @@ from tests.workflows.test_candidate_physical_submodules import _SCRIPT, _index, 
 from tests.workflows.test_workflow_candidate_workspace import _git
 
 
+def _commit(repository, *args):
+    return _git(
+        repository, "-c", "user.name=Test User", "-c", "user.email=test@example.invalid",
+        "commit", *args,
+    )
+
+
 @pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
 @pytest.mark.parametrize("setting", ["assume-unchanged", "skip-worktree"])
 async def test_default_worktree_retains_hidden_submodule_output(tmp_path, nested, setting):
@@ -86,13 +93,13 @@ async def test_default_worktree_compares_crlf_submodules_after_a_new_diff_base(
 
     def commit_module(message):
         _git(module, "add", ".")
-        _git(module, "commit", "-qm", message)
+        _commit(module, "-qm", message)
         if nested:
             middle = source / "vendor/dependency"
             _git(middle, "add", "vendor/leaf")
-            _git(middle, "commit", "-qm", message)
+            _commit(middle, "-qm", message)
         _git(source, "add", "vendor/dependency")
-        _git(source, "commit", "-qm", message)
+        _commit(source, "-qm", message)
 
     (module / ".gitattributes").write_text("*.sh text eol=crlf\n")
     commit_module("Configure converted dependency")
@@ -259,9 +266,9 @@ async def test_default_worktree_exports_clean_crlf_submodule_checkout(tmp_path):
     module = source / module_path
     (module / ".gitattributes").write_text("*.sh text eol=crlf\n")
     _git(module, "add", ".gitattributes")
-    _git(module, "commit", "-qm", "Configure CRLF checkout")
+    _commit(module, "-qm", "Configure CRLF checkout")
     _git(source, "add", module_path)
-    _git(source, "commit", "-qm", "Record converted module")
+    _commit(source, "-qm", "Record converted module")
     _git(module, "checkout-index", "--all", "--force")
     pool = WorktreePool(str(source), use_worktrees=True)
     candidate = await pool.acquire("coder")
