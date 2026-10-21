@@ -303,7 +303,10 @@ def snapshot_session(
     silently sharing a workspace would make the resulting sessions unsafe to run
     concurrently.
     """
-    agent = _clone_snapshot_component(session.agent, label="agent")
+    agent, initial_tools, initial_tool_choice = _clone_snapshot_component(
+        (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
+        label="agent",
+    )
     environment = _fork_snapshot_environment(session.env)
     new = build_session(
         agent=agent,
@@ -334,6 +337,10 @@ def snapshot_session(
     } or new._open_tool_call_ids(state):
         new._normalize_forked_state(state, session._fork_runtime_metadata())
         new.runner.reset_for_restore()
+    # Keep the current turn's restrictions through normalization, then retain
+    # the original capabilities for the next user turn.
+    new.runner._initial_agent_tools = initial_tools
+    new.runner._initial_agent_tool_choice = initial_tool_choice
     new.state = state
     new.runner.state = state
     new.tool_execution.state = state
