@@ -216,6 +216,26 @@ async def _initialized_submodule_paths(
     )
 
 
+async def _has_worktree_skip_settings(
+    environment: Any, workspace: str, *, strict: bool = False, exclude_paths: Sequence[str] = (),
+) -> bool:
+    git = _git_prefix(workspace, strict)
+    exclusions = " -- . " + " ".join(
+        shlex.quote(f":(exclude,literal){path}") for path in exclude_paths
+    ) if exclude_paths else ""
+    result = await environment.exec_cmd(
+        f"{git} ls-files -v -z{exclusions} && printf '\\0\\0' && "
+        f"({git} config --type=bool --get core.filemode || [ \"$?\" -eq 1 ])",
+    )
+    if result.stdout_truncated or result.stderr_truncated:
+        return True
+    entries, filemode = _complete(result, "submodule worktree skip settings").rsplit("\0\0", 1)
+    # ls-files -v lowercases assume-unchanged tags and uses S for skip-worktree.
+    return filemode.strip() == "false" or any(
+        entry[:1] == "S" or entry[:1].islower() for entry in entries.split("\0")
+    )
+
+
 async def _physical_submodule_trees(
     environment: Any, workspace: str, *, strict: bool = False, source_prefix: str = "",
     include_paths: Sequence[str] = (), exclude_paths: Sequence[str] = (),
@@ -236,9 +256,14 @@ async def _physical_submodule_trees(
             for excluded in exclude_paths
             if path == excluded or path.startswith(excluded + "/") or excluded.startswith(path + "/")
         )
-        if path not in include_paths and not await _has_worktree_conversions(
-            environment, module, strict=strict, exclude_paths=module_exclusions,
-            exclude_untracked_paths=module_untracked_exclusions,
+        if path not in include_paths and not (
+            await _has_worktree_skip_settings(
+                environment, module, strict=strict, exclude_paths=module_exclusions,
+            )
+            or await _has_worktree_conversions(
+                environment, module, strict=strict, exclude_paths=module_exclusions,
+                exclude_untracked_paths=module_untracked_exclusions,
+            )
         ):
             continue
         revision = _complete(await environment.exec_cmd(
