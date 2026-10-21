@@ -17,6 +17,13 @@ from tests.workflows.test_candidate_physical_submodules import _SCRIPT, _index, 
 from tests.workflows.test_workflow_candidate_workspace import _git
 
 
+def _commit(repository, *args):
+    return _git(
+        repository, "-c", "user.name=Test User", "-c", "user.email=test@example.invalid",
+        "commit", *args,
+    )
+
+
 async def _candidate(source, tmp_path, monkeypatch):
     monkeypatch.setattr(worktree_pool, "CONTAINER_WORKTREE_ROOT", str(tmp_path / "worktrees"))
     base = attach_container(container_id=CONTAINER_ID, workspace=str(source))
@@ -125,13 +132,13 @@ async def test_container_replays_parent_patch_with_unchanged_submodule_bytes(
 def _commit_module(source, module_path, nested, message):
     module = source / module_path
     _git(module, "add", ".")
-    _git(module, "commit", "-qm", message)
+    _commit(module, "-qm", message)
     if nested:
         middle = source / "vendor/dependency"
         _git(middle, "add", "vendor/leaf")
-        _git(middle, "commit", "-qm", message)
+        _commit(middle, "-qm", message)
     _git(source, "add", "vendor/dependency")
-    _git(source, "commit", "-qm", message)
+    _commit(source, "-qm", message)
 
 
 @pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
@@ -143,12 +150,12 @@ async def test_container_compares_converted_submodules_after_a_new_base(
     source, module_path = _source(tmp_path, nested=nested, converted=False)
     module = source / module_path
     (module / ".gitattributes").write_text("*.sh text eol=crlf\n")
-    _commit_module(source, module_path, nested, "准备子模块换行配置")
+    _commit_module(source, module_path, nested, "Prepare module line endings")
     _git(module, "checkout-index", "--all", "--force")
     old = _git(source, "rev-parse", "HEAD").strip()
     updated = _SCRIPT.replace(b"42", b"84").replace(b"\n", b"\r\n")
     (module / "helper.sh").write_bytes(updated)
-    _commit_module(source, module_path, nested, "更新子模块程序")
+    _commit_module(source, module_path, nested, "Update module program")
     new = _git(source, "rev-parse", "HEAD").strip()
     _git(source, "reset", "--hard", old)
     _git(source, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
