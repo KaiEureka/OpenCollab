@@ -21,6 +21,234 @@ def _commit(repository, *args):
 
 
 @pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
+@pytest.mark.parametrize(
+    "setting", ["dirty", "all", "diff", "tracked", "assume-unchanged", "skip-worktree", "converted"],
+)
+async def test_default_pool_rejects_source_submodule_bytes_missing_from_candidate(tmp_path, nested, setting):
+    source, module_path = _source(tmp_path, nested=nested, converted=setting == "converted")
+    module = source / module_path
+    original = _SCRIPT.replace(b"42", b"84")
+    if setting == "converted":
+        original = _SCRIPT.replace(b"\n", b"\r\n")
+    elif setting == "tracked":
+        _git(source, "config", "--file", ".gitmodules", "submodule.vendor/dependency.ignore", "dirty")
+        _git(source, "add", ".gitmodules")
+        _commit(source, "-qm", "Configure source module status")
+    elif setting in {"assume-unchanged", "skip-worktree"}:
+        _git(module, "update-index", f"--{setting}", "helper.sh")
+    else:
+        repositories = [(source, "vendor/dependency")]
+        if nested:
+            repositories.append((source / "vendor/dependency", "vendor/leaf"))
+        for repository, name in repositories:
+            if setting == "diff":
+                _git(repository, "config", "diff.ignoreSubmodules", "all")
+            else:
+                _git(repository, "config", f"submodule.{name}.ignore", setting)
+    (module / "helper.sh").write_bytes(original)
+    if setting == "converted":
+        _git(module, "add", "helper.sh")
+    assert _git(source, "--no-optional-locks", "status", "--porcelain") == ""
+    source_index, module_index = _index(source), _index(module)
+    worktrees = _git(source, "worktree", "list", "--porcelain")
+    pool = WorktreePool(str(source), use_worktrees=True)
+    try:
+        with pytest.raises(RuntimeError, match="source submodule physical contents cannot be reproduced"):
+            await pool.acquire("coder")
+        assert pool._envs == []
+        assert (module / "helper.sh").read_bytes() == original
+        assert _index(source) == source_index
+        assert _index(module) == module_index
+        assert _git(source, "worktree", "list", "--porcelain") == worktrees
+        assert _git(source, "for-each-ref", "--format=%(refname)", "refs/heads/opencollab-") == ""
+    finally:
+        await pool.release()
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
+async def test_default_pool_replays_parent_patch_with_clean_ignored_source_submodules(tmp_path, nested):
+    source, module_path = _source(tmp_path, nested=nested, converted=False)
+    _git(source, "config", "submodule.vendor/dependency.ignore", "dirty")
+    if nested:
+        _git(source / "vendor/dependency", "config", "submodule.vendor/leaf.ignore", "all")
+    source_index, module_index = _index(source), _index(source / module_path)
+    pool = WorktreePool(str(source), use_worktrees=True)
+    candidate = await pool.acquire("coder")
+    folder = Path(candidate.workspace)
+    try:
+        assert (folder / module_path / "helper.sh").read_bytes() == _SCRIPT
+        await candidate.write_file(
+            "app.py",
+            f'import subprocess\nsubprocess.run(["./{module_path}/helper.sh"], check=True)\n',
+        )
+        tested = await candidate.exec_cmd(shlex.join((sys.executable, "-B", "app.py")))
+        assert (tested.returncode, tested.stdout) == (0, "42\n")
+        patch = await candidate.get_diff()
+        subprocess.run(
+            ["git", "-C", str(source), "apply", "-"], input=patch,
+            text=True, capture_output=True, check=True,
+        )
+        replayed = subprocess.run(
+            [sys.executable, "-B", "app.py"], cwd=source,
+            text=True, capture_output=True, check=True,
+        )
+        assert replayed.stdout == tested.stdout
+        assert candidate.recovery_location is None
+        assert _index(source) == source_index
+        assert _index(source / module_path) == module_index
+    finally:
+        await pool.release()
+    assert not folder.exists()
+
+
+def _owned_source(tmp_path, nested, setting):
+    source, module_path = _source(tmp_path, nested=nested, converted=False)
+    module = source / module_path
+    save = module / "runs/current"
+    save.mkdir(parents=True)
+    (save / "tracked.txt").write_text("tracked\n")
+    _git(module, "add", "runs/current/tracked.txt")
+    _commit(module, "-qm", "Prepare tracked run input")
+    if nested:
+        middle = source / "vendor/dependency"
+        _git(middle, "add", "vendor/leaf")
+        _commit(middle, "-qm", "Record run input dependency")
+        _git(middle, "config", "submodule.vendor/leaf.ignore", setting)
+    _git(source, "add", "vendor/dependency")
+    _commit(source, "-qm", "Record run input module")
+    _git(source, "config", "submodule.vendor/dependency.ignore", setting)
+    (save / "events.jsonl").write_text("started\n")
+    return source, module_path, save
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
+@pytest.mark.parametrize("setting", ["dirty", "all"])
+async def test_default_pool_preserves_owned_output_inside_source_submodule(tmp_path, nested, setting):
+    source, module_path, save = _owned_source(tmp_path, nested, setting)
+    module = source / module_path
+    source_index, module_index = _index(source), _index(module)
+    worktrees = _git(source, "worktree", "list", "--porcelain")
+    pool = WorktreePool(str(source), use_worktrees=True, owned_save_dir=str(save))
+    folder = None
+    try:
+        candidate = await pool.acquire("coder")
+        folder = Path(candidate.workspace)
+        assert not (folder / module_path / "runs/current/events.jsonl").exists()
+        assert (folder / module_path / "runs/current/tracked.txt").read_text() == "tracked\n"
+        await candidate.write_file(
+            "app.py", "from pathlib import Path\nimport subprocess\n"
+            f"Path({str(save / 'events.jsonl')!r}).write_text('finished\\n')\n"
+            f'subprocess.run(["./{module_path}/helper.sh"], check=True)\n',
+        )
+        tested = await candidate.exec_cmd(shlex.join((sys.executable, "-B", "app.py")))
+        assert (tested.returncode, tested.stdout) == (0, "42\n")
+        assert (save / "events.jsonl").read_text() == "finished\n"
+        patch = await candidate.get_diff()
+        assert [line for line in patch.splitlines() if line.startswith("diff --git")] == [
+            "diff --git a/app.py b/app.py",
+        ]
+        subprocess.run(
+            ["git", "-C", str(source), "apply", "-"], input=patch,
+            text=True, capture_output=True, check=True,
+        )
+        replayed = subprocess.run(
+            [sys.executable, "-B", "app.py"], cwd=source,
+            text=True, capture_output=True, check=True,
+        )
+        assert replayed.stdout == tested.stdout
+        assert candidate.recovery_location is None
+        assert _index(source) == source_index
+        assert _index(module) == module_index
+    finally:
+        await pool.release()
+    assert folder is not None and not folder.exists()
+    assert (save / "events.jsonl").read_text() == "finished\n"
+    assert (save / "tracked.txt").read_text() == "tracked\n"
+    assert _git(source, "worktree", "list", "--porcelain") == worktrees
+    assert _git(source, "for-each-ref", "--format=%(refname)", "refs/heads/opencollab-") == ""
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
+@pytest.mark.parametrize("mutation", ["tracked", "outside-owned"])
+async def test_default_pool_keeps_owned_submodule_exclusions_limited_to_untracked_output(
+    tmp_path, nested, mutation,
+):
+    source, module_path, save = _owned_source(tmp_path, nested, "dirty")
+    changed = save / "tracked.txt" if mutation == "tracked" else save.parent / "current-other.txt"
+    changed.write_text("source change\n")
+    source_index, module_index = _index(source), _index(source / module_path)
+    worktrees = _git(source, "worktree", "list", "--porcelain")
+    pool = WorktreePool(str(source), use_worktrees=True, owned_save_dir=str(save))
+    try:
+        with pytest.raises(RuntimeError, match="source submodule physical contents cannot be reproduced"):
+            await pool.acquire("coder")
+        assert pool._envs == []
+        assert changed.read_text() == "source change\n"
+        assert (save / "events.jsonl").read_text() == "started\n"
+        assert _index(source) == source_index
+        assert _index(source / module_path) == module_index
+        assert _git(source, "worktree", "list", "--porcelain") == worktrees
+        assert _git(source, "for-each-ref", "--format=%(refname)", "refs/heads/opencollab-") == ""
+    finally:
+        await pool.release()
+
+
+async def test_default_pool_excludes_owned_output_from_new_source_submodule_base(tmp_path):
+    source, module_path, save = _owned_source(tmp_path, False, "dirty")
+    module = source / module_path
+    (module / ".gitattributes").write_text("*.sh text eol=crlf\n")
+    _git(module, "add", ".gitattributes")
+    _commit(module, "-qm", "Configure converted run dependency")
+    _git(source, "add", module_path)
+    _commit(source, "-qm", "Record converted run dependency")
+    (module / "helper.sh").unlink()
+    _git(module, "checkout-index", "--all", "--force")
+    _git(module, "add", "helper.sh")
+    pool = WorktreePool(str(source), use_worktrees=True, owned_save_dir=str(save))
+    candidate = await pool.acquire("coder")
+    folder = Path(candidate.workspace)
+    try:
+        updated = _SCRIPT.replace(b"42", b"84").replace(b"\n", b"\r\n")
+        (module / "helper.sh").write_bytes(updated)
+        _git(module, "add", "helper.sh")
+        _commit(module, "-qm", "Update converted run dependency")
+        _git(source, "add", module_path)
+        _commit(source, "-qm", "Advance converted run dependency")
+        parent = _git(source, "rev-parse", "HEAD").strip()
+        _git(folder, "checkout", "-q", parent)
+        _git(folder, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        await candidate.write_file(
+            "app.py", "from pathlib import Path\nimport subprocess\n"
+            f"subprocess.run(['sh'], input=Path({(module_path + '/helper.sh')!r}).read_text(), "
+            "text=True, check=True)\n",
+        )
+        tested = await candidate.exec_cmd(shlex.join((sys.executable, "-B", "app.py")))
+        assert (tested.returncode, tested.stdout) == (0, "84\n")
+        source_index, module_index = _index(source), _index(module)
+        patch = await candidate.get_diff()
+        assert candidate.diff_base == parent
+        assert candidate.recovery_location is None
+        subprocess.run(
+            ["git", "-C", str(source), "apply", "-"], input=patch,
+            text=True, capture_output=True, check=True,
+        )
+        replayed = subprocess.run(
+            [sys.executable, "-B", "app.py"], cwd=source,
+            text=True, capture_output=True, check=True,
+        )
+        assert replayed.stdout == tested.stdout
+        assert (save / "events.jsonl").read_text() == "started\n"
+        assert _index(source) == source_index
+        assert _index(module) == module_index
+    finally:
+        if candidate.recovery_location is not None:
+            _remove_retained(source, candidate)
+        else:
+            await pool.release()
+    assert not folder.exists()
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["direct", "nested"])
 @pytest.mark.parametrize("setting", ["assume-unchanged", "skip-worktree"])
 async def test_default_worktree_retains_hidden_submodule_output(tmp_path, nested, setting):
     source, module_path = _source(tmp_path, nested=nested, converted=False)
@@ -269,7 +497,10 @@ async def test_default_worktree_exports_clean_crlf_submodule_checkout(tmp_path):
     _commit(module, "-qm", "Configure CRLF checkout")
     _git(source, "add", module_path)
     _commit(source, "-qm", "Record converted module")
+    (module / "helper.sh").unlink()
     _git(module, "checkout-index", "--all", "--force")
+    assert (module / "helper.sh").read_bytes() == _SCRIPT.replace(b"\n", b"\r\n")
+    _git(module, "add", "helper.sh")
     pool = WorktreePool(str(source), use_worktrees=True)
     candidate = await pool.acquire("coder")
     folder = Path(candidate.workspace)

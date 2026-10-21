@@ -15,6 +15,7 @@ from opencollab.adapters._candidate_increment import _apply_increment
 from opencollab.adapters._candidate_physical import (
     _checkout_physical_tree,
     _has_worktree_conversions,
+    _initialized_submodule_paths,
     _physical_git,
     _physical_submodule_trees,
     _physical_tree,
@@ -176,7 +177,22 @@ class WorktreeEnvironment(Environment):
                 owner = LocalEnvironment(self._worktree_dir)
                 try:
                     await self._copy_source_physical_contents(owner)
-                    for path, tree in await _physical_submodule_trees(owner, self._worktree_dir):
+                    source_modules = await _initialized_submodule_paths(
+                        owner, self._repository_root,
+                        source_prefix=self._source_subdir.replace(os.sep, "/").rstrip("/"),
+                    )
+                    source_trees = await _physical_submodule_trees(
+                        owner, self._repository_root,
+                        include_paths=source_modules, module_paths=source_modules,
+                        exclude_paths=self._source_untracked_exclusions(),
+                    )
+                    candidate_trees = await _physical_submodule_trees(
+                        owner, self._worktree_dir, include_paths=source_modules,
+                        source_prefix=self._source_subdir.replace(os.sep, "/").rstrip("/"),
+                    )
+                    if candidate_trees != source_trees:
+                        raise RuntimeError("source submodule physical contents cannot be reproduced in candidate")
+                    for path, tree in candidate_trees:
                         original = await _submodule_base_tree(
                             owner, self._worktree_dir, self._base_commit, path,
                         )
@@ -210,6 +226,7 @@ class WorktreeEnvironment(Environment):
 
     async def _setup_git_worktree(self) -> None:
         status = await self._git(
+            "--no-optional-locks",
             "status",
             "--porcelain=v1",
             "-z",
@@ -556,7 +573,11 @@ class WorktreeEnvironment(Environment):
                     source_module, "rev-parse", "--verify", "HEAD^{tree}",
                 ), "source submodule revision").strip()
                 if source_tree == original:
-                    expected = await _physical_tree(owner, source_module, original)
+                    expected = dict(await _physical_submodule_trees(
+                        owner, self._repository_root,
+                        include_paths=(path,), module_paths=(path,),
+                        exclude_paths=self._source_untracked_exclusions(),
+                    ))[path]
                 else:
                     expected = await _checkout_physical_tree(owner, source_module, original)
                 self._submodule_checkout_trees[path, original] = expected

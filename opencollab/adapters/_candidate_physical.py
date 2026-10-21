@@ -131,7 +131,7 @@ async def _physical_git(
         try:
             isolated = (
                 "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_PARAMETERS= GIT_CONFIG_COUNT=0 "
-                "GIT_ATTR_NOSYSTEM=1 GIT_EXTERNAL_DIFF= GIT_NO_REPLACE_OBJECTS=1 "
+                "GIT_ATTR_NOSYSTEM=1 GIT_EXTERNAL_DIFF= GIT_NO_REPLACE_OBJECTS=1 GIT_OPTIONAL_LOCKS=0 "
                 f"GIT_DIR={quoted} GIT_COMMON_DIR={quoted} GIT_INDEX_FILE={quoted}/index "
             )
             _complete(await environment.exec_cmd(
