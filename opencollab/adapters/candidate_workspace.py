@@ -445,7 +445,7 @@ class EnvCandidateWorkspace:
             repository_git = f"git -C {shlex.quote(repository_root)}"
             git = (
                 f"GIT_INDEX_FILE={shlex.quote(source_index)} "
-                f"git -c core.filemode=true -C {shlex.quote(repository_root)}"
+                f"git --no-optional-locks -c core.filemode=true -C {shlex.quote(repository_root)}"
             )
             _complete(
                 await self._environment.exec_cmd(
@@ -784,27 +784,52 @@ class EnvCandidateWorkspace:
 
     async def _source_changed(self, exclude_paths: Sequence[str] = ()) -> bool:
         repository_root = await self._repository_root()
-        pathspec = ""
-        if exclude_paths:
-            excluded = _repository_exclusions(await self._workspace_prefix(), exclude_paths)
-            pathspec = " -- . " + " ".join(
-                shlex.quote(f":(exclude,literal){path}") for path in excluded
+        excluded = (
+            _repository_exclusions(await self._workspace_prefix(), exclude_paths)
+            if exclude_paths else ()
+        )
+        owned = self._owned_untracked_paths(repository_root)
+
+        def relative_paths(paths: Sequence[str], prefix: str) -> tuple[str, ...]:
+            if not prefix:
+                return tuple(paths)
+            return tuple(
+                "." if path == prefix or prefix.startswith(path + "/") else path[len(prefix) + 1:]
+                for path in paths
+                if path == prefix or prefix.startswith(path + "/") or path.startswith(prefix + "/")
             )
-        status = _complete(
-            await self._environment.exec_cmd(
-                f"git --no-optional-locks -C {shlex.quote(repository_root)} "
-                "status --porcelain=v1 -z --untracked-files=all"
-                + pathspec,
-                timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
-            ),
-            "candidate source status",
-        )
-        owned = tuple(path + "/" for path in self._owned_untracked_paths(repository_root))
-        changed = any(
-            record and not (record.startswith("?? ") and record[3:].startswith(owned))
-            for record in status.split("\0")
-        )
-        return changed or bool(await self.source_diff(exclude_paths))
+
+        async def changed_in(workspace: str, prefix: str) -> bool:
+            paths = relative_paths(excluded, prefix)
+            pathspec = " -- . " + " ".join(
+                shlex.quote(f":(exclude,literal){path}") for path in paths
+            ) if paths else ""
+            ignore_modules = " --ignore-submodules=dirty" if owned else ""
+            status = _complete(
+                await self._environment.exec_cmd(
+                    f"git --no-optional-locks -C {shlex.quote(workspace)} "
+                    "status --porcelain=v1 -z --untracked-files=all" + ignore_modules + pathspec,
+                    timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
+                ),
+                "candidate source status",
+            )
+            module_owned = relative_paths(owned, prefix)
+            owned_prefixes = tuple(path + "/" for path in module_owned)
+            return any(
+                record and not (
+                    record.startswith("?? ")
+                    and ("." in module_owned or record[3:].startswith(owned_prefixes))
+                )
+                for record in status.split("\0")
+            )
+
+        if await changed_in(repository_root, ""):
+            return True
+        if owned:
+            for path in await _initialized_submodule_paths(self._environment, repository_root):
+                if await changed_in(posixpath.join(repository_root, path), path):
+                    return True
+        return bool(await self.source_diff(exclude_paths))
 
     async def source_revision(self) -> str:
         return _complete(
