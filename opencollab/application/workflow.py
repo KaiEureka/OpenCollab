@@ -561,7 +561,6 @@ class WorkflowContext(
                 over_budget_ok=over_budget_ok,
                 label=label,
             )
-            budget_token = self._active_budget_lease.set(lease)
             permit = self._active_concurrency_permit.get()
             if permit is None or permit.owner is not call_task:
                 await self._semaphore.acquire()
@@ -573,6 +572,10 @@ class WorkflowContext(
                     )
                 )
             self._raise_if_environment_revoked()
+            lease = await self._refresh_budget_lease(
+                lease, cap=budget, over_budget_ok=over_budget_ok, label=label,
+            )
+            budget_token = self._active_budget_lease.set(lease)
             if schema is not None:
                 return await self._run_structured_agent(
                     prompt, schema=schema, label=label, tools=tools,

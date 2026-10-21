@@ -101,16 +101,19 @@ class WorkflowAgentRunMixin:
         released = False
         try:
             lease = await self._acquire_budget_lease(budget, over_budget_ok=False, label=label)
-            budget_token = self._active_budget_lease.set(lease)
 
             async def execute() -> WorkflowAgentResult:
-                nonlocal released
+                nonlocal budget_token, lease, released
                 session = None
                 output = None
                 quiet = False
                 status, reason = "completed", None
                 try:
                     self._raise_if_environment_revoked()
+                    lease = await self._refresh_budget_lease(
+                        lease, cap=budget, over_budget_ok=False, label=label,
+                    )
+                    budget_token = self._active_budget_lease.set(lease)
                     try:
                         options: dict[str, Any] = {}
                         if max_steps is not None:

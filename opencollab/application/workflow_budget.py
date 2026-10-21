@@ -100,6 +100,27 @@ class _ConcurrencyPermit:
 class WorkflowBudgetMixin:
     """Allocate call budgets while retaining workflow accounting and trace evidence."""
 
+    async def _refresh_budget_lease(
+        self,
+        lease: _BudgetLease,
+        *,
+        cap: int | None,
+        over_budget_ok: bool,
+        label: str | None,
+    ) -> _BudgetLease:
+        if lease.reserved == 0:
+            return lease
+        # Keep other reservations intact when an earlier request exceeds its grant.
+        available = max(0, int(self.budget.remaining() + lease.remaining()))
+        if available <= 0:
+            self.budget.release(lease)
+            return await self._acquire_budget_lease(
+                cap, over_budget_ok=over_budget_ok, label=label,
+            )
+        lease.total = min(lease.total, available)
+        lease.reserved = lease.total
+        return lease
+
     def _session_budget(self) -> int | None:
         lease = self._active_budget_lease.get()
         if lease is not None:

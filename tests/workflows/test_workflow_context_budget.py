@@ -75,6 +75,85 @@ async def test_session_budget_rejects_next_call_after_concurrent_overspend():
     assert len(factory.builds) == 1
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["agent", "agent_run"])
+async def test_queued_budget_shrinks_without_taking_other_reservations(method):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def enter_first():
+        started.set()
+        await release.wait()
+
+    first = _DeferredTokenSession(tokens=15_000, on_enter=enter_first)
+    factory = FakeFactory([first, FakeSession(tokens=15), FakeSession(tokens=25)])
+    ctx = WorkflowContext(factory, budget_total=30_000, max_concurrency=1)
+    run = getattr(ctx, method)
+    tasks = [asyncio.create_task(run("first", budget=10_000))]
+
+    async def wait_for_reservations(count):
+        while len(ctx.budget._leases) < count:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(started.wait(), MUST_SETTLE_SECONDS)
+        for count, prompt in ((2, "second"), (3, "third")):
+            tasks.append(asyncio.create_task(run(prompt, budget=10_000)))
+            await asyncio.wait_for(wait_for_reservations(count), MUST_SETTLE_SECONDS)
+        assert len(factory.builds) == 1
+        first.land_spend()
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*tasks), MUST_SETTLE_SECONDS)
+        assert [build["budget"] for build in factory.builds] == [10_000, 5_000, 10_000]
+        assert ctx.tokens_spent() == 15_040
+        assert ctx.tokens_remaining() == 14_960
+        assert ctx.budget._leases == []
+        assert ctx._semaphore._value == 1
+    finally:
+        release.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await ctx.wait_for_pending_cleanup()
+
+@pytest.mark.asyncio
+async def test_queued_over_budget_call_claims_the_single_escape():
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def enter_first():
+        started.set()
+        await release.wait()
+
+    first = _DeferredTokenSession(tokens=21_000, on_enter=enter_first)
+    factory = FakeFactory([first, FakeSession(reply="forced", tokens=15)])
+    ctx = WorkflowContext(factory, budget_total=20_000, max_concurrency=1)
+    tasks = [asyncio.create_task(ctx.agent("first", budget=10_000))]
+
+    async def wait_for_reservations():
+        while len(ctx.budget._leases) < 2:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(started.wait(), MUST_SETTLE_SECONDS)
+        tasks.append(asyncio.create_task(ctx.agent("forced", budget=10_000, over_budget_ok=True)))
+        await asyncio.wait_for(wait_for_reservations(), MUST_SETTLE_SECONDS)
+        first.land_spend()
+        release.set()
+        values = await asyncio.wait_for(asyncio.gather(*tasks), MUST_SETTLE_SECONDS)
+        assert values[1] == "forced"
+        assert [build["budget"] for build in factory.builds] == [10_000, 10_000]
+        with pytest.raises(WorkflowBudgetExceeded):
+            await ctx.agent("another escape", over_budget_ok=True)
+        assert ctx.budget._leases == []
+        assert ctx._semaphore._value == 1
+    finally:
+        release.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await ctx.wait_for_pending_cleanup()
+
+@pytest.mark.asyncio
 async def test_parallel_agents_atomically_reserve_shared_budget():
     release = asyncio.Event()
     sessions = [
