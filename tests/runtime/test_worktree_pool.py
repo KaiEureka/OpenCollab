@@ -970,6 +970,13 @@ async def test_container_worktree_can_start_as_an_unprivileged_image_user(monkey
     container_id = 'f' * 64
     commands = []
 
+    async def physical_tree(_environment, root, _revision, *, strict=False):
+        assert root.startswith(('/tmp/', '/var/tmp/'))
+        assert strict
+        return 'b' * 40
+
+    monkeypatch.setattr('opencollab.adapters._env_container_worktree._physical_tree', physical_tree)
+
     async def docker(self, *args, **kwargs):
         commands.append(args)
         if args[0] == 'inspect':
