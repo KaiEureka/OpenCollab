@@ -6,6 +6,7 @@ import inspect
 import os
 import threading
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
 from opencollab.application.async_timeout import await_owned_operation
@@ -47,6 +48,9 @@ if TYPE_CHECKING:
 class SessionBusyError(RuntimeError):
     """Raised when a public operation would interleave an active session turn."""
 
+class _InheritedLimit(Enum):
+    RUNTIME = "runtime"
+
 @dataclass
 class SessionRuntime:
     """Pre-built collaborators a ``Session`` facade keeps as attributes.
@@ -76,6 +80,7 @@ class Session:
     ``SessionRuntime`` from the composition root.
     A missing tracer inherits the runtime's recorder. Assigning ``None`` to
     ``session.tracer`` after construction disables recording.
+    Omitted limits inherit the runtime. Explicit ``None`` removes a limit.
     """
 
     def __init__(
@@ -85,8 +90,8 @@ class Session:
         runtime: SessionRuntime,
         env: EnvironmentPort | None = None,
         tracer: TracePort | None = None,
-        max_budget_tokens: int | None = 1_000_000,
-        max_steps: int | None = 100,
+        max_budget_tokens: int | None | _InheritedLimit = _InheritedLimit.RUNTIME,
+        max_steps: int | None | _InheritedLimit = _InheritedLimit.RUNTIME,
         auto_save_path: str | None = None,
         permission_policy: PermissionPort | None = None,
         safety_policy: SafetyPolicyPort | None = None,
@@ -94,8 +99,6 @@ class Session:
         self.agent = runtime.runner.agent
         self.env = env
         self.tracer = tracer if tracer is not None else runtime.runner.tracer
-        self.max_budget_tokens = max_budget_tokens
-        self.max_steps = max_steps
         self._permission_policy = permission_policy
         self._safety_policy = safety_policy
         self._auto_save_path = auto_save_path
@@ -115,6 +118,13 @@ class Session:
         self.tool_execution.loop_reservation_checkpoint = self._checkpoint_loop_reservation
         self.tool_execution.tool_results_checkpoint = self._track_tool_results
         self.runner = runtime.runner
+        self.max_budget_tokens = (
+            self.runner.max_budget_tokens
+            if max_budget_tokens is _InheritedLimit.RUNTIME else max_budget_tokens
+        )
+        self.max_steps = (
+            self.runner.max_steps if max_steps is _InheritedLimit.RUNTIME else max_steps
+        )
         self._context_summarizer = runtime.context_summarizer
         # Set again now that the runner and the tool executor exist, so both
         # write through this session's identity rather than the one the
