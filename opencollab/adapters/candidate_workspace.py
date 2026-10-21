@@ -161,6 +161,8 @@ class _CandidateLease:
         initialized: Sequence[str],
         excluded: Sequence[str] = (), untracked_exclusions: Sequence[str] = (),
     ) -> bool:
+        if "." in excluded:
+            return False
         current_paths = await _initialized_submodule_paths(
             self.base_environment, workspace, strict=self.strict_capture,
             source_prefix=self.workspace_prefix.rstrip("/"),
@@ -235,15 +237,17 @@ class _CandidateLease:
             strict=self.strict_capture,
         )).strip())
 
-    async def _assert_physical_submodules(self) -> None:
+    async def _assert_physical_submodules(self, exclude_paths: Sequence[str] = ()) -> None:
         if await self._submodule_contents_changed(
             self.candidate_workspace, self.physical_candidate_submodules,
             initialized=self.initialized_candidate_submodules,
+            excluded=exclude_paths,
         ):
             raise RuntimeError("submodule physical changes cannot be delivered as a repository patch")
 
     async def diff(self, exclude_paths: Sequence[str] = ()) -> str:
-        await self._assert_physical_submodules()
+        excluded = _repository_exclusions(self.workspace_prefix, exclude_paths)
+        await self._assert_physical_submodules(excluded)
         async with _candidate_temporary(
             self.base_environment, self.source_workspace,
             "", prefix=".candidate-capture-index-",
@@ -300,12 +304,12 @@ class _CandidateLease:
             # result and deleting the only workspace with the module changes.
             await _assert_patchable_submodules(
                 self.base_environment, self.candidate_workspace,
-                self.base_revision, index_file=index_file,
+                self.base_revision, index_file=index_file, exclude_paths=excluded,
             )
             return await _raw_diff_at(
                 self.base_environment,
                 self.candidate_workspace,
-                _repository_exclusions(self.workspace_prefix, exclude_paths),
+                excluded,
                 base_revision=self.base_revision,
                 index_file=index_file,
             )
