@@ -33,44 +33,23 @@ Configuration:
 EOF
 }
 
-read_env_value() {
-    local key="$1"
-    local file="$2"
-    [ -f "$file" ] || return 0
-    awk -F= -v key="$key" '
-        $0 !~ /^[[:space:]]*#/ {
-            name = $1
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
-            if (name != key) next
-            value = substr($0, index($0, "=") + 1)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-            gsub(/^["'\'']|["'\'']$/, "", value)
-        }
-        END { print value }
-    ' "$file"
-}
-
 ensure_config() {
-    mkdir -p "$CONFIG_DIR"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        cp "$EXAMPLE_CONFIG" "$CONFIG_FILE"
-        echo "Created $CONFIG_FILE from the example."
-        echo "Edit it and configure provider credentials before starting OpenCollab."
-        exit 1
+    if [ -f "$CONFIG_FILE" ] || [ -n "${OPENCOLLAB_CONFIG_FILE:-}" ]; then
+        return
     fi
 
-    local key_value="${OPENCOLLAB_API_KEY:-${OPENAI_API_KEY:-${ANTHROPIC_API_KEY:-${DASHSCOPE_API_KEY:-${ANTHROPIC_AUTH_TOKEN:-}}}}}"
-    local key_name
-    for key_name in OPENCOLLAB_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DASHSCOPE_API_KEY ANTHROPIC_AUTH_TOKEN; do
-        if [ -z "$key_value" ]; then
-            key_value="$(read_env_value "$key_name" "$CONFIG_FILE")"
-        fi
+    local argument
+    for argument in "$@"; do
+        case "$argument" in
+            --api-key|--api-key=*) return ;;
+        esac
     done
-    if [ -z "$key_value" ]; then
-        echo "Missing API key."
-        echo "Set provider credentials in $CONFIG_FILE, or export OPENCOLLAB_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, DASHSCOPE_API_KEY, or ANTHROPIC_AUTH_TOKEN."
-        exit 1
-    fi
+
+    mkdir -p "$CONFIG_DIR"
+    cp "$EXAMPLE_CONFIG" "$CONFIG_FILE"
+    echo "Created $CONFIG_FILE from the example."
+    echo "Edit it and configure provider credentials before starting OpenCollab."
+    exit 1
 }
 
 ensure_venv() {
@@ -101,7 +80,7 @@ main() {
         exit 0
     fi
 
-    ensure_config
+    ensure_config "$@"
     ensure_venv
 
     cd "$REPO_ROOT"
