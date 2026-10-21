@@ -29,6 +29,7 @@ Examples:
 Configuration:
   Copy configs/.env.example to configs/.env and set OPENCOLLAB_API_KEY.
   DashScope-compatible runs may set DASHSCOPE_API_KEY instead.
+  Native Anthropic runs may set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN.
 EOF
 }
 
@@ -54,20 +55,20 @@ ensure_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
         cp "$EXAMPLE_CONFIG" "$CONFIG_FILE"
         echo "Created $CONFIG_FILE from the example."
-        echo "Edit it and set OPENCOLLAB_API_KEY before starting OpenCollab."
+        echo "Edit it and configure provider credentials before starting OpenCollab."
         exit 1
     fi
 
-    local key_value="${OPENCOLLAB_API_KEY:-${OPENAI_API_KEY:-${ANTHROPIC_API_KEY:-${DASHSCOPE_API_KEY:-}}}}"
+    local key_value="${OPENCOLLAB_API_KEY:-${OPENAI_API_KEY:-${ANTHROPIC_API_KEY:-${DASHSCOPE_API_KEY:-${ANTHROPIC_AUTH_TOKEN:-}}}}}"
     local key_name
-    for key_name in OPENCOLLAB_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DASHSCOPE_API_KEY; do
+    for key_name in OPENCOLLAB_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DASHSCOPE_API_KEY ANTHROPIC_AUTH_TOKEN; do
         if [ -z "$key_value" ]; then
             key_value="$(read_env_value "$key_name" "$CONFIG_FILE")"
         fi
     done
     if [ -z "$key_value" ]; then
         echo "Missing API key."
-        echo "Set OPENCOLLAB_API_KEY in $CONFIG_FILE, or export OPENCOLLAB_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or DASHSCOPE_API_KEY."
+        echo "Set provider credentials in $CONFIG_FILE, or export OPENCOLLAB_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, DASHSCOPE_API_KEY, or ANTHROPIC_AUTH_TOKEN."
         exit 1
     fi
 }
