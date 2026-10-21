@@ -74,10 +74,12 @@ def _submodule_patch_guard(
     *,
     indexed_git_command: str | None = None,
     reject_ignored_untracked: bool = True,
+    exclude_untracked_paths: Sequence[str] = (),
 ) -> str:
     """Reject module edits that an ordinary parent patch cannot deliver."""
     indexed_git = indexed_git_command or git_command
-    raw_options = "--raw --no-renames --no-abbrev --no-color --ignore-submodules=none"
+    ignore_submodules = "dirty" if exclude_untracked_paths else "none"
+    raw_options = f"--raw --no-renames --no-abbrev --no-color --ignore-submodules={ignore_submodules}"
     inspections = [
         f"{indexed_git} -c core.quotePath=true diff-index --cached {raw_options} "
         f"{shlex.quote(base_revision)} --",
@@ -92,6 +94,24 @@ def _submodule_patch_guard(
         )
     ignored = " --ignored=matching" if reject_ignored_untracked else ""
     module_status = f"git status --porcelain=v1 --untracked-files=normal{ignored} --ignore-submodules=none"
+    if exclude_untracked_paths:
+        # Inspect tracked changes before applying untracked-only path exclusions.
+        module_status = (
+            "git --no-optional-locks status --porcelain=v1 --untracked-files=no "
+            "--ignore-submodules=dirty || exit $?; set -- .; "
+        )
+        for path in exclude_untracked_paths:
+            module_status += (
+                f"owned={shlex.quote(path)}; "
+                'case "$displaypath" in "$owned"|"$owned"/*) '
+                'set -- "$@" ":(exclude,literal).";; '
+                '*) case "$owned" in "$displaypath"/*) '
+                'set -- "$@" ":(exclude,literal)${owned#"$displaypath"/}";; esac;; esac; '
+            )
+        module_status += (
+            "git --no-optional-locks status --porcelain=v1 --untracked-files=all"
+            f'{ignored} --ignore-submodules=dirty -- "$@"'
+        )
     return (
         f"submodule_versions=$({' && '.join(inspections)}) || exit 125; "
         # Raw records have metadata before a tab. Git quotes control characters
@@ -187,6 +207,7 @@ def guarded_staged_diff_command(
     submodule_guard = _submodule_patch_guard(
         git_command, base_revision, indexed_git_command=git_index_command,
         reject_ignored_untracked=reject_ignored_untracked,
+        exclude_untracked_paths=exclude_untracked_paths,
     )
     # Overlay staged additions without carrying source-index skip hints.
     return (

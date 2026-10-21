@@ -424,6 +424,7 @@ async def _capture_physical(
             _submodule_patch_guard(
                 _git_prefix(workspace, strict), base_revision,
                 indexed_git_command=owned[0], reject_ignored_untracked=False,
+                exclude_untracked_paths=exclude_paths,
             ), timeout=900,
         ), "physical candidate submodule inspection")
         normalized = await _normalize_tree(environment, workspace, tree, strict=strict, metadata=owned)

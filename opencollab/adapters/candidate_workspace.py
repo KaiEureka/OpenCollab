@@ -118,6 +118,7 @@ async def _assert_patchable_submodules(
     *,
     index_file: str | None = None,
     reject_ignored_untracked: bool = True,
+    exclude_untracked_paths: Sequence[str] = (),
 ) -> None:
     git = f"git -C {shlex.quote(workspace)}"
     indexed_git = f"GIT_INDEX_FILE={shlex.quote(index_file)} {git}" if index_file is not None else None
@@ -126,6 +127,7 @@ async def _assert_patchable_submodules(
             _submodule_patch_guard(
                 git, base_revision, indexed_git_command=indexed_git,
                 reject_ignored_untracked=reject_ignored_untracked,
+                exclude_untracked_paths=exclude_untracked_paths,
             ),
             timeout=CANDIDATE_WORKSPACE_GIT_TIMEOUT_SECONDS,
         ),
@@ -458,6 +460,7 @@ class EnvCandidateWorkspace:
             await _assert_patchable_submodules(
                 self._environment, repository_root, base_revision,
                 index_file=source_index, reject_ignored_untracked=False,
+                exclude_untracked_paths=self._owned_untracked_paths(repository_root),
             )
             return await _raw_diff_at(
                 self._environment, repository_root, exclude_paths,
@@ -541,6 +544,7 @@ class EnvCandidateWorkspace:
                 if not strict_capture:
                     await _assert_patchable_submodules(
                         self._environment, repository_root, base_revision, reject_ignored_untracked=False,
+                        exclude_untracked_paths=self._owned_untracked_paths(repository_root),
                     )
                 physical_context = await capture_resources.enter_async_context(_physical_git(
                     self._environment, repository_root, strict=strict_capture,
