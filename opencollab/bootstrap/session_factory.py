@@ -22,6 +22,7 @@ from opencollab.adapters.llm.types import model_capabilities
 from opencollab.adapters.repo_map import build_repo_map
 from opencollab.adapters.safe_files import ensure_directory_no_symlinks
 from opencollab.adapters.storage import SessionStore
+from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
 from opencollab.application.ports import (
     AskUserPort,
@@ -470,6 +471,14 @@ class DefaultSessionFactory:
             else None
         )
         self._team = team_cfg or default_team_config()
+        self._workflows = None
+        if any("run_workflow" in role.tools for role in self._team.roles.values()):
+            from opencollab.bootstrap.workflow_runtime import discover_workflows
+
+            directory = os.environ.get("OPENCOLLAB_WORKFLOWS_DIR", "workflows")
+            if not os.path.isabs(directory):
+                directory = os.path.join(lead_workspace or os.getcwd(), directory)
+            self._workflows = discover_workflows(directory, include_builtin=True)
         self._interactive = interactive
         self._validate_responses_tool_support()
         self._lead_workspace = lead_workspace
@@ -607,6 +616,7 @@ class DefaultSessionFactory:
         agent = context_builder.build_agent(
             role,
             scheduler=scheduler,
+            workflow_tool=self._workflow_tool(lambda: session),
             # Spawned agents have no independent human to answer their questions.
             ask_user_available=False,
             allow_unisolated_shell=self._unisolated_shell_allowed(
@@ -619,7 +629,7 @@ class DefaultSessionFactory:
             if self._save_dir
             else None
         )
-        return build_session(
+        session = build_session(
             agent=agent,
             env=env,
             tracer=cfg.tracer,
@@ -640,6 +650,14 @@ class DefaultSessionFactory:
             agent_profile=self._role_profile(role),
             run_id=self._run_id,
         )
+        return session
+
+    def _workflow_tool(self, get_session: Callable[[], Session]) -> Tool | None:
+        if self._workflows is None:
+            return None
+        from opencollab.bootstrap.team_workflow import TeamWorkflowTool
+
+        return TeamWorkflowTool(get_session, self._workflows, self._cfg, self._save_dir)
 
     def _role_profile(self, role_name: str) -> SingleAgentProfile | None:
         """The agent profile this seat runs under, or ``None`` for OpenCollab's.
@@ -673,13 +691,14 @@ class DefaultSessionFactory:
         agent = context_builder.build_agent(
             self._team.entry,
             scheduler=scheduler,
+            workflow_tool=self._workflow_tool(lambda: session),
             ask_user_available=self._interactive,
             allow_unisolated_shell=self._unisolated_shell_allowed(
                 seated_at_start=True
             ),
             plan=plan,
         )
-        return build_session(
+        session = build_session(
             agent=agent,
             env=env,
             tracer=cfg.tracer,
@@ -699,6 +718,8 @@ class DefaultSessionFactory:
             agent_profile=self._role_profile(self._team.entry),
             run_id=self._run_id,
         )
+        return session
+
 
 __all__ = [
     "ORCHESTRATION_FILENAME",

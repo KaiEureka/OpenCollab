@@ -260,6 +260,28 @@ Environment-backed tools should use that supplied runtime rather than assuming
 the caller's host directory. Keep tool names unique within a call. To contribute
 a built-in tool, see the [contributor extension guide](../CONTRIBUTING.md#extend-a-tool-or-workflow).
 
+### Calling a Workflow from a Team
+
+Add `run_workflow` to a role's `tools` in the team YAML. That role can choose a
+registered workflow and wait for its output. A tool call uses
+`{"name": "duo", "args": {"goal": "Fix the failing parser test"}, "budget": 50000}`.
+The tool schema lists installed workflows and the trusted Python workflows loaded
+at Team startup from `workflows/` or `OPENCOLLAB_WORKFLOWS_DIR`, relative to the
+Team's host workspace.
+
+The workflow runs in the calling member's environment. Its agents inherit the
+member's model and permission policy, and charge usage to that member's Team budget. An
+optional `budget` caps the call within the member's remaining allowance.
+`concurrency` controls the workflow's internal agent concurrency and defaults to 4.
+The reply contains `output`, `tokens`, `stop_reason`, `agent_failures`, and
+`artifacts`. Saved workflow transcripts live under the Team's run directory.
+Cancellation uses the existing Workflow cleanup before the tool finishes.
+
+The composition is Team → Workflow → child Workflow. Workflow code can call
+another async workflow with the same context or use `ctx.candidate_workflow`
+for an isolated candidate. Team spawning continues to create members within the
+same Team. Workflow sessions receive the tools selected by their Python workflow.
+
 ### Workflow authoring
 
 A workflow is a plain async Python function tagged with `@workflow`. Create
