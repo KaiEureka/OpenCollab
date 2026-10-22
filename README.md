@@ -95,13 +95,27 @@ will produce a usage error.
   [write your own](opencollab/README.md#workflow-authoring) and run it with
   `opencollab workflow run NAME`.
 
-[Mini Edict](examples/mini-edict/) reimplements the core protocol of
-[Edict](https://github.com/cft0808/edict), a multi-agent system of roughly
-24,000 lines, in 239 lines of team and workflow code.
+## Examples
 
-[ARC-Bench r6](examples/arcbench-evolution-r6/) is a small repo that uses the built-in
-Weave workflow with competition-specific format adapters. It won **first place**
-at the [OAIC Agentic Software Factory Hackathon](https://create.gosim.org/factory26/).
+**[First place at the OAIC Hackathon](examples/arcbench-evolution-r6/).**
+OpenCollab powered the **first-place solution** at the
+[OAIC Agentic Software Factory Hackathon](https://create.gosim.org/factory26/),
+which offered a **$24,000 prize pool**. Explore the winning approach in the
+ARC-Bench r6 example and build on it for your own applications.
+
+**[From 24,000 lines to a 239-line example](examples/mini-edict/).**
+[Edict](https://github.com/cft0808/edict) is a multi-agent project of roughly
+**24,000 lines**. Mini Edict's original implementation recreates its core
+collaboration protocol in **239 lines** of team and workflow code, showing how
+OpenCollab makes sophisticated multi-agent designs compact and easy to extend.
+
+**[98.3% on a NeurIPS 2026 benchmark](examples/io2code_oc/).** IO2CodeBench was
+introduced in [FromIO](https://arxiv.org/abs/2605.15334), accepted at NeurIPS 2026.
+Built on OpenCollab, this example reports a resolve rate of **98.3% (113/115)**,
+up from its **78.3% (90/115)** fixed-example baseline with the same `gpt-6-luna`
+model, a **20-percentage-point gain** across the benchmark's 115 non-multimodal
+tasks.
+[See the results](examples/io2code_oc/#results).
 
 ## Verify it happened
 
