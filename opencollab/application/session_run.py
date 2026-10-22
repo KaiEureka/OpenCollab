@@ -177,6 +177,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         self._provider_tasks: set[asyncio.Task[Any]] = set()
         self._llm_step_started = False
         self._run_cancel_event: asyncio.Event | None = None
+        self.default_cancel_event: asyncio.Event | None = None
         self._draining_provider_tasks: set[asyncio.Task[Any]] = set()
         # Successful responses returned after caller cancellation or timeout.
         # They count against the budget but never enter a later turn's history.
@@ -610,7 +611,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         otherwise proceed to CALLING_LLM.
         """
         self._ensure_tool_environment_active()
-        if cancel_event and cancel_event.is_set():
+        if (cancel_event and cancel_event.is_set()) or self._run_cancellation_requested():
             await self._stop_for_run_cancellation()
             return
 
@@ -731,7 +732,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
             return
         # Accept a new tool batch only while the turn is still active. Keep the
         # billed response in the trace and its usable text in the transcript.
-        if response.tool_calls and self._run_cancel_event is not None and self._run_cancel_event.is_set():
+        if response.tool_calls and self._run_cancellation_requested():
             if isinstance(response.content, str) and response.content.strip():
                 self.state.append_message({"role": "assistant", "content": response.content})
                 await self.event_publisher.emit(self.event_factory.text_delta(response.content))

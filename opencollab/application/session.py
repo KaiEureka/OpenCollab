@@ -95,6 +95,7 @@ class Session:
         auto_save_path: str | None = None,
         permission_policy: PermissionPort | None = None,
         safety_policy: SafetyPolicyPort | None = None,
+        default_cancel_event: asyncio.Event | None = None,
     ):
         self.agent = runtime.runner.agent
         self.env = env
@@ -118,6 +119,8 @@ class Session:
         self.tool_execution.loop_reservation_checkpoint = self._checkpoint_loop_reservation
         self.tool_execution.tool_results_checkpoint = self._track_tool_results
         self.runner = runtime.runner
+        # Inherited workflow stops remain active alongside per-turn capture events.
+        self.runner.default_cancel_event = default_cancel_event
         self.max_budget_tokens = (
             self.runner.max_budget_tokens
             if max_budget_tokens is _InheritedLimit.RUNTIME else max_budget_tokens

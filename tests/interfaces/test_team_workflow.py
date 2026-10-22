@@ -178,3 +178,109 @@ async def test_cancelled_workflow_quiesces_before_tool_finishes(tmp_path):
     assert stopped.is_set()
     assert parent.used_tokens == 15
     assert not env.revoked
+
+
+@pytest.mark.parametrize(
+    "mode", ["agent", "agent_run", "structured", "parallel", "candidate_agent", "candidate_workflow"],
+)
+@pytest.mark.parametrize("release_response", [False, True])
+async def test_user_stop_cancels_workflow_before_further_execution(tmp_path, mode, release_response):
+    import subprocess
+
+    from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
+    from opencollab.application.event_bus import EventBus
+    from opencollab.application.scheduler_types import SchedulerTurnError
+    from opencollab.application.workflow_registry import Registry, WorkflowSpec
+    from opencollab.bootstrap.context_builder import SpawnConfig
+    from opencollab.bootstrap.session_factory import build_session
+    from opencollab.bootstrap.team_workflow import TeamWorkflowTool
+    from opencollab.domain.agent import Agent
+    from opencollab.domain.session import SessionPhase
+    from tests.support.scheduler_awaiting_test_support import build_scheduler
+
+    if mode.startswith("candidate"):
+        for args in (("init",), ("add", "."),
+                     ("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                      "commit", "--allow-empty", "-m", "initial")):
+            subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+    entered, release, stopped, cancel = (asyncio.Event() for _ in range(4))
+    requests = 0
+    child_workspaces = []
+
+    class WaitingLLM:
+        def context_window(self):
+            return 200_000
+
+        async def complete(self, messages, **kwargs):
+            nonlocal requests
+            usage = Usage(input_tokens=10, output_tokens=5)
+            if messages[0]["content"] == "caller":
+                return LLMResponse(tool_calls=[_call("run_workflow", {
+                    "name": "waiting", "args": {},
+                })], usage=usage, finish_reason="tool_calls")
+            requests += 1
+            if any(message["role"] == "tool" for message in messages):
+                return LLMResponse(content="finished", usage=usage, finish_reason="stop")
+            entered.set()
+            try:
+                await release.wait()
+            finally:
+                stopped.set()
+            return LLMResponse(tool_calls=[_call("file_write", {
+                "mode": "create", "path": "after-cancel.txt", "content": "unexpected",
+            })], usage=usage, finish_reason="tool_calls")
+
+    env = LocalEnvironment(str(tmp_path))
+
+    async def child(ctx, args):
+        child_workspaces.append(ctx.workspace_root)
+        return await ctx.agent("write", tools="coding")
+
+    async def flow(ctx, args):
+        if mode.startswith("candidate"):
+            ctx._candidate_workspace = EnvCandidateWorkspace(env)
+        if mode == "candidate_workflow":
+            return await ctx.candidate_workflow(child, {}, label="candidate")
+        if mode == "candidate_agent":
+            from opencollab.bootstrap.programmatic import resolve_tools
+
+            return await ctx.candidate_agent("write", label="candidate", tools=resolve_tools("coding"))
+        if mode == "parallel":
+            return await ctx.parallel([lambda: child(ctx, {})])
+        if mode == "agent_run":
+            return await ctx.agent_run("write", tools="coding")
+        if mode == "structured":
+            return await ctx.agent("write", tools="coding", schema={"type": "object"})
+        return await child(ctx, {})
+
+    registry = Registry()
+    registry.register(WorkflowSpec(name="waiting", description="wait", fn=flow))
+    config = SpawnConfig(model="gpt-4o", provider="openai", api_key=None, base_url=None,
+                         llm_timeout=60, tracer=None, event_bus=EventBus(), permission_policy=None)
+    tool = TeamWorkflowTool(lambda: parent, registry, config, None)
+    parent = build_session(agent=Agent(name="caller", system_prompt="caller", tools=[tool]),
+                           env=env, max_budget_tokens=100_000, llm=WaitingLLM())
+    scheduler, _ = build_scheduler(parent, [])
+    task = asyncio.create_task(scheduler.run("write", cancel_event=cancel))
+    try:
+        await asyncio.wait_for(entered.wait(), 3)
+        cancel.set()
+        if release_response:
+            release.set()
+        with pytest.raises(SchedulerTurnError, match="interrupted by user"):
+            await asyncio.wait_for(task, 3)
+        assert stopped.is_set()
+        assert requests == 1
+        assert parent.phase is SessionPhase.STOPPED
+        assert parent.used_tokens == (30 if release_response else 15)
+        assert not (tmp_path / "after-cancel.txt").exists()
+        assert all(not (Path(path) / "after-cancel.txt").exists() for path in child_workspaces)
+        assert not env.revoked
+        await env.write_file("retry.txt", "usable")
+        assert await env.read_file("retry.txt") == "usable"
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await scheduler.cleanup()

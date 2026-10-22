@@ -6,6 +6,7 @@ construction live in ``container.build_session_runtime``.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import inspect
 import os
@@ -207,6 +208,7 @@ def build_session(
     context_policy: Any | None = None,
     run_id: str | None = None,
     run_control: RunControl | None = None,
+    default_cancel_event: asyncio.Event | None = None,
 ) -> Session:
     """Self-wiring ``Session`` factory.
 
@@ -253,6 +255,7 @@ def build_session(
         auto_save_path=auto_save_path,
         permission_policy=permission_policy,
         safety_policy=safety_policy,
+        default_cancel_event=default_cancel_event,
     )
     return session
 

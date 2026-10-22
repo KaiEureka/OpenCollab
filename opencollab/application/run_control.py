@@ -79,8 +79,14 @@ class _RunControlPolicyError(ValueError):
     """A host budget policy failed or returned an invalid decision."""
 
 class _SessionRunControlMixin:
+    def _run_cancellation_requested(self) -> bool:
+        return any(
+            event is not None and event.is_set()
+            for event in (self._run_cancel_event, self.default_cancel_event)
+        )
+
     def _raise_if_run_cancelled(self) -> None:
-        if self._run_cancel_event is not None and self._run_cancel_event.is_set():
+        if self._run_cancellation_requested():
             raise _RunCancelled
 
     async def _stop_for_run_cancellation(self) -> None:
