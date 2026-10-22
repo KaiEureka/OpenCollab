@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
@@ -108,9 +108,11 @@ class WorkflowSessionFactory:
         env: Any | None = None,
         llm_stream_chat: bool = False,
         llm: Any | None = None,
+        session_builder: Callable[..., Any] | None = None,
         run_id: str | None = None,
     ) -> None:
         self._llm = llm
+        self._session_builder = session_builder
         self._run_id = run_id
         self._model = model
         self._provider = provider
@@ -341,7 +343,7 @@ class WorkflowSessionFactory:
             tool_choice=tool_choice,
         )
         aid = self._next_aid()
-        return build_session(
+        return (self._session_builder or build_session)(
             agent=agent,
             env=session_env,
             tracer=self._tracer,
@@ -451,6 +453,7 @@ def build_workflow_context(
     deadline_margin_seconds: float = 120.0,
     candidate_workspace: Any | None = None,
     llm: Any | None = None,
+    session_builder: Callable[..., Any] | None = None,
     limit_mode: str = "environment",
     run_id: str | None = None,
 ) -> WorkflowContext:
@@ -468,6 +471,7 @@ def build_workflow_context(
     environment = env if env is not None else _WORKFLOW_ENV_OVERRIDE.get()
     factory = WorkflowSessionFactory(
         llm=llm,
+        session_builder=session_builder,
         run_id=run_id,
         model=cfg["model"],
         provider=cfg["provider"],

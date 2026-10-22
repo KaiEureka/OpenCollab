@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from opencollab.adapters.llm.providers import RESPONSES
 from opencollab.adapters.llm.types import model_capabilities
 from opencollab.adapters.skills.null_skill_store import NullSkillStore
+from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
 from opencollab.application.event_bus import EventBus
 from opencollab.application.ports import (
@@ -191,6 +192,7 @@ class ContextBuilder:
         role_name: str,
         *,
         scheduler: SchedulerPort | None = None,
+        workflow_tool: Tool | None = None,
         ask_user_available: bool = False,
         allow_unisolated_shell: bool = False,
         plan: ContextPlan | None = None,
@@ -205,6 +207,7 @@ class ContextBuilder:
         tools = build_tools_for_role(
             role.tools,
             scheduler=scheduler,
+            workflow_tool=workflow_tool,
             skill_store=self._skill_store,
             ask_user_available=ask_user_available,
             allow_unisolated_shell=allow_unisolated_shell,

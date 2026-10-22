@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+import pytest
+
+from opencollab.adapters.env import LocalEnvironment
+from opencollab.adapters.llm.types import LLMResponse, Usage
+from opencollab.bootstrap import container
+from opencollab.bootstrap.team_config import default_team_config
+from opencollab.bootstrap.tool_registry import build_tools_for_role
+from opencollab.sdk import OpenCollab
+
+
+def _call(name, args):
+    return {"id": "call", "type": "function",
+            "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+@pytest.mark.parametrize(("prebuild", "delegate"), [(False, False), (True, False), (False, True)])
+@pytest.mark.parametrize(("fail", "escape"), [(False, False), (True, False), (False, True)])
+async def test_team_runs_nested_workflow_and_accounts_usage(tmp_path, monkeypatch, prebuild, delegate, fail, escape):
+    workflows = tmp_path / "workflows"
+    workflows.mkdir()
+    (workflows / "nested.py").write_text('''
+from opencollab.workflows import workflow
+
+async def child(ctx, args):
+    return await ctx.agent(args["goal"], tools="coding")
+
+@workflow
+async def nested(ctx, args):
+    answer = await child(ctx, args)
+    if args.get("fail"):
+        raise ValueError("child failed after using tokens")
+    return {"answer": answer, "budget": ctx.budget.total}
+''')
+    team = tmp_path / "team.yaml"
+    team.write_text('''entry: lead
+roles:
+  lead:
+    prompt: Team caller
+    tools: [run_workflow]
+''')
+    if delegate:
+        team.write_text(team.read_text().replace("entry: lead", "entry: manager") + """
+  manager:
+    prompt: Team manager
+    tools: [spawn_agent]
+topology:
+  manager: [lead]
+""")
+    observed = {}
+
+    class OfflineLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def context_window(self):
+            return 200_000
+
+        async def close(self):
+            pass
+
+        async def complete(self, messages, **kwargs):
+            usage = Usage(input_tokens=10, output_tokens=5)
+            if messages[0]["content"].startswith("Team manager"):
+                if not any(m["role"] == "tool" for m in messages):
+                    return LLMResponse(tool_calls=[_call("spawn_agent", {
+                        "role": "lead", "task": "delegate to workflow",
+                    })], usage=usage, finish_reason="tool_calls")
+                return LLMResponse(content="collected", usage=usage, finish_reason="stop")
+            if messages[0]["content"] == "Team caller":
+                replies = [m for m in messages if m["role"] == "tool"]
+                if not replies:
+                    names = {t["function"]["name"] for t in kwargs["tools"]}
+                    assert names == {"run_workflow"}
+                    return LLMResponse(tool_calls=[_call("run_workflow", {
+                        "name": "nested", "args": {"goal": "write marker", "fail": fail},
+                        "budget": 1_000_000,
+                    })], usage=usage, finish_reason="tool_calls")
+                observed["reply"] = replies[-1]["content"]
+                return LLMResponse(content="collected", usage=usage, finish_reason="stop")
+            replies = [m for m in messages if m["role"] == "tool"]
+            if not replies:
+                names = {t["function"]["name"] for t in kwargs["tools"]}
+                assert "run_workflow" not in names
+                assert "spawn_agent" not in names
+                return LLMResponse(tool_calls=[_call("file_write", {
+                    "mode": "create", "path": "../outside.txt" if escape else "marker.txt",
+                    "content": "from nested workflow",
+                })], usage=usage, finish_reason="tool_calls")
+            observed["child_reply"] = replies[-1]["content"]
+            return LLMResponse(content="child result", usage=usage, finish_reason="stop")
+
+    monkeypatch.setattr(container, "LLMClient", OfflineLLM)
+    workspace = tmp_path / "actual"
+    workspace.mkdir()
+    env = LocalEnvironment(str(workspace))
+    result = await OpenCollab(tmp_path, environment=env, config={
+        "model": "gpt-4o", "provider": "openai", "api_key": "test-key",  # pragma: allowlist secret
+        "budget": 100_000,
+    }).team("delegate", config=team, artifacts=tmp_path / "run", trace=False,
+            use_worktrees=False, prebuild_team=prebuild)
+    assert result.output == "collected"
+    assert result.tokens == (90 if delegate else 60)
+    if escape:
+        assert not (tmp_path / "outside.txt").exists()
+        assert "Permission denied" in observed["child_reply"]
+    else:
+        assert (workspace / "marker.txt").read_text() == "from nested workflow"
+    assert not (tmp_path / "marker.txt").exists()
+    if fail:
+        assert "child failed after using tokens" in observed["reply"]
+    else:
+        output = json.loads(observed["reply"])
+        assert output["output"]["answer"] == "child result"
+        assert 0 < output["output"]["budget"] <= 99_985
+        if not delegate:
+            assert output["output"]["budget"] == 99_985
+        assert output["tokens"] == 30
+        manifest = json.loads((Path(output["artifacts"]) / "workflow.json").read_text())
+        assert manifest["status"] == "completed"
+
+
+def test_workflow_dispatch_requires_explicit_team_permission():
+    assert all("run_workflow" not in r.tools for r in default_team_config().roles.values())
+    with pytest.raises(ValueError, match="requires a Team session"):
+        build_tools_for_role(["run_workflow"])
+
+
+async def test_cancelled_workflow_quiesces_before_tool_finishes(tmp_path):
+    from opencollab.application.event_bus import EventBus
+    from opencollab.application.tool_execution import ToolRuntime
+    from opencollab.application.workflow_registry import Registry, WorkflowSpec
+    from opencollab.bootstrap.context_builder import SpawnConfig
+    from opencollab.bootstrap.session_factory import build_session
+    from opencollab.bootstrap.team_workflow import TeamWorkflowTool
+    from opencollab.domain.agent import Agent
+
+    entered = asyncio.Event()
+    stopped = asyncio.Event()
+
+    class WaitingLLM:
+        def context_window(self):
+            return 200_000
+
+        async def complete(self, messages, **kwargs):
+            if not any(m["role"] == "tool" for m in messages):
+                return LLMResponse(tool_calls=[_call("file_read", {"path": "marker.txt"})],
+                                   usage=Usage(input_tokens=10, output_tokens=5),
+                                   finish_reason="tool_calls")
+            try:
+                entered.set()
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+    async def flow(ctx, args):
+        return await ctx.agent("wait", tools="read")
+
+    registry = Registry()
+    registry.register(WorkflowSpec(name="waiting", description="wait", fn=flow))
+    env = LocalEnvironment(str(tmp_path))
+    parent = build_session(agent=Agent(name="caller", system_prompt="caller", tools=[]),
+                           env=env, max_budget_tokens=100_000, llm=WaitingLLM())
+    config = SpawnConfig(model="gpt-4o", provider="openai", api_key=None, base_url=None,
+                         llm_timeout=60, tracer=None, event_bus=EventBus(), permission_policy=None)
+    tool = TeamWorkflowTool(lambda: parent, registry, config, None)
+    task = asyncio.create_task(tool.execute_with_runtime(
+        {"name": "waiting", "args": {}}, ToolRuntime(env, None, None)))
+    await asyncio.wait_for(entered.wait(), 3)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 5)
+    assert stopped.is_set()
+    assert parent.used_tokens == 15
+    assert not env.revoked

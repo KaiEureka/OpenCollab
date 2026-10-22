@@ -34,6 +34,7 @@ from opencollab.bootstrap.context_policy import ContextPolicy, resolve_context_p
 from opencollab.bootstrap.tool_registry import (
     COORDINATION_TOOL_NAMES,
     KNOWN_TOOL_NAMES,
+    WORKFLOW_TOOL_NAMES,
     validate_tool_limits,
 )
 from opencollab.domain.hooks import (
@@ -55,7 +56,7 @@ TESTER_TOOL_NAMES: tuple[str, ...] = ("bash", "file_read", "git_diff", "grep")
 # Undeclared roles inherit registry work tools, excluding coordination
 # and skill dispatch.
 BASE_TOOL_NAMES: tuple[str, ...] = tuple(
-    sorted(KNOWN_TOOL_NAMES - COORDINATION_TOOL_NAMES - {"use_skill"})
+    sorted(KNOWN_TOOL_NAMES - COORDINATION_TOOL_NAMES - WORKFLOW_TOOL_NAMES - {"use_skill"})
 )
 
 # Catch stale built-in tool names when the registry changes.

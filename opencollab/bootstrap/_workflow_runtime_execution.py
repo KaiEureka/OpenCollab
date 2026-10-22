@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from typing import Any, Literal
 
 from opencollab.adapters.trace import Tracer
@@ -92,6 +93,7 @@ async def run_workflow(
     candidate_workspace: Any | None = None,
     run_id: str | None = None,
     llm: Any | None = None,
+    session_builder: Callable[..., Any] | None = None,
     limit_mode: str = "environment",
 ) -> Any:
     """Run one workflow and return only after cleanup and evidence persistence."""
@@ -130,6 +132,7 @@ async def run_workflow(
             system_prompt=system_prompt,
             agent_profile=agent_profile,
             llm=llm,
+            session_builder=session_builder,
             limit_mode=limit_mode,
             run_id=run_id,
             candidate_workspace=candidate_workspace,
