@@ -85,9 +85,13 @@ uv run opencollab workflow run duo --workspace /path/to/repository \
 
 - **Workflow。** 一个 Python 模块发出每一次交接。Duo 就是一个 workflow；也可以[自己写一个](opencollab/README.md#workflow-authoring)，用 `opencollab workflow run NAME` 运行。
 
-[Mini Edict](examples/mini-edict/) 用 239 行 team 与 workflow 代码重新实现了 [Edict](https://github.com/cft0808/edict) 的核心协议，而 Edict 是一个约 24,000 行的多智能体系统。
+## 示例
 
-[ARC-Bench r6](examples/arcbench-evolution-r6/) 这个小仓库使用内置 Weave 工作流，补上比赛所需的格式适配。该方案获得了 [OAIC Agentic Software Factory Hackathon](https://create.gosim.org/factory26/) **第一名**。
+**[OAIC 黑客松第一名](examples/arcbench-evolution-r6/README.zh-CN.md)。** 基于 OpenCollab 的方案获得了 [OAIC Agentic Software Factory Hackathon](https://create.gosim.org/factory26/) **第一名**，赛事总奖金为 **24,000 美元**。获奖方案已整理为 ARC-Bench r6 示例，可以直接参考并用于自己的应用开发。
+
+**[从 24,000 行项目到 239 行示例](examples/mini-edict/README.zh-CN.md)。** [Edict](https://github.com/cft0808/edict) 是一个约 **24,000 行**的多智能体项目。Mini Edict 的初版用 **239 行** team 与 workflow 代码实现其核心协作协议，展示了 OpenCollab 如何让复杂的多智能体设计变得简洁，并方便继续扩展。
+
+**[在 NeurIPS 2026 基准上达到 98.3%](examples/io2code_oc/README.zh-CN.md)。** IO2CodeBench 由已被 NeurIPS 2026 接收的 [FromIO 论文](https://arxiv.org/abs/2605.15334)提出。基于 OpenCollab 构建的示例，在同一个 `gpt-6-luna` 模型下，在该基准 115 道非多模态题上，将解决率从固定样例设置的 **78.3%（90/115）提升至 98.3%（113/115）**，提高 **20 个百分点**。[查看完整结果](examples/io2code_oc/README.md#results)。
 
 ## 验证协作确实发生
 
