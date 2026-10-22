@@ -54,9 +54,21 @@ _EMPTY_STOP_NUDGE = (
     "calling the appropriate tool or giving your answer."
 )
 
-# Separate consecutive user messages for Anthropic. The answer scan excludes
-# this placeholder so it cannot become the returned answer.
+# Separate consecutive user messages for Anthropic.
 _EMPTY_STOP_PLACEHOLDER = "[no output produced this turn]"
+
+def _last_assistant_answer(messages: list[dict[str, Any]], turn_start: int | None) -> str:
+    if turn_start is None:
+        return ""
+    for message in reversed(messages[turn_start:]):
+        content = message.get("content")
+        if (
+            message["role"] == "assistant"
+            and content
+            and message.get("_opencollab_placeholder") is not True
+        ):
+            return content
+    return ""
 
 # Wind-down and steering share this tool vocabulary.
 _READ_TOOLS = frozenset({"file_read", "grep"})

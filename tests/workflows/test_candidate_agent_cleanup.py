@@ -19,7 +19,7 @@ from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.application.tool_execution import ToolExecutionUseCase
-from opencollab.application.workflow import WorkflowContext
+from opencollab.application.workflow import WorkflowBudgetExceeded, WorkflowContext
 from opencollab.bootstrap import _workflow_runtime_session as runtime
 from opencollab.tools import builtin_tools, evidence_tools
 from tests.support.workflow_context_test_support import FakeFactory, FakeSession
@@ -66,13 +66,90 @@ def _client(repository):
         base_url="https://provider.example.invalid/v1", config={"llm_max_retries": 0},
     )
 
+@pytest.mark.parametrize("background", [False, True])
+async def test_cancelled_candidate_workflow_stops_owned_agent_before_release(
+    repository, background,
+):
+    class RememberedWorkspace(EnvCandidateWorkspace):
+        async def acquire(self, label):
+            lease = await super().acquire(label)
+            self.lease = lease
+            return lease
+
+    class HeldModel:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.cancelled = asyncio.Event()
+            self.release = asyncio.Event()
+            self.calls = 0
+
+        async def complete(self, messages, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                self.started.set()
+                try:
+                    await self.release.wait()
+                except asyncio.CancelledError:
+                    self.cancelled.set()
+                    raise
+                return LLMResponse(tool_calls=[{
+                    "id": "late-write", "type": "function", "function": {
+                        "name": "file_write", "arguments": json.dumps({
+                            "path": "late.txt", "mode": "create", "content": "late write",
+                        }),
+                    },
+                }], usage=Usage(2, 2), finish_reason="tool_calls")
+            return LLMResponse(content="finished", usage=Usage(2, 2))
+
+    workspace = RememberedWorkspace(LocalEnvironment(str(repository)))
+    model = HeldModel()
+
+    async def workflow(parent, _args):
+        async def nested(child, _inputs):
+            if background:
+                asyncio.create_task(child.agent(
+                    "write late.txt", tools=list(builtin_tools("file_write", headless=False)),
+                ))
+                await asyncio.Event().wait()
+            return await child.agent(
+                "write late.txt", tools=list(builtin_tools("file_write", headless=False)),
+            )
+
+        return await parent.candidate_workflow(nested, {}, label="candidate")
+
+    task = asyncio.create_task(_client(repository).workflow(
+        workflow, llm=model, candidate_workspace=workspace, trace=False,
+        budget=10_000, cleanup_timeout=1,
+    ))
+    try:
+        await asyncio.wait_for(model.started.wait(), timeout=5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+        assert model.cancelled.is_set()
+        assert model.calls == 1
+        assert workspace.lease.cleaned
+        assert not Path(workspace.lease.candidate_workspace).exists()
+        assert not (repository / "late.txt").exists()
+    finally:
+        model.release.set()
+        await asyncio.gather(task, return_exceptions=True)
+
 @pytest.mark.parametrize("concurrency", [1, 2])
-async def test_public_candidate_and_ordinary_agent_complete(repository, provider_calls, concurrency):
+@pytest.mark.parametrize("collection", ["parallel", "gather"])
+async def test_public_candidate_and_ordinary_agent_complete(repository, provider_calls, concurrency, collection):
+    contexts = []
+
     async def workflow(ctx, _args):
-        values = await ctx.parallel([
+        contexts.append(ctx)
+        calls = [
             lambda: ctx.candidate_agent("candidate", label="candidate"),
             lambda: ctx.agent("ordinary", label="ordinary"),
-        ])
+        ]
+        if collection == "parallel":
+            values = await ctx.parallel(calls)
+        else:
+            values = await asyncio.gather(*(call() for call in calls))
         return [values[0].output, values[1]]
 
     task = asyncio.create_task(_client(repository).workflow(
@@ -85,6 +162,8 @@ async def test_public_candidate_and_ordinary_agent_complete(repository, provider
         assert result.ok, result.reason
         assert result.output == ["answer", "answer"]
         assert len(provider_calls) == 2
+        assert result.tokens == 30
+        assert [session.max_budget_tokens for session in contexts[0].sessions] == [50_000, 50_000]
     finally:
         if not task.done():
             task.cancel()
@@ -150,7 +229,7 @@ async def test_public_candidate_timeout_captures_owned_atomic_write(repository, 
     started, release, written = threading.Event(), threading.Event(), threading.Event()
     cancellation_started, capture_started = asyncio.Event(), asyncio.Event()
     sessions = []
-    original_write, original_diff = local_module.write_regular_bytes_atomic, _CandidateLease.diff
+    original_write, original_diff = local_module.write_regular_bytes_atomic, _CandidateLease.capture_changes
     original_build = runtime.build_session
     original_cancel = ToolExecutionUseCase._cleanup_caller_cancelled_execution
 
@@ -191,7 +270,7 @@ async def test_public_candidate_timeout_captures_owned_atomic_write(repository, 
     monkeypatch.setattr(LLMClient, "complete", complete)
     monkeypatch.setattr(runtime, "build_session", build)
     monkeypatch.setattr(ToolExecutionUseCase, "_cleanup_caller_cancelled_execution", cancelled)
-    monkeypatch.setattr(_CandidateLease, "diff", diff)
+    monkeypatch.setattr(_CandidateLease, "capture_changes", diff)
 
     async def workflow(ctx, _args):
         return await ctx.candidate_agent(
@@ -215,6 +294,7 @@ async def test_public_candidate_timeout_captures_owned_atomic_write(repository, 
         result = await asyncio.wait_for(task, timeout=5)
         assert result.ok, result.reason
         candidate = result.output
+        assert capture_started.is_set()
         assert candidate.output is None
         assert "+late native candidate write" in candidate.diff
         assert candidate.lifecycle_errors == ()
@@ -230,7 +310,7 @@ async def test_public_workflow_waits_through_candidate_capture(repository, monke
     started, release_model = asyncio.Event(), asyncio.Event()
     capturing, release_capture = asyncio.Event(), asyncio.Event()
     holder, sessions = {}, []
-    original_build, original_diff = runtime.build_session, _CandidateLease.diff
+    original_build, original_diff = runtime.build_session, _CandidateLease.capture_changes
 
     async def complete(llm, messages, **kwargs):
         if not any(message.get("role") == "tool" for message in messages):
@@ -257,7 +337,7 @@ async def test_public_workflow_waits_through_candidate_capture(repository, monke
 
     monkeypatch.setattr(LLMClient, "complete", complete)
     monkeypatch.setattr(runtime, "build_session", build)
-    monkeypatch.setattr(_CandidateLease, "diff", diff)
+    monkeypatch.setattr(_CandidateLease, "capture_changes", diff)
 
     async def child(ctx, _args):
         return await ctx.agent("write", tools=evidence_tools("file_write"))
@@ -431,3 +511,108 @@ async def test_candidate_keeps_lease_for_cleanup_spawned_by_cancelled_turn(repos
     assert context.tokens_remaining() == 93
     assert context.pending_cleanup_tasks == ()
     assert (repository / "source.txt").read_text() == "initial\n"
+
+@pytest.mark.parametrize("first_tokens", [50, 150, 200, 210])
+async def test_queued_candidate_refreshes_reserved_cap_after_prior_usage(repository, first_tokens):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def enter_first():
+        started.set()
+        await release.wait()
+
+    first = FakeSession(on_enter=enter_first)
+    factory = FakeFactory([first, FakeSession(reply="candidate answer", tokens=7)])
+    context = WorkflowContext(
+        factory, max_concurrency=1, budget_total=200,
+        candidate_workspace=EnvCandidateWorkspace(LocalEnvironment(str(repository))),
+    )
+    tasks = [asyncio.create_task(context.agent("ordinary", budget=100))]
+
+    async def wait_for_reservations():
+        while len(context.budget._leases) < 2:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        tasks.append(asyncio.create_task(context.candidate_agent("candidate", label="candidate", budget=100)))
+        await asyncio.wait_for(wait_for_reservations(), timeout=5)
+        assert context.tokens_remaining() == 0
+        assert len(factory.builds) == 1
+        first._tokens = first_tokens
+        release.set()
+        ordinary, candidate = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=5)
+        assert ordinary == "done"
+        if first_tokens >= 200:
+            assert isinstance(candidate, WorkflowBudgetExceeded)
+            assert [build["budget"] for build in factory.builds] == [100]
+        else:
+            assert candidate.output == "candidate answer"
+            assert [build["budget"] for build in factory.builds] == [100, min(100, 200 - first_tokens)]
+        spent = first_tokens + (7 if first_tokens < 200 else 0)
+        assert context.tokens_spent() == spent
+        assert context.tokens_remaining() == 200 - spent
+        assert context.budget._leases == []
+        assert context._semaphore._value == 1
+    finally:
+        release.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await context.wait_for_pending_cleanup()
+
+async def test_cancelled_queued_candidate_releases_reservation(repository):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def enter_first():
+        started.set()
+        await release.wait()
+
+    factory = FakeFactory([FakeSession(on_enter=enter_first)])
+    context = WorkflowContext(
+        factory, max_concurrency=1, budget_total=200,
+        candidate_workspace=EnvCandidateWorkspace(LocalEnvironment(str(repository))),
+    )
+    tasks = [asyncio.create_task(context.agent("ordinary", budget=100))]
+
+    async def wait_for_reservations():
+        while len(context.budget._leases) < 2:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        tasks.append(asyncio.create_task(context.candidate_agent("candidate", label="candidate", budget=60)))
+        await asyncio.wait_for(wait_for_reservations(), timeout=5)
+        assert context.tokens_remaining() == 40
+        tasks[-1].cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tasks[-1]
+        assert context.tokens_remaining() == 100
+        assert len(factory.builds) == 1
+        assert context._semaphore.locked()
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await context.wait_for_pending_cleanup()
+
+    assert context.budget._leases == []
+    assert context._active_call_tasks == set()
+    assert context._semaphore._value == 1
+
+@pytest.mark.parametrize("operation", ["source_diff", "acquire"])
+async def test_candidate_preparation_failure_releases_reserved_budget(repository, monkeypatch, operation):
+    workspace = EnvCandidateWorkspace(LocalEnvironment(str(repository)))
+
+    async def fail(*args):
+        raise RuntimeError("candidate preparation failed")
+
+    monkeypatch.setattr(workspace, operation, fail)
+    context = WorkflowContext(FakeFactory([]), max_concurrency=1, budget_total=100, candidate_workspace=workspace)
+    with pytest.raises(RuntimeError, match="candidate preparation failed"):
+        await context.candidate_agent("candidate", label="candidate", budget=60)
+
+    assert context.tokens_remaining() == 100
+    assert context.budget._leases == []
+    assert context.sessions == ()
+    assert context._active_call_tasks == set()
+    assert context._semaphore._value == 1

@@ -18,6 +18,7 @@ def configured_model_client(
         model=config["model"],
         provider=config["provider"],
         api_key=config.get("api_key"),
+        **({"auth_token": config["auth_token"]} if config.get("auth_token") else {}),
         base_url=config.get("base_url"),
         wire_protocol=config.get("wire_protocol", "chat_completions"),
         context_window=config.get("context_window"),

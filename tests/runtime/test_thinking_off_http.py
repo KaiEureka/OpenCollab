@@ -666,7 +666,7 @@ async def test_get_config_same_value_protocol_assignment_preserves_default_sourc
 @pytest.mark.asyncio
 @pytest.mark.parametrize("wire", ["chat_completions", "responses"])
 @pytest.mark.parametrize("role_model", ["gpt-5.6-luna", "deepseek-v4-flash"])
-async def test_mixed_fixed_role_preserves_independent_effort(monkeypatch, tmp_path, wire, role_model):
+async def test_mixed_role_resolves_effort_with_model_capabilities(monkeypatch, tmp_path, wire, role_model):
     requests = []
 
     async def handler(request):
@@ -695,7 +695,8 @@ async def test_mixed_fixed_role_preserves_independent_effort(monkeypatch, tmp_pa
         requests[0].get("reasoning", {}).get("effort")
         if wire == "responses" else requests[0].get("reasoning_effort")
     )
-    assert effort == "max"
+    expected = "max" if role_model == "gpt-5.6-luna" else ("none" if wire == "responses" else None)
+    assert effort == expected
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("encoding", ["object", "json"])

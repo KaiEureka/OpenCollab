@@ -7,6 +7,7 @@ import shlex
 from collections.abc import Sequence
 from typing import Any
 
+from opencollab.adapters._candidate_physical import _apply_physical
 from opencollab.adapters._git_patch_bytes import _complete, _patch_temporary
 from opencollab.adapters.git_patch import _git_command_and_config_guard
 from opencollab.patches import patch_paths
@@ -23,6 +24,7 @@ def _safe_path(value: str) -> str:
 async def _apply_increment(
     environment: Any, workspace: str, patch: str,
     preserve_paths: Sequence[str] = (), *, repository: bool = True, strict: bool = False,
+    physical_paths: Sequence[str] = (),
 ) -> None:
     """Apply one complete increment atomically without changing the real index."""
     if not isinstance(patch, str) or not patch.strip():
@@ -49,6 +51,13 @@ async def _apply_increment(
         guard = ""
         if strict and repository:
             git, guard = _git_command_and_config_guard()
+        if physical_paths and repository:
+            if guard:
+                _complete(await environment.exec_cmd(
+                    f"cd -- {shlex.quote(workspace)} && {guard}:", timeout=120,
+                ), "physical candidate configuration inspection")
+            await _apply_physical(environment, workspace, candidate_file, physical_paths, strict=strict)
+            return
         _complete(await environment.exec_cmd(
             f"cd -- {shlex.quote(workspace)} && {guard}"
             f"{git} apply --binary --whitespace=nowarn -- {shlex.quote(candidate_file)}",

@@ -108,6 +108,31 @@ async def test_failed_judge_uses_b_and_candidate_mutation_blocks_adoption():
         await duo(ctx, {"goal": "Repair behavior"})
     assert not ctx.adoptions
 
+@pytest.mark.parametrize("changed", [False, True])
+async def test_custom_source_reader_keeps_optional_physical_source_comparison(changed):
+    context = Context()
+    observed = []
+
+    async def source():
+        observed.append("custom source")
+        return "custom patch"
+
+    async def physical():
+        observed.append("physical source")
+        return "changed tree" if changed and context.coder_calls else "initial tree"
+
+    call = runner.run_dual_coder(
+        context, {"goal": "Repair behavior"}, source_reader=source, physical_source_reader=physical,
+    )
+    if changed:
+        with pytest.raises(RuntimeError, match="source worktree changed before candidate adoption"):
+            await call
+        assert not context.adoptions
+    else:
+        outcome = await call
+        assert outcome["status"] == "done"
+    assert observed == ["custom source", "physical source"] * 2
+
 @pytest.mark.parametrize("value", ["true", "false", 1, None])
 async def test_local_shell_option_rejects_non_boolean_before_any_role(value):
     ctx = Context()

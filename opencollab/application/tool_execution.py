@@ -326,7 +326,7 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
         self.state = state
         self.event_publisher = event_publisher
         self.event_factory = event_factory or default_session_event_factory(
-            lambda: state.aid
+            lambda: self.state.aid
         )
         self.tracer = tracer
         self.permission_policy = permission_policy
@@ -346,6 +346,7 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
         )
         self._pending_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self.loop_reservation_checkpoint: Callable[[list[dict]], Awaitable[None]] | None = None
+        self.tool_results_checkpoint: Callable[[list[dict]], None] | None = None
 
     @property
     def pending_cleanup_tasks(self) -> tuple[asyncio.Task[Any], ...]:
@@ -376,6 +377,8 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
         )
         if any(preflight_errors):
             return self.preflight_rejection_result(tool_calls, preflight_errors)
+        if self.tool_results_checkpoint is not None:
+            self.tool_results_checkpoint(result.messages_to_append)
         loop_batch = _LoopBatch(self, result)
 
         for index, tc in enumerate(tool_calls):
@@ -563,13 +566,15 @@ class ToolExecutionUseCase(ToolExecutionRuntimeMixin):
 
             result.messages_to_append.append(self.tool_result_message(tool_id, tool_output))
             loop_batch.sync_completed_prefix()
+            submitted = tool_succeeded and facts.submitted_summary is not None
+            if submitted:
+                self.state.submitted_summary = facts.submitted_summary
             await self._emit_observation(
                 lambda: self.event_factory.tool_end(
                     tool.name, tool_latency, tool_id
                 ),
                 label="tool_end",
             )
-            submitted = tool_succeeded and facts.submitted_summary is not None
             if getattr(tool, "terminal_capture_accepted", False) or submitted:
                 result.terminal_capture_accepted = True
                 if submitted:

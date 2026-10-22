@@ -13,6 +13,61 @@ from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
 from tests.workflows.test_workflow_candidate_workspace import _git, _repository
 
 
+@pytest.mark.parametrize("flag", [None, "--assume-unchanged", "--skip-worktree"])
+async def test_candidate_inherits_current_file_despite_index_hint(tmp_path, flag):
+    repo = _repository(tmp_path)
+    if flag is not None:
+        _git(repo, "update-index", flag, "source.py")
+    (repo / "source.py").write_text("value = 2\n", encoding="utf-8")
+    source_index = (repo / ".git" / "index").read_bytes()
+    base = LocalEnvironment(str(repo))
+    workspace = EnvCandidateWorkspace(base)
+    lease = None
+    try:
+        assert "+value = 2" in await workspace.source_diff()
+        assert await workspace._source_changed()
+        lease = await workspace.acquire("current-source")
+        assert await lease.environment.read_file("source.py") == "value = 2\n"
+        assert await lease.diff() == ""
+        assert (repo / ".git" / "index").read_bytes() == source_index
+    finally:
+        if lease is not None:
+            await lease.cleanup()
+        await base.cleanup()
+
+
+@pytest.mark.parametrize("ignore_before_staging", [False, True])
+async def test_candidate_inherits_new_staged_file_after_ignore_rule(
+    tmp_path, ignore_before_staging,
+):
+    repo = _repository(tmp_path)
+    target = repo / "generated" / "schema.json"
+    target.parent.mkdir()
+    if ignore_before_staging:
+        (repo / ".gitignore").write_text("generated/*.json\n", encoding="utf-8")
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-qm", "ignore generated schemas")
+    target.write_text('{"type":"object"}\n', encoding="utf-8")
+    _git(repo, "add", "-f", "generated/schema.json")
+    if not ignore_before_staging:
+        (repo / ".gitignore").write_text("generated/*.json\n", encoding="utf-8")
+        _git(repo, "add", ".gitignore")
+    source_index = (repo / ".git" / "index").read_bytes()
+    base = LocalEnvironment(str(repo))
+    workspace = EnvCandidateWorkspace(base)
+    lease = None
+    try:
+        assert "+{\"type\":\"object\"}" in await workspace.source_diff()
+        lease = await workspace.acquire("staged-schema")
+        assert (Path(lease.candidate_workspace) / "generated/schema.json").read_bytes() == target.read_bytes()
+        assert await lease.diff() == ""
+        assert (repo / ".git" / "index").read_bytes() == source_index
+    finally:
+        if lease is not None:
+            await lease.cleanup()
+        await base.cleanup()
+
+
 @pytest.mark.parametrize("phase", ["add", "setup"])
 async def test_cancelled_candidate_initialization_cleans_only_its_worktree(tmp_path, monkeypatch, phase):
     repo = _repository(tmp_path)

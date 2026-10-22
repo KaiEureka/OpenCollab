@@ -126,10 +126,12 @@ def _local_usage(monkeypatch, tmp_path):
 @pytest.mark.parametrize("restore", [False, True], ids=["same-session", "restore"])
 @pytest.mark.parametrize("thinking", [False, True], ids=["plain", "thinking"])
 async def test_native_steering_prefix_survives_tool_rounds_and_new_user_turns(monkeypatch, tmp_path, restore, thinking):
+    model = "claude-opus-5-5" if thinking else "claude-sonnet-5-5"
     peer = _BoundThinkingProvider(thinking=thinking)
     install_sdk_transport(monkeypatch, "anthropic", peer)
-    async with _client() as client:
-        session = build_session(agent=_agent(thinking=thinking), llm=client, env=LocalEnvironment(str(tmp_path)),
+    async with _client(model) as client:
+        session = build_session(agent=_agent(thinking=thinking, model=model), llm=client,
+                                env=LocalEnvironment(str(tmp_path)),
                                 max_budget_tokens=100_000, max_steps=20)
         try:
             await session.add_user_message("Read twice and answer")
@@ -138,7 +140,8 @@ async def test_native_steering_prefix_survives_tool_rounds_and_new_user_turns(mo
             session.save(str(tmp_path / "session.json"))
             if restore:
                 await session.aclose()
-                session = load_session(str(tmp_path / "session.json"), agent=_agent(thinking=thinking), llm=client,
+                session = load_session(str(tmp_path / "session.json"),
+                                       agent=_agent(thinking=thinking, model=model), llm=client,
                                        env=LocalEnvironment(str(tmp_path)), max_budget_tokens=100_000, max_steps=20)
                 assert session.messages == original
             await session.add_user_message("Continue with the same evidence")
@@ -146,6 +149,8 @@ async def test_native_steering_prefix_survives_tool_rounds_and_new_user_turns(mo
         finally:
             await session.aclose()
     assert len(peer.requests) == 4
+    assert all(request["thinking"] == {"type": "adaptive" if thinking else "between_tools"}
+               for request in peer.requests)
     assert peer.retired == set()
     if thinking:
         assert _signatures(peer.requests[2]) == ["signed-1", "redacted-1", "signed-2", "redacted-2"]

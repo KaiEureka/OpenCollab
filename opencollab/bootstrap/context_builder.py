@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from opencollab.adapters.llm.providers import RESPONSES
 from opencollab.adapters.llm.types import model_capabilities
@@ -71,11 +71,20 @@ class SpawnConfig:
     provider_error_time_budget: float = 0.0
     llm_stream_chat: bool = False
     thinking_params_explicit: bool | None = None
+    auth_token: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.thinking_params_explicit is None:
             self.thinking_params_explicit = self.thinking_params is not None
         self.thinking_params = dict(DEFAULT_THINKING_PARAMS if self.thinking_params is None else self.thinking_params)
+
+    def reasoning_effort_for_role(self, role: RoleConfig) -> str | None:
+        capabilities = model_capabilities(role.model or self.model)
+        if role.thinking is False and (
+            not self.thinking or capabilities.honors_workflow_thinking_override
+        ):
+            return None
+        return self.reasoning_effort
 
 
 class ContextBuilder:
@@ -220,8 +229,6 @@ class ContextBuilder:
         temperature = (
             role.temperature if role.temperature is not None else cfg.temperature
         )
-        # Thinking resolves the same way: an explicit per-role value (incl. an
-        # explicit False) wins; otherwise inherit the global SpawnConfig value.
         thinking = role.thinking if role.thinking is not None else cfg.thinking
         thinking_params = (
             role.thinking_params
@@ -236,6 +243,7 @@ class ContextBuilder:
             provider=cfg.provider,
             wire_protocol=cfg.wire_protocol,
             api_key=cfg.api_key,
+            auth_token=cfg.auth_token,
             base_url=cfg.base_url,
             temperature=temperature,
             top_p=cfg.top_p,
@@ -246,7 +254,7 @@ class ContextBuilder:
             thinking_params_explicit=(
                 role.thinking_params is not None or cfg.thinking_params_explicit
             ),
-            reasoning_effort=cfg.reasoning_effort,
+            reasoning_effort=cfg.reasoning_effort_for_role(role),
             llm_max_retries=cfg.llm_max_retries,
             llm_connect_timeout=cfg.llm_connect_timeout,
             llm_first_event_timeout=cfg.llm_first_event_timeout,

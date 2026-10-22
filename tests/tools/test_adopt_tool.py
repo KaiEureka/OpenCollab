@@ -33,11 +33,11 @@ def _commit_on_side(repo, start: str, path: str, text: str, message: str) -> str
     _git(repo, "checkout", "-q", "--detach", start)
     return sha
 
-@pytest.fixture
-def repo(tmp_path):
+@pytest.fixture(params=["sha1", "sha256"])
+def repo(tmp_path, request):
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q")
+    _git(repo, "init", "-q", f"--object-format={request.param}")
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "Test")
     (repo / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
@@ -81,7 +81,8 @@ def test_a_second_adopt_is_shown_against_where_the_run_started(repo):
 
 @pytest.mark.parametrize(
     "sha",
-    ["", "abc", "HEAD", "HEAD~1", "--orphan=x", "z" * 40, "a" * 41, "abcdef1 && rm -rf .", "main"],
+    ["", "abc", "HEAD", "HEAD~1", "refs/heads/main", "--orphan=x", "z" * 40, "a" * 41, "z" * 64, "a" * 65,
+     "abcdef1 && rm -rf .", "main"],
 )
 def test_anything_but_a_commit_sha_is_refused_and_nothing_moves(repo, sha):
     start = _git(repo, "rev-parse", "HEAD")
@@ -91,13 +92,37 @@ def test_anything_but_a_commit_sha_is_refused_and_nothing_moves(repo, sha):
     assert result.startswith("Error")
     assert _git(repo, "rev-parse", "HEAD") == start
 
-def test_an_unknown_commit_is_reported_and_nothing_moves(repo):
+@pytest.mark.parametrize("full", [False, True])
+def test_an_unknown_commit_is_reported_and_nothing_moves(repo, full):
     start = _git(repo, "rev-parse", "HEAD")
+    target = "f" * len(start) if full else "deadbeef"
 
-    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": "deadbeef"}, _runtime(repo)))
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": target}, _runtime(repo)))
 
     assert result.startswith("Error")
-    assert "deadbeef" in result
+    assert f"no commit {target}" in result
+    assert _git(repo, "rev-parse", "HEAD") == start
+
+@pytest.mark.parametrize("kind", ["blob", "tree"])
+def test_a_full_object_id_must_resolve_to_a_commit(repo, kind):
+    start = _git(repo, "rev-parse", "HEAD")
+    target = _git(repo, "rev-parse", "HEAD:app.py" if kind == "blob" else "HEAD^{tree}")
+
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": target}, _runtime(repo)))
+
+    assert f"no commit {target}" in result
+    assert _git(repo, "rev-parse", "HEAD") == start
+
+@pytest.mark.parametrize("length", [10, 48, 64])
+def test_a_hex_ref_name_is_refused_and_nothing_moves(repo, length):
+    start = _git(repo, "rev-parse", "HEAD")
+    candidate = _commit_on_side(repo, start, "app.py", "return_two = 2\n", "candidate")
+    ref = "a" * length
+    _git(repo, "branch", ref, candidate)
+
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": ref}, _runtime(repo)))
+
+    assert f"no commit {ref}" in result
     assert _git(repo, "rev-parse", "HEAD") == start
 
 def test_uncommitted_work_that_a_checkout_would_overwrite_is_not_discarded(repo):
@@ -110,6 +135,33 @@ def test_uncommitted_work_that_a_checkout_would_overwrite_is_not_discarded(repo)
     assert result.startswith("Error")
     assert _git(repo, "rev-parse", "HEAD") == start
     assert (repo / "app.py").read_text(encoding="utf-8") == "def f():\n    return 3\n"
+
+@pytest.mark.parametrize("ignored", [False, True])
+def test_adopt_preserves_untracked_files_when_the_candidate_starts_tracking_them(repo, ignored):
+    name = "settings.local"
+    if ignored:
+        (repo / ".gitignore").write_text(name + "\n", encoding="utf-8")
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-q", "-m", "Ignore local settings")
+    start = _git(repo, "rev-parse", "HEAD")
+    settings = repo / name
+    settings.write_text("candidate settings\n", encoding="utf-8")
+    _git(repo, "add", "--force", name)
+    _git(repo, "commit", "-q", "-m", "Add candidate settings")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "--detach", start)
+    settings.write_text("user private settings\n", encoding="utf-8")
+    index = (repo / ".git" / "index").read_bytes()
+    application = (repo / "app.py").read_bytes()
+
+    result = run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": candidate}, _runtime(repo)))
+
+    assert result.startswith("Error")
+    assert "would be overwritten by checkout" in result
+    assert _git(repo, "rev-parse", "HEAD") == start
+    assert settings.read_text(encoding="utf-8") == "user private settings\n"
+    assert (repo / "app.py").read_bytes() == application
+    assert (repo / ".git" / "index").read_bytes() == index
 
 def test_adopt_is_a_tool_a_team_file_can_name():
     assert "adopt" in KNOWN_TOOL_NAMES
@@ -145,6 +197,7 @@ def test_adopt_applies_command_policy_before_mutation(repo):
         run(AdoptTool(require_process_isolation=False).execute_with_runtime({"sha": candidate}, runtime))
     assert len(commands) == 1
     assert "checkout" in commands[0]
+    assert "--no-overwrite-ignore" in commands[0]
     assert _git(repo, "rev-parse", "HEAD") == start
 
 def test_adopt_suppresses_repository_checkout_hooks(repo, tmp_path):

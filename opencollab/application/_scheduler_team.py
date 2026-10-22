@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import logging
 from typing import Any, NamedTuple
 
@@ -35,6 +36,8 @@ class _CompletedCoderChanges(NamedTuple):
     parent_turn: float | None
     step_count: int
     patch: str
+    delivery_diff: str | None = None
+    delivery_paths: tuple[str, ...] = ()
 
 
 def _shell_state(agent: Any, env: Any) -> str:
@@ -545,7 +548,11 @@ class SchedulerTeamMixin:
         partial: bool = False,
     ) -> str:
         """Capture worktree changes once for the result and its trace."""
-        diff = await env.get_diff() if isinstance(env, DiffCapablePort) else ""
+        capture = inspect.getattr_static(env, "capture_changes", None)
+        diff = (
+            await env.capture_changes() if callable(capture) else
+            await env.get_diff() if isinstance(env, DiffCapablePort) else ""
+        )
         scb = self.table.get(aid) if aid is not None else None
         if (
             not partial and scb is not None and scb.parent_aid == 0
@@ -560,6 +567,8 @@ class SchedulerTeamMixin:
             )
             self._completed_coder_diffs[aid] = _CompletedCoderChanges(
                 self._turn_started_at.get(0), scb.state.step_count, "" if shared else diff,
+                None if shared else getattr(env, "delivery_diff", None),
+                () if shared else getattr(env, "delivery_paths", ()),
             )
             result += f"\n\n[Completed coder aid={aid}; adopt_agent can apply these changes]"
         if aid is not None:
@@ -601,14 +610,17 @@ class SchedulerTeamMixin:
                 raise ValueError("adopt_agent requires a successfully completed direct coder in this turn")
             adopted = self._adopted_coders.get(aid)
             if adopted == captured:
-                await self._release_adopted_retention(aid, captured.patch)
+                await self._release_adopted_retention(aid, captured.patch, captured.delivery_diff)
                 return f"Coder aid={aid} was already adopted."
 
             async def apply_completed_changes() -> None:
-                patch = captured.patch
+                physical = captured.delivery_diff is not None
+                patch = captured.delivery_diff if physical else captured.patch
+                physical_paths = captured.delivery_paths
                 try:
                     if adopted is not None:
-                        if adopted.patch == captured.patch:
+                        previous = adopted.delivery_diff if physical else adopted.patch
+                        if previous == patch:
                             patch = ""
                         else:
                             env = getattr(self._sessions.get(aid), "env", None)
@@ -616,14 +628,21 @@ class SchedulerTeamMixin:
                                 raise RuntimeError(
                                     "coder environment cannot calculate an increment between completed changes"
                                 )
-                            patch = await env.diff_captured(adopted.patch, captured.patch)
+                            if physical:
+                                patch = await env.diff_captured(previous or "", patch, physical=True)
+                                physical_paths = tuple(dict.fromkeys((*adopted.delivery_paths, *physical_paths)))
+                            else:
+                                patch = await env.diff_captured(adopted.patch, captured.patch)
                     if patch.strip():
-                        await self._worktree_pool.adopt(patch)
+                        if physical:
+                            await self._worktree_pool.adopt_captured(patch, physical_paths)
+                        else:
+                            await self._worktree_pool.adopt(patch)
                 except Exception as failure:
                     location = await self._preserve_adoption_candidate(aid, patch)
                     raise RuntimeError(f"{failure}; full candidate retained at {location}") from failure
                 self._adopted_coders[aid] = captured
-                await self._release_adopted_retention(aid, captured.patch)
+                await self._release_adopted_retention(aid, captured.patch, captured.delivery_diff)
 
             await await_owned_operation(apply_completed_changes(), propagate_cancellation=True)
             child_env = getattr(self._sessions.get(aid), "env", None)
@@ -646,14 +665,20 @@ class SchedulerTeamMixin:
             return env.retain_changes()
         raise RuntimeError("completed candidate recovery environment is unavailable")
 
-    async def _release_adopted_retention(self, aid: int, patch: str) -> None:
+    async def _release_adopted_retention(self, aid: int, patch: str, delivery_diff: str | None = None) -> None:
         env = getattr(self._sessions.get(aid), "env", None)
         if (
             isinstance(env, RecoverableChangesPort) and isinstance(env, DiffCapablePort)
             and env.recovery_location is not None
         ):
-            current = await env.get_diff()
-            if current != patch:
+            capture = inspect.getattr_static(env, "capture_changes", None)
+            current = (
+                await env.capture_changes() if delivery_diff is not None and callable(capture) else
+                await env.get_diff()
+            )
+            if current != patch or (
+                delivery_diff is not None and getattr(env, "delivery_diff", None) != delivery_diff
+            ):
                 env.retain_changes()
 
     async def _trace_worktree_changes(

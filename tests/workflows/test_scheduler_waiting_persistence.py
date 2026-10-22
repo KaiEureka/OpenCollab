@@ -9,6 +9,7 @@ import pytest
 
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.storage import SessionStore
+from opencollab.adapters.tools.fs import FileWriteTool
 from opencollab.adapters.tools.spawn import SpawnAgentTool
 from opencollab.adapters.tools.submit import SubmitTool
 from opencollab.application.event_bus import EventBus
@@ -180,6 +181,63 @@ async def test_restored_waiting_turn_retains_accepted_submit_without_another_mod
         assert [event.data["content"] for event in events if event.type == "text_delta"] == expected_text
     finally:
         await finish_team(scheduler, factory, active)
+
+@pytest.mark.parametrize("autosave", [False, True])
+async def test_submit_tool_end_snapshot_retains_completion_with_a_pending_child(tmp_path, autosave):
+    summary = "accepted summary"
+    scheduler, factory, session, model, events, path = make_team(
+        tmp_path, extra_calls=[
+            tool_call("submit", "submit", json.dumps({"summary": summary})),
+            tool_call("skipped", "file_write", json.dumps({
+                "path": "skipped.txt", "mode": "create", "content": "late write",
+            })),
+        ], extra_tools=[SubmitTool(), FileWriteTool()], autosave=autosave,
+    )
+    held, release = asyncio.Event(), asyncio.Event()
+
+    async def hold_submission(event):
+        if event.type == "tool_end" and event.data.get("tool") == "submit":
+            held.set()
+            await release.wait()
+
+    session.event_bus.subscribe(hold_submission)
+    active = asyncio.create_task(scheduler.run("old user task"))
+    restored = None
+    try:
+        await asyncio.wait_for(held.wait(), 2)
+        assert session.phase is SessionPhase.EXECUTING_TOOLS
+        assert session.state.submitted_summary == summary
+        assert not session.state.pending_events.is_complete()
+        session.save(str(path))
+        resumed_model = FakeLLMClient([llm_response(content="new task answer")])
+        restored = load_session(
+            str(path), agent=agent(), llm=resumed_model, env=LocalEnvironment(str(tmp_path)),
+        )
+        assert await restored.run_loop() == summary
+        assert restored.phase is SessionPhase.DONE
+        assert restored.state.terminal_reason == "submitted"
+        assert restored.state.pending_events.is_empty()
+        assert resumed_model.calls == []
+        assert restored._open_tool_call_ids() == []
+        assert sum(message == {"role": "assistant", "content": summary} for message in restored.messages) == 1
+
+        await restored.add_user_message("new user task")
+        assert await restored.run_loop() == "new task answer"
+        assert len(resumed_model.calls) == 1
+        release.set()
+        factory.client.release.set()
+        assert await asyncio.wait_for(active, 2) == summary
+        assert len(model.calls) == 1
+        assert not (tmp_path / "skipped.txt").exists()
+        assert [(event.type, event.data["tool"]) for event in events if event.type in {"tool_start", "tool_end"}] == [
+            ("tool_start", "spawn_agent"), ("tool_end", "spawn_agent"),
+            ("tool_start", "submit"), ("tool_end", "submit"),
+        ]
+    finally:
+        release.set()
+        await finish_team(scheduler, factory, active)
+        if restored is not None:
+            await restored.aclose()
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stored_summary", [None, False, {"summary": "unaccepted"}])

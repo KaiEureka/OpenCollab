@@ -9,6 +9,7 @@ import openai
 import pytest
 
 from scripts.check_dashscope import request_completion
+from tests.support.provider_sdk_http import completion_http_response, install_sdk_transport
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -58,3 +59,42 @@ async def test_diagnostic_responses_configuration_and_sdk_cleanup(monkeypatch, t
     assert json.loads(requests[0].content)["stream"] is False
     assert len(transports) == 1
     assert transports[0].is_closed
+
+
+@pytest.mark.parametrize("credential", ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", None])
+async def test_diagnostic_anthropic_credentials(monkeypatch, tmp_path, capsys, credential):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return completion_http_response(request, text="connected")
+
+    install_sdk_transport(monkeypatch, "anthropic", handler)
+    config_path = tmp_path / "config.env"
+    entries = [
+        "OPENCOLLAB_PROVIDER=anthropic",
+        "OPENCOLLAB_MODEL=claude-sonnet-4-6",
+        "OPENCOLLAB_BASE_URL=https://provider.invalid",
+        "OPENCOLLAB_LLM_MAX_RETRIES=0",
+    ]
+    if credential:
+        entries.append(f"{credential}=diagnostic-fixture-secret")  # pragma: allowlist secret
+    config_path.write_text("\n".join(entries) + "\n")
+    with patch.dict(os.environ, {"OPENCOLLAB_CONFIG_FILE": str(config_path)}, clear=True):
+        if credential:
+            assert await request_completion("connect", workspace=tmp_path) == "connected"
+        else:
+            with pytest.raises(ValueError, match="provider credentials are missing"):
+                await request_completion("connect", workspace=tmp_path)
+
+    assert len(requests) == (1 if credential else 0)
+    if credential:
+        assert requests[0].url.path == "/v1/messages"
+        if credential == "ANTHROPIC_AUTH_TOKEN":
+            assert requests[0].headers["authorization"] == "Bearer diagnostic-fixture-secret"
+            assert "x-api-key" not in requests[0].headers
+        else:
+            assert requests[0].headers["x-api-key"] == "diagnostic-fixture-secret"
+            assert "authorization" not in requests[0].headers
+    output = capsys.readouterr()
+    assert "diagnostic-fixture-secret" not in output.out + output.err

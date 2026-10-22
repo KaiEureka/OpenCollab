@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import tempfile
 from collections.abc import Callable
@@ -59,6 +60,7 @@ class TeamWorkflowTool(Tool):
     async def execute_with_runtime(self, params: dict[str, Any], runtime: ToolRuntime) -> str:
         spec = self._registry.get(params["name"])
         parent = self._get_session()
+        cancel_event = parent.runner.default_cancel_event or parent.runner._run_cancel_event
         budget = params.get("budget")
         if parent.max_budget_tokens is not None:
             remaining = parent.max_budget_tokens - parent.used_tokens
@@ -78,6 +80,7 @@ class TeamWorkflowTool(Tool):
 
             kwargs["run_control"] = replace(control, on_event=on_event)
             kwargs["permission_policy"] = runtime.permission_policy
+            kwargs["default_cancel_event"] = cancel_event
             kwargs["safety_policy"] = (
                 runtime.safety_policy if kwargs["env"] is runtime.environment
                 else build_workspace_safety_policy(kwargs["env"])
@@ -90,7 +93,7 @@ class TeamWorkflowTool(Tool):
         )
         config = {**vars(self._config), **vars(parent.agent)}
         config["max_output_tokens"] = parent.agent.max_tokens_per_step
-        result = await run_workflow(
+        workflow_task = asyncio.create_task(run_workflow(
             spec, params["args"], cfg=config,
             workspace=runtime.environment.workspace if runtime.environment is not None else None,
             env=runtime.environment, cleanup_environment=False,
@@ -100,7 +103,26 @@ class TeamWorkflowTool(Tool):
             llm=parent._llm, session_builder=build_child,
             save_dir=save_dir, trace=self._config.tracer is not None,
             return_details=True,
+        ))
+
+        async def cancel_workflow() -> None:
+            assert cancel_event is not None
+            await cancel_event.wait()
+            workflow_task.cancel()
+
+        cancel_task = (
+            asyncio.create_task(cancel_workflow()) if cancel_event is not None else None
         )
+        try:
+            result = await workflow_task
+        except asyncio.CancelledError:
+            if cancel_event is None or not cancel_event.is_set():
+                raise
+            return "Error: Workflow interrupted by user."
+        finally:
+            if cancel_task is not None:
+                cancel_task.cancel()
+                await asyncio.gather(cancel_task, return_exceptions=True)
         return json.dumps({
             "output": result.output,
             "tokens": result.tokens,

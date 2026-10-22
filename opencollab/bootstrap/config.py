@@ -40,6 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from opencollab.adapters.llm.providers import (
     is_anthropic,
+    is_dashscope_endpoint,
     normalize_wire_protocol,
     required_env_key,
 )
@@ -128,6 +129,7 @@ class OpenCollabConfig(BaseModel):
     provider: str = Field(default="openai", min_length=1)
     wire_protocol: str = Field(default="chat_completions", min_length=1)
     api_key: str | None = Field(default=None, repr=False)
+    auth_token: str | None = Field(default=None, repr=False)
     base_url: str | None = None
     budget: int = Field(default=1_000_000, ge=1)
     temperature: float = Field(default=DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
@@ -242,7 +244,7 @@ class OpenCollabConfig(BaseModel):
             )
         return normalized
 
-    @field_validator("api_key", "base_url", mode="before")
+    @field_validator("api_key", "auth_token", "base_url", mode="before")
     @classmethod
     def _empty_string_as_none(cls, value: Any) -> Any:
         return _optional_string(value)
@@ -335,47 +337,40 @@ def load_config_env(workspace: str | None = None) -> dict[str, str]:
             values.setdefault(key, value)
     return values
 
-def _is_dashscope_base_url(base_url: str | None) -> bool:
-    lowered = (base_url or "").lower()
-    return "dashscope" in lowered or "aliyuncs" in lowered
-
 def api_key_env_precedence(provider: str | None, base_url: str | None = None) -> tuple[str, ...]:
-    """Ordered API-key env vars to consult, most provider-specific first.
-
-    Key specificity matters more than source: this keeps a generic exported
-    ``OPENAI_API_KEY`` from being sent to a provider-specific compatible
-    endpoint (DashScope) or to the native Anthropic path.
-    """
-    if _is_dashscope_base_url(base_url):
+    """Resolve configured keys by endpoint before consulting generic variables."""
+    if is_dashscope_endpoint(base_url):
         return ("DASHSCOPE_API_KEY", "OPENCOLLAB_API_KEY")
     if is_anthropic(provider):
         return ("ANTHROPIC_API_KEY", "OPENCOLLAB_API_KEY")
     return ("OPENCOLLAB_API_KEY", "OPENAI_API_KEY")
 
 def accepted_api_key_envs(provider: str | None, base_url: str | None = None) -> list[str]:
-    """The env-var names a user can set to satisfy the API-key requirement.
-
-    ``OPENCOLLAB_API_KEY`` plus the provider-specific key, with
-    ``DASHSCOPE_API_KEY`` appended for a DashScope-compatible endpoint.
-    """
-    if _is_dashscope_base_url(base_url):
+    """Environment credentials recognized by the selected provider."""
+    if is_dashscope_endpoint(base_url):
         names = ["OPENCOLLAB_API_KEY", "DASHSCOPE_API_KEY"]
     else:
         names = ["OPENCOLLAB_API_KEY", required_env_key(provider)]
+    if is_anthropic(provider):
+        names.append("ANTHROPIC_AUTH_TOKEN")
     return list(dict.fromkeys(names))
 
-def missing_api_key(provider: str | None, api_key: str | None, base_url: str | None = None) -> bool:
-    """Whether no usable API key is resolvable for ``provider``.
-
-    A non-empty ``api_key`` (already resolved, e.g. from ``build_config``)
-    satisfies the requirement; otherwise consult the env vars in precedence
-    order. Whitespace-only values do not count as present.
-    """
+def missing_api_key(
+    provider: str | None, api_key: str | None, base_url: str | None = None,
+    auth_token: str | None = None,
+) -> bool:
+    """Whether the resolved key and provider environment lack credentials."""
     if api_key and api_key.strip():
+        return False
+    if is_anthropic(provider) and auth_token and auth_token.strip():
         return False
     for key in api_key_env_precedence(provider, base_url):
         value = os.environ.get(key)
         if value and value.strip():
+            return False
+    if is_anthropic(provider):
+        auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        if auth_token and auth_token.strip():
             return False
     return True
 
@@ -413,7 +408,7 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
 
     selected_overrides: dict[str, Any] = {}
     for key, value in (overrides or {}).items():
-        if key in {"api_key", "base_url"}:
+        if key in {"api_key", "auth_token", "base_url"}:
             value = _optional_string(value)
         if value is not None:
             selected_overrides[key] = value
@@ -428,9 +423,20 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         if "base_url" in selected_overrides
         else resolve("OPENCOLLAB_BASE_URL", provider_base_url_key)
     )
-    api_key_value = selected_overrides.get("api_key") or resolve_ordered(
-        *api_key_env_precedence(provider_value, base_url_value)
+    api_key_names = api_key_env_precedence(provider_value, base_url_value)
+    if is_anthropic(provider_value):
+        api_key_names = tuple(name for name in api_key_names if name != "OPENCOLLAB_API_KEY")
+    api_key_value = selected_overrides.get("api_key") or (
+        None if selected_overrides.get("auth_token") else resolve_ordered(
+            *api_key_names
+        )
     )
+    auth_token_value = (
+        selected_overrides.get("auth_token") or resolve_ordered("ANTHROPIC_AUTH_TOKEN")
+        if is_anthropic(provider_value) and not api_key_value else None
+    )
+    if is_anthropic(provider_value) and not api_key_value and not auth_token_value:
+        api_key_value = resolve_ordered("OPENCOLLAB_API_KEY")
 
     defaults = {
         "model": "gpt-4o",
@@ -456,7 +462,8 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         key: resolve(f"OPENCOLLAB_{key.upper()}", default=default)
         for key, default in defaults.items()
     }
-    values.update(provider=provider_value, api_key=api_key_value, base_url=base_url_value)
+    values.update(provider=provider_value, api_key=api_key_value,
+                  auth_token=auth_token_value, base_url=base_url_value)
     values.update(selected_overrides)
     # Defaults share the same payload as an explicit DashScope protocol. Keep
     # its source before validation replaces None with that default mapping.

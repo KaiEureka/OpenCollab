@@ -6,7 +6,7 @@ import shlex
 from collections.abc import Sequence
 
 
-def _git_command_and_config_guard() -> tuple[str, str]:
+def _git_command_and_config_guard(*, allow_core_worktree: bool = False) -> tuple[str, str]:
     """Share existing repository configuration restrictions with Git tools."""
     git_env = (
         "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "
@@ -27,6 +27,7 @@ def _git_command_and_config_guard() -> tuple[str, str]:
         f'{git_env} git -c safe.directory="$PWD" -c core.filemode=true'
         f"{neutralized_config}"
     )
+    worktree_setting = "" if allow_core_worktree else "|worktree"
     unsafe_config_guard = (
         "config_scopes=--local; "
         f'if [ "$({git_command} config --local --includes --type=bool '
@@ -35,7 +36,7 @@ def _git_command_and_config_guard() -> tuple[str, str]:
         "for config_scope in $config_scopes; do "
         f"unsafe_config=$({git_command} config \"$config_scope\" --includes --name-only --get-regexp "
         "'^(diff\\..*\\.(command|textconv)|filter\\..*|"
-        "core\\.(excludesfile|sparsecheckout|sparsecheckoutcone|worktree))$' "
+        f"core\\.(excludesfile|sparsecheckout|sparsecheckoutcone{worktree_setting}))$' "
         "2>/dev/null); "
         'config_rc=$?; if [ "$config_rc" -eq 0 ]; then '
         "echo \"unsafe repository Git configuration: $unsafe_config\" >&2; exit 125; "
@@ -67,30 +68,71 @@ def _git_command_and_config_guard() -> tuple[str, str]:
     )
     return git_command, unsafe_config_guard
 
+def _submodule_status_command(
+    git_command: str, *,
+    reject_ignored_untracked: bool = True,
+    exclude_untracked_paths: Sequence[str] = (),
+    exclude_paths: Sequence[str] = (),
+) -> str:
+    """Inspect initialized modules with repository-relative exclusions."""
+    ignored = " --ignored=matching" if reject_ignored_untracked else ""
+    module_status = f"git status --porcelain=v1 --untracked-files=normal{ignored} --ignore-submodules=none"
+    if exclude_untracked_paths or exclude_paths:
+        module_status = "set -- .; "
+        for paths, tracked in ((exclude_paths, True), (exclude_untracked_paths, False)):
+            for path in paths:
+                module_status += (
+                    f"excluded={shlex.quote(path)}; "
+                    'if [ "$excluded" = . ]; then excluded="$displaypath"; fi; '
+                    'case "$displaypath" in "$excluded"|"$excluded"/*) '
+                    'set -- "$@" ":(exclude,literal).";; '
+                    '*) case "$excluded" in "$displaypath"/*) '
+                    'set -- "$@" ":(exclude,literal)${excluded#"$displaypath"/}";; esac;; esac; '
+                )
+            if tracked:
+                # Owned output only excludes untracked files.
+                module_status += (
+                    "git --no-optional-locks status --porcelain=v1 --untracked-files=no "
+                    '--ignore-submodules=dirty -- "$@" || exit $?; '
+                )
+        module_status += (
+            "git --no-optional-locks status --porcelain=v1 --untracked-files=all"
+            f'{ignored} --ignore-submodules=dirty -- "$@"'
+        )
+    return f"{git_command} submodule foreach --quiet --recursive {shlex.quote(module_status)}"
+
 def _submodule_patch_guard(
     git_command: str,
     base_revision: str,
     *,
     indexed_git_command: str | None = None,
     reject_ignored_untracked: bool = True,
+    exclude_untracked_paths: Sequence[str] = (),
+    exclude_paths: Sequence[str] = (),
 ) -> str:
     """Reject module edits that an ordinary parent patch cannot deliver."""
     indexed_git = indexed_git_command or git_command
-    raw_options = "--raw --no-renames --no-abbrev --no-color --ignore-submodules=none"
+    ignore_submodules = "dirty" if exclude_untracked_paths or exclude_paths else "none"
+    raw_options = f"--raw --no-renames --no-abbrev --no-color --ignore-submodules={ignore_submodules}"
+    pathspec = "--"
+    if exclude_paths:
+        pathspec += " . " + " ".join(shlex.quote(f":(exclude,literal){path}") for path in exclude_paths)
     inspections = [
         f"{indexed_git} -c core.quotePath=true diff-index --cached {raw_options} "
-        f"{shlex.quote(base_revision)} --",
-        f"{indexed_git} -c core.quotePath=true diff-files {raw_options} --",
+        f"{shlex.quote(base_revision)} {pathspec}",
+        f"{indexed_git} -c core.quotePath=true diff-files {raw_options} {pathspec}",
     ]
     if indexed_git_command is not None:
         # A module replaced by a directory may disappear from a temporary
         # index. Its removal is still visible in the workspace's real index.
         inspections.append(
             f"{git_command} -c core.quotePath=true diff-index --cached {raw_options} "
-            f"{shlex.quote(base_revision)} --"
+            f"{shlex.quote(base_revision)} {pathspec}"
         )
-    ignored = " --ignored=matching" if reject_ignored_untracked else ""
-    module_status = f"git status --porcelain=v1 --untracked-files=normal{ignored} --ignore-submodules=none"
+    module_status = _submodule_status_command(
+        git_command, reject_ignored_untracked=reject_ignored_untracked,
+        exclude_untracked_paths=exclude_untracked_paths, exclude_paths=exclude_paths,
+    )
     return (
         f"submodule_versions=$({' && '.join(inspections)}) || exit 125; "
         # Raw records have metadata before a tab. Git quotes control characters
@@ -102,8 +144,7 @@ def _submodule_patch_guard(
         'else submodule_rc=$?; [ "$submodule_rc" -eq 1 ] || exit 125; fi; '
         # Query every initialized module explicitly, including nested modules
         # whose parent has configured submodule.<name>.ignore=all.
-        f"submodule_contents=$({git_command} submodule foreach --quiet --recursive "
-        f"{shlex.quote(module_status)}) || exit 125; "
+        f"submodule_contents=$({module_status}) || exit 125; "
         'if [ -n "$submodule_contents" ]; then '
         "echo 'submodule changes cannot be delivered as a repository patch' >&2; exit 125; fi; "
     )
@@ -186,14 +227,19 @@ def guarded_staged_diff_command(
     submodule_guard = _submodule_patch_guard(
         git_command, base_revision, indexed_git_command=git_index_command,
         reject_ignored_untracked=reject_ignored_untracked,
+        exclude_untracked_paths=exclude_untracked_paths,
     )
+    # Overlay staged additions without carrying source-index skip hints.
     return (
         'idx=$(mktemp) || exit 125; '
         'untracked=$(mktemp) || { rm -f -- "$idx"; exit 125; }; '
         'ignored=$(mktemp) || { rm -f -- "$idx" "$untracked"; exit 125; }; '
-        'trap \'rm -f -- "$idx" "$untracked" "$ignored"\' EXIT; '
+        'tracked=$(mktemp) || { rm -f -- "$idx" "$untracked" "$ignored"; exit 125; }; '
+        'trap \'rm -f -- "$idx" "$untracked" "$ignored" "$tracked"\' EXIT; '
         f"{unsafe_config_guard}"
         f"{git_index_command} read-tree {shlex.quote(base_revision)} && "
+        f'{git_command} ls-files --stage -z > "$tracked" && '
+        f'{git_index_command} update-index -z --index-info < "$tracked" && '
         f'{git_index_command} add -u && '
         f"{ignored_guard}"
         f"{stage_untracked}"

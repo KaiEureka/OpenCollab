@@ -6,6 +6,8 @@ import asyncio
 import copy
 import json
 
+import pytest
+
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.application.event_bus import EventBus
 from opencollab.application.scheduler import Scheduler
@@ -113,3 +115,84 @@ async def test_shutdown_queued_turn_restore_claims_it_before_the_next_request(tm
         assert len(restored_provider.calls) == 2
     finally:
         await resumed.cleanup()
+
+
+@pytest.mark.parametrize("restore_sender", [False, True])
+@pytest.mark.parametrize("completed_driver", [False, True])
+async def test_active_restore_rejects_missing_sender_without_blocking_new_turn(
+    tmp_path, restore_sender, completed_driver,
+):
+    path = tmp_path / "active.json"
+    provider = _Provider(hold=True)
+    lead = build_session(
+        agent=Agent(name="lead", system_prompt="lead"), llm=provider,
+        env=LocalEnvironment(str(tmp_path)),
+    )
+    scheduler = Scheduler(
+        session_factory=_Factory(_Provider()), worktree_pool=fake_worktree_pool(), event_sink=EventBus(),
+    )
+    scheduler.register_lead(lead)
+    sender = await scheduler.spawn(0, "worker", "prepare sender")
+    active = asyncio.create_task(scheduler.run("old request"))
+    try:
+        await asyncio.wait_for(provider.started.wait(), 2)
+        assert "queued" in await scheduler.send_message(sender, 0, "accepted work", "QUEUED_WORK")
+        message = copy.deepcopy(lead.state.pending_user_messages[0])
+        lead.save(str(path))
+        snapshot = json.loads(path.read_text())
+        assert snapshot["session_state"]["phase"] == SessionPhase.CALLING_LLM.value
+        assert snapshot["pending_messages"] == [message]
+    finally:
+        await scheduler.cleanup()
+        provider.release.set()
+        await asyncio.gather(active, return_exceptions=True)
+
+    continuation = _Provider(hold=restore_sender)
+    restored = load_session(
+        str(path), agent=Agent(name="lead", system_prompt="lead"), llm=continuation,
+        env=LocalEnvironment(str(tmp_path)),
+    )
+    events = []
+    resumed = Scheduler(
+        session_factory=_Factory(_Provider()), worktree_pool=fake_worktree_pool(),
+        event_sink=EventBus(events.append), prebuild_team=restore_sender, roles=("lead", "worker"),
+    )
+    resumed.register_lead(restored)
+    if completed_driver:
+        previous = asyncio.create_task(asyncio.sleep(0))
+        await previous
+        resumed._tasks[0] = previous
+    first = asyncio.create_task(resumed.run("new request"))
+    expected_calls = 2 if restore_sender else 1
+    try:
+        if restore_sender:
+            await asyncio.wait_for(continuation.started.wait(), 2)
+            assert "QUEUED_WORK" in str(continuation.calls[0])
+            assert "new request" not in str(continuation.calls[0])
+            assert not first.done()
+            continuation.release.set()
+        assert await asyncio.wait_for(first, 2) == f"answer-{expected_calls}"
+        assert len(continuation.calls) == expected_calls
+        assert continuation.calls[-1][-1]["content"].startswith("new request")
+        assert await resumed.run("second request") == f"answer-{expected_calls + 1}"
+        deliveries = [message for message in restored.messages
+                      if message["role"] == "user" and "QUEUED_WORK" in message["content"]]
+        assert len(deliveries) == int(restore_sender)
+        rejections = [event for event in events if event.type == "agent_message_rejected_on_restore"]
+        assert len(rejections) == int(not restore_sender)
+        if restore_sender:
+            assert restored.state.pending_user_messages == []
+        else:
+            rejected = restored.state.pending_user_messages[0]
+            assert rejected["message_id"] == message["message_id"]
+            assert rejected["from_aid"] == sender
+            assert rejected["from_role"] == "worker"
+            assert rejected["delivery_status"] == "rejected"
+            assert "no longer exists" in rejected["rejection_reason"]
+        assert restored.phase is SessionPhase.DONE
+        assert restored.state.pending_external_user_turn is None
+        assert not resumed._message_inbox.get(0)
+    finally:
+        continuation.release.set()
+        await resumed.cleanup()
+        await asyncio.gather(first, return_exceptions=True)

@@ -194,6 +194,8 @@ class SessionState:
     # began. It is retained only while a deferred turn is suspended so a
     # restored runner can keep answer lookup within that turn.
     active_turn_start_message_index: int | None = None
+    # None retains whole-history answer lookup for legacy completed snapshots.
+    completed_turn_start_message_index: int | None = field(default=None, kw_only=True)
     # Elapsed provider/tool time for a deferred step whose process-local
     # PendingStep response was released while waiting for child results.
     pending_step_latency: float | None = None
@@ -268,9 +270,12 @@ class SessionState:
     def start_active_turn(self, message_index: int) -> None:
         """Persist the answer-lookup boundary for an active user turn."""
         self.active_turn_start_message_index = message_index
+        self.completed_turn_start_message_index = None
 
     def clear_active_turn(self) -> None:
-        """Discard a turn boundary once that turn reaches a terminal phase."""
+        """Clear suspended work and retain a completed turn's answer boundary."""
+        if self.phase is SessionPhase.DONE and self.active_turn_start_message_index is not None:
+            self.completed_turn_start_message_index = self.active_turn_start_message_index
         self.active_turn_start_message_index = None
         self.pending_step_latency = None
         self.submitted_summary = None

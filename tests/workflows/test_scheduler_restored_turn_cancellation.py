@@ -12,6 +12,7 @@ from opencollab.adapters.tools.spawn import SpawnAgentTool
 from opencollab.application.event_bus import EventBus
 from opencollab.application.scheduler import Scheduler
 from opencollab.application.scheduler_types import SchedulerTurnError
+from opencollab.application.session_run import _EMPTY_STOP_PLACEHOLDER
 from opencollab.bootstrap import build_session, load_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
@@ -181,7 +182,18 @@ async def test_failed_restored_turn_keeps_error_visible_and_accepts_new_request(
         await team.cleanup()
         await close_original(original, old_factory, old_model, old_active)
 
-async def test_cancellation_at_recovery_completion_leaves_new_request_unaccepted(tmp_path):
+@pytest.mark.parametrize(
+    ("replies", "expected_answer"),
+    [
+        (["old answer"], "old answer"), ([None, None], None), ([None, "old answer"], "old answer"),
+        ([_EMPTY_STOP_PLACEHOLDER], _EMPTY_STOP_PLACEHOLDER),
+        ([None, _EMPTY_STOP_PLACEHOLDER], _EMPTY_STOP_PLACEHOLDER),
+    ],
+    ids=["direct-answer", "empty-twice", "retry-answer", "same-text", "retry-same-text"],
+)
+async def test_cancellation_at_recovery_completion_leaves_new_request_unaccepted(
+    tmp_path, replies, expected_answer,
+):
     path, original, old_factory, old_model, old_active = await saved_recovery(tmp_path, "queued")
     cancel_event = asyncio.Event()
 
@@ -191,7 +203,7 @@ async def test_cancellation_at_recovery_completion_leaves_new_request_unaccepted
 
     factory = Factory(tmp_path / "resumed")
     team = Scheduler(session_factory=factory, worktree_pool=Pool(tmp_path), event_sink=EventBus(cancel_at_completion))
-    model = FakeLLMClient([llm_response(content="old answer"), llm_response(content="new answer")])
+    model = FakeLLMClient([llm_response(content=reply) for reply in replies])
     restored = load_session(
         str(path), agent=Agent(name="lead", system_prompt="Finish the task."), llm=model,
         env=LocalEnvironment(str(tmp_path)), auto_save_path=str(tmp_path / "restored-completion.json"),
@@ -200,8 +212,8 @@ async def test_cancellation_at_recovery_completion_leaves_new_request_unaccepted
     try:
         with pytest.raises(SchedulerTurnError, match="interrupted by user") as caught:
             await team.run("new request", cancel_event=cancel_event)
-        assert caught.value.partial_answer == "old answer"
-        assert len(model.calls) == 1
+        assert caught.value.partial_answer == expected_answer
+        assert len(model.calls) == len(replies)
         assert all(message.get("content") != "new request" for message in restored.messages)
         await asyncio.gather(*restored.pending_cleanup_tasks)
         snapshot = SessionStore().load_snapshot(restored.auto_save_path, restored.agent.system_prompt)

@@ -45,6 +45,7 @@ class WorkflowBudget:
         self._total = total
         self._sessions = sessions
         self._leases: list[_BudgetLease] = []
+        self._parent_allocation: tuple[WorkflowBudget, _BudgetLease] | None = None
 
     @property
     def total(self) -> int | None:
@@ -56,8 +57,13 @@ class WorkflowBudget:
     def remaining(self) -> float:
         if self._total is None:
             return float("inf")
+        total = self._total
+        if self._parent_allocation is not None:
+            parent, allocation = self._parent_allocation
+            # A sibling can overspend while this workflow waits for an agent slot.
+            total = min(total, parent.remaining() + allocation.remaining())
         reserved_unspent = sum(lease.remaining() for lease in self._leases)
-        return self._total - self.spent() - reserved_unspent
+        return total - self.spent() - reserved_unspent
 
     def reserve(self, lease: _BudgetLease) -> None:
         self._leases.append(lease)
@@ -99,6 +105,27 @@ class _ConcurrencyPermit:
 
 class WorkflowBudgetMixin:
     """Allocate call budgets while retaining workflow accounting and trace evidence."""
+
+    async def _refresh_budget_lease(
+        self,
+        lease: _BudgetLease,
+        *,
+        cap: int | None,
+        over_budget_ok: bool,
+        label: str | None,
+    ) -> _BudgetLease:
+        if lease.reserved == 0:
+            return lease
+        # Keep other reservations intact when an earlier request exceeds its grant.
+        available = max(0, int(self.budget.remaining() + lease.remaining()))
+        if available <= 0:
+            self.budget.release(lease)
+            return await self._acquire_budget_lease(
+                cap, over_budget_ok=over_budget_ok, label=label,
+            )
+        lease.total = min(lease.total, available)
+        lease.reserved = lease.total
+        return lease
 
     def _session_budget(self) -> int | None:
         lease = self._active_budget_lease.get()

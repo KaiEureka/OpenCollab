@@ -6,6 +6,7 @@ construction live in ``container.build_session_runtime``.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import inspect
 import os
@@ -52,6 +53,7 @@ from opencollab.bootstrap.team_config import (
 )
 from opencollab.domain.agent import Agent
 from opencollab.domain.identity import role_storage_slug, validate_role_identity
+from opencollab.domain.session import SessionPhase
 
 
 class SnapshotSessionError(RuntimeError):
@@ -206,6 +208,7 @@ def build_session(
     context_policy: Any | None = None,
     run_id: str | None = None,
     run_control: RunControl | None = None,
+    default_cancel_event: asyncio.Event | None = None,
 ) -> Session:
     """Self-wiring ``Session`` factory.
 
@@ -252,6 +255,7 @@ def build_session(
         auto_save_path=auto_save_path,
         permission_policy=permission_policy,
         safety_policy=safety_policy,
+        default_cancel_event=default_cancel_event,
     )
     return session
 
@@ -303,7 +307,10 @@ def snapshot_session(
     silently sharing a workspace would make the resulting sessions unsafe to run
     concurrently.
     """
-    agent = _clone_snapshot_component(session.agent, label="agent")
+    agent, initial_tools, initial_tool_choice = _clone_snapshot_component(
+        (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
+        label="agent",
+    )
     environment = _fork_snapshot_environment(session.env)
     new = build_session(
         agent=agent,
@@ -329,6 +336,15 @@ def snapshot_session(
         run_id=session.run_id,
     )
     state = _clone_snapshot_component(session.state, label="session state")
+    if state.phase not in {
+        SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
+    } or new._open_tool_call_ids(state):
+        new._normalize_forked_state(state, session._fork_runtime_metadata())
+        new.runner.reset_for_restore()
+    # Keep the current turn's restrictions through normalization, then retain
+    # the original capabilities for the next user turn.
+    new.runner._initial_agent_tools = initial_tools
+    new.runner._initial_agent_tool_choice = initial_tool_choice
     new.state = state
     new.runner.state = state
     new.tool_execution.state = state
@@ -522,7 +538,7 @@ class DefaultSessionFactory:
                 role_name=role_name,
                 tools_present=bool(tool_names),
                 top_p=self._cfg.top_p,
-                reasoning_effort=self._cfg.reasoning_effort,
+                reasoning_effort=self._cfg.reasoning_effort_for_role(role),
             )
         fallback_tool_names = set(BASE_TOOL_NAMES) - {"ask_user"}
         if self._team.topology.allow_all:

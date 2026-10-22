@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from opencollab.application._session_run_shared import _last_assistant_answer
 from opencollab.application.scheduler_types import SchedulerStalledError, SchedulerTurnError
 from opencollab.domain.pending import RowStatus
 from opencollab.domain.session import SessionPhase
@@ -127,7 +128,13 @@ class SchedulerRunMixin:
         if self._message_inbox.get(aid):
             turn_start = len(session.state.messages)
             await self._drain_message_inbox(aid)
-            await self._wait_for_restored_turn(aid, turn_start)
+            task = self._tasks.get(aid)
+            if (
+                self._message_inbox.get(aid)
+                or (task is not None and not task.done())
+                or session.state.phase is SessionPhase.AWAITING_EVENTS
+            ):
+                await self._wait_for_restored_turn(aid, turn_start)
 
         if self._shutting_down:
             raise RuntimeError("Cannot run scheduler: scheduler is shutting down.")
@@ -201,11 +208,7 @@ class SchedulerRunMixin:
         # Limit the answer lookup to messages appended during this invocation.
         # This keeps the public return value free of the worktree diff stored on
         # the SCB and prevents a precheck-only turn from leaking an old answer.
-        partial_answer = ""
-        for message in reversed(session.state.messages[turn_start:]):
-            if message.get("role") == "assistant" and message.get("content"):
-                partial_answer = message["content"]
-                break
+        partial_answer = _last_assistant_answer(session.state.messages, turn_start)
         phase = scb.state.phase
         if phase in {SessionPhase.ERROR, SessionPhase.STOPPED}:
             raise SchedulerTurnError(
@@ -262,14 +265,7 @@ class SchedulerRunMixin:
             self._autosave_session(aid)
         if cancellation_requested:
             session = self._sessions[aid]
-            partial_answer = next(
-                (
-                    message["content"]
-                    for message in reversed(session.state.messages[turn_start:])
-                    if message.get("role") == "assistant" and message.get("content")
-                ),
-                None,
-            )
+            partial_answer = _last_assistant_answer(session.state.messages, turn_start) or None
             raise SchedulerTurnError(aid, scb.state.phase, scb.state.terminal_reason, partial_answer)
 
     def _turn_descendant_aids(self, aid: int) -> set[int]:

@@ -25,6 +25,7 @@ from opencollab.application._session_run_shared import (
     GenerationTimeoutError,
     PendingStep,
     _ContextOverflowStop,
+    _last_assistant_answer,
     _submit_tool_choice,
     _TeamBudgetStop,
     _TokenBudgetStop,
@@ -112,7 +113,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         self._response_session_id = uuid.uuid4().hex
         self.event_publisher = event_publisher
         self.event_factory = event_factory or default_session_event_factory(
-            lambda: state.aid
+            lambda: self.state.aid
         )
         self.tool_execution = tool_execution
         self.tracer = tracer
@@ -176,6 +177,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         self._provider_tasks: set[asyncio.Task[Any]] = set()
         self._llm_step_started = False
         self._run_cancel_event: asyncio.Event | None = None
+        self.default_cancel_event: asyncio.Event | None = None
         self._draining_provider_tasks: set[asyncio.Task[Any]] = set()
         # Successful responses returned after caller cancellation or timeout.
         # They count against the budget but never enter a later turn's history.
@@ -318,7 +320,9 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         elif entry_phase is SessionPhase.DONE:
             # Re-entering an already-completed session is a compatibility
             # read-only query for its final answer, not a restored active turn.
-            self._turn_start_message_index = 0
+            self._turn_start_message_index = self.state.completed_turn_start_message_index
+            if self._turn_start_message_index is None:
+                self._turn_start_message_index = 0
         else:
             self._turn_start_message_index = len(self.state.messages)
             self.state.start_active_turn(self._turn_start_message_index)
@@ -333,15 +337,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
             self.state.submitted_summary = None
 
     def _last_turn_answer(self) -> str:
-        """Return the last real assistant text produced by the current turn."""
-        turn_start = self._turn_start_message_index
-        if turn_start is None:
-            return ""
-        for message in reversed(self.state.messages[turn_start:]):
-            content = message.get("content")
-            if message["role"] == "assistant" and content and content != _EMPTY_STOP_PLACEHOLDER:
-                return content
-        return ""
+        return _last_assistant_answer(self.state.messages, self._turn_start_message_index)
 
     def is_terminal_phase(self) -> bool:
         """Whether the session has finished its turn (done/failed/limits)."""
@@ -615,7 +611,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
         otherwise proceed to CALLING_LLM.
         """
         self._ensure_tool_environment_active()
-        if cancel_event and cancel_event.is_set():
+        if (cancel_event and cancel_event.is_set()) or self._run_cancellation_requested():
             await self._stop_for_run_cancellation()
             return
 
@@ -736,7 +732,7 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
             return
         # Accept a new tool batch only while the turn is still active. Keep the
         # billed response in the trace and its usable text in the transcript.
-        if response.tool_calls and self._run_cancel_event is not None and self._run_cancel_event.is_set():
+        if response.tool_calls and self._run_cancellation_requested():
             if isinstance(response.content, str) and response.content.strip():
                 self.state.append_message({"role": "assistant", "content": response.content})
                 await self.event_publisher.emit(self.event_factory.text_delta(response.content))
@@ -799,7 +795,10 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
                         latency=pending.latency,
                     )
                 if not has_content:
-                    self.state.append_message({"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER})
+                    self.state.append_message({
+                        "role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER,
+                        "_opencollab_placeholder": True,
+                    })
                 self.state.append_message({"role": "user", "content": _REQUIRED_TOOL_RETRY_NUDGE})
                 self.state.transition_to(SessionPhase.AUTOSAVING)
                 return
@@ -828,7 +827,10 @@ class SessionRunUseCase(_SessionRunControlMixin, _SessionRunCompletionMixin):
             # The empty turn was omitted. Insert an assistant placeholder before the
             # nudge to avoid consecutive user messages, which Anthropic rejects.
             if self.state.messages and self.state.messages[-1]["role"] in ("user", "tool"):
-                self.state.append_message({"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER})
+                self.state.append_message({
+                    "role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER,
+                    "_opencollab_placeholder": True,
+                })
             self.state.append_message({"role": "user", "content": _EMPTY_STOP_NUDGE})
             self.state.transition_to(SessionPhase.AUTOSAVING)
             return

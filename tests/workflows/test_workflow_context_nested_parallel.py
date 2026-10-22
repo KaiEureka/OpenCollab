@@ -84,6 +84,7 @@ async def test_sibling_nested_collections_use_slots_released_later():
     first_consumer_done = asyncio.Event()
     allow_second_group = asyncio.Event()
     second_group_started = asyncio.Event()
+    second_producer_started = asyncio.Event()
     second_consumer_started = asyncio.Event()
     release_first_io = asyncio.Event()
     release_first_consumer = asyncio.Event()
@@ -107,6 +108,8 @@ async def test_sibling_nested_collections_use_slots_released_later():
         async def producer():
             await queues[index].put("first")
             events.append((index, "first_put"))
+            if index == 1:
+                second_producer_started.set()
             await queues[index].put("second")
             return "produced"
 
@@ -139,6 +142,7 @@ async def test_sibling_nested_collections_use_slots_released_later():
         await asyncio.wait_for(first_consumer_started.wait(), 2.0)
         allow_second_group.set()
         await asyncio.wait_for(second_group_started.wait(), 2.0)
+        await asyncio.wait_for(second_producer_started.wait(), 2.0)
         assert (0, "consumer_started") in events
         assert (1, "first_put") in events
         assert (1, "consumer_started") not in events
@@ -190,7 +194,8 @@ async def test_nested_parallel_cancellation_releases_extra_task_slots():
     assert ctx._task_semaphore._value == 4
 
 @pytest.mark.asyncio
-async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap():
+@pytest.mark.parametrize("composition", ["direct", "gather", "task"])
+async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap(composition):
     ctx = WorkflowContext(FakeFactory([]), task_concurrency=3)
     running = 0
     high_water = 0
@@ -213,7 +218,12 @@ async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap
             running -= 1
 
     async def group():
-        return await ctx.parallel([lambda i=i: unit(i) for i in range(2_000)])
+        operation = ctx.parallel([lambda i=i: unit(i) for i in range(2_000)])
+        if composition == "gather":
+            return (await asyncio.gather(operation))[0]
+        if composition == "task":
+            return await asyncio.create_task(operation)
+        return await operation
 
     task = asyncio.create_task(ctx.parallel([group] * 4))
     try:
@@ -223,7 +233,10 @@ async def test_large_sibling_nested_collections_bound_workers_and_share_task_cap
         results = await task
 
     assert high_water == 3
-    assert peak_tasks <= 3 * ctx._task_concurrency + 1
+    # Each parent slot may own an inline worker and an allocator. The
+    # collection caller and admission waiter add two tasks on Python 3.10.
+    wrapper_tasks = 0 if composition == "direct" else ctx._task_concurrency
+    assert peak_tasks <= 3 * ctx._task_concurrency + 2 + wrapper_tasks
     assert results == [list(range(2_000))] * 4
 
 @pytest.mark.asyncio

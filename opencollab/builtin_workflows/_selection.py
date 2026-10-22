@@ -73,8 +73,8 @@ def _mechanical_choice(
     candidate_a: CandidateRun,
     candidate_b: CandidateRun,
 ) -> tuple[str | None, str, bool]:
-    nonempty_a = bool(candidate_a.diff.strip())
-    nonempty_b = bool(candidate_b.diff.strip())
+    nonempty_a = bool(candidate_a.effective_diff.strip())
+    nonempty_b = bool(candidate_b.effective_diff.strip())
     if nonempty_a and not nonempty_b:
         return "A", "only-a-nonempty", False
     if nonempty_b and not nonempty_a:
@@ -84,7 +84,7 @@ def _mechanical_choice(
     public_winner = dual._public_red_winner(candidate_a, candidate_b)
     if public_winner is not None:
         return public_winner, "same-command-public-red", False
-    if candidate_a.diff == candidate_b.diff:
+    if candidate_a.effective_diff == candidate_b.effective_diff:
         return "B", "identical-diff", False
     return None, "contract-adjudication", True
 
@@ -124,12 +124,15 @@ def _shared_public_records(
     ]
 
 def _candidate_view(candidate: CandidateRun) -> dict[str, Any]:
-    return {
+    view = {
         "diff": "" if candidate.diff is None else str(candidate.diff),
         "diff_truncated": False,
-        "changed_paths": patch_paths(candidate.diff),
+        "changed_paths": patch_paths(candidate.effective_diff),
         "public_command": dual._candidate_command(candidate),
     }
+    if candidate.delivery_diff is not None:
+        view["delivery_diff"] = candidate.effective_diff
+    return view
 
 def _judge_input(
     candidate_a: CandidateRun,

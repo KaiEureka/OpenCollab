@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from opencollab.adapters.llm import LLMClient
+from opencollab.adapters.llm.providers import is_anthropic
 from opencollab.bootstrap.config import build_config
 from opencollab.bootstrap.inspection import configured_model_client
 
@@ -28,8 +29,8 @@ async def request_completion(
 ) -> str:
     """Return one completion using the same configuration as the framework."""
     config = build_config(str(workspace))
-    if not config.api_key:
-        raise ValueError("provider API key is missing from the OpenCollab configuration")
+    if not (config.api_key or (is_anthropic(config.provider) and config.auth_token)):
+        raise ValueError("provider credentials are missing from the OpenCollab configuration")
     client = configured_model_client(config.model_dump(), client_type=client_type)
     try:
         thinking_params = config.thinking_params if config.thinking or config.thinking_params_explicit else None

@@ -6,6 +6,7 @@ import inspect
 import os
 import threading
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
 from opencollab.application.async_timeout import await_owned_operation
@@ -47,6 +48,9 @@ if TYPE_CHECKING:
 class SessionBusyError(RuntimeError):
     """Raised when a public operation would interleave an active session turn."""
 
+class _InheritedLimit(Enum):
+    RUNTIME = "runtime"
+
 @dataclass
 class SessionRuntime:
     """Pre-built collaborators a ``Session`` facade keeps as attributes.
@@ -76,6 +80,7 @@ class Session:
     ``SessionRuntime`` from the composition root.
     A missing tracer inherits the runtime's recorder. Assigning ``None`` to
     ``session.tracer`` after construction disables recording.
+    Omitted limits inherit the runtime. Explicit ``None`` removes a limit.
     """
 
     def __init__(
@@ -85,17 +90,16 @@ class Session:
         runtime: SessionRuntime,
         env: EnvironmentPort | None = None,
         tracer: TracePort | None = None,
-        max_budget_tokens: int | None = 1_000_000,
-        max_steps: int | None = 100,
+        max_budget_tokens: int | None | _InheritedLimit = _InheritedLimit.RUNTIME,
+        max_steps: int | None | _InheritedLimit = _InheritedLimit.RUNTIME,
         auto_save_path: str | None = None,
         permission_policy: PermissionPort | None = None,
         safety_policy: SafetyPolicyPort | None = None,
+        default_cancel_event: asyncio.Event | None = None,
     ):
         self.agent = runtime.runner.agent
         self.env = env
         self.tracer = tracer if tracer is not None else runtime.runner.tracer
-        self.max_budget_tokens = max_budget_tokens
-        self.max_steps = max_steps
         self._permission_policy = permission_policy
         self._safety_policy = safety_policy
         self._auto_save_path = auto_save_path
@@ -113,7 +117,17 @@ class Session:
         self.store = runtime.store
         self.tool_execution = runtime.tool_execution
         self.tool_execution.loop_reservation_checkpoint = self._checkpoint_loop_reservation
+        self.tool_execution.tool_results_checkpoint = self._track_tool_results
         self.runner = runtime.runner
+        # Inherited workflow stops remain active alongside per-turn capture events.
+        self.runner.default_cancel_event = default_cancel_event
+        self.max_budget_tokens = (
+            self.runner.max_budget_tokens
+            if max_budget_tokens is _InheritedLimit.RUNTIME else max_budget_tokens
+        )
+        self.max_steps = (
+            self.runner.max_steps if max_steps is _InheritedLimit.RUNTIME else max_steps
+        )
         self._context_summarizer = runtime.context_summarizer
         # Set again now that the runner and the tool executor exist, so both
         # write through this session's identity rather than the one the
@@ -246,7 +260,7 @@ class Session:
         if self._llm_close_error is not None:
             raise self._llm_close_error
         if not self._owns_llm or self._llm_closed:
-            self.runner.finish_run_control()
+            self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
             return
         self._llm_closed = True
         close = getattr(self._llm, "close", None)
@@ -261,7 +275,7 @@ class Session:
                 self._llm_close_error = exc
                 self.runner._emit_run_event("error", error_type=type(exc).__name__, message=str(exc))
                 raise
-        self.runner.finish_run_control()
+        self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
 
     @property
     def messages(self) -> list[dict]:
@@ -341,6 +355,7 @@ class Session:
                         "The execution outcome is unknown."
                     ),
                     exclude_ids=set(self.state.pending_events.rows),
+                    completed_results=self._completed_tool_results(),
                 )
                 raise
             except BaseException as exc:
@@ -567,6 +582,15 @@ class Session:
                 if row is not None:
                     restored.pending_events.add(row)
 
+        self._normalize_interrupted_snapshot_state(restored, raw_state, restored_turn_start)
+        self._publish_restored_state(restored, snapshot, path)
+
+    def _normalize_interrupted_snapshot_state(
+        self,
+        restored: SessionState,
+        raw_state: dict[str, Any],
+        restored_turn_start: int | None,
+    ) -> None:
         phase = _restore_phase(raw_state.get("phase", SessionPhase.IDLE.value))
         if phase is SessionPhase.AWAITING_EVENTS:
             self._complete_missing_pending_rows(restored)
@@ -576,15 +600,18 @@ class Session:
                 # which excludes prior answers while retaining the resumed one.
                 restored_turn_start = len(restored.messages)
         # In-flight provider/tool phases depend on process-local coroutines that
-        # cannot survive restart. AWAITING_EVENTS is recoverable because pending
-        # child rows above are converted to explicit FAILED tool results.
+        # cannot survive a restored or forked session. AWAITING_EVENTS can
+        # resume because pending child rows become explicit FAILED results.
         recoverable = {SessionPhase.AWAITING_EVENTS, *[p for p in SessionPhase if p.is_terminal()]}
         restored.set_phase(phase if phase in recoverable else SessionPhase.IDLE)
         if restored.phase is SessionPhase.AWAITING_EVENTS:
             restored.active_turn_start_message_index = restored_turn_start
         if phase is not SessionPhase.AWAITING_EVENTS:
             if not restored.pending_events.is_empty():
-                self._complete_missing_pending_rows(restored)
+                self._append_restore_results_for_open_tool_calls(
+                    restored, exclude_ids=set(restored.pending_events.rows),
+                    completed_results=raw_state.get("loop_checkpoint_results"),
+                )
             open_ids = set(self._open_tool_call_ids(restored))
             for message in restored.pending_events.ordered_results():
                 if message["tool_call_id"] in open_ids:
@@ -593,7 +620,7 @@ class Session:
                 restored, completed_results=raw_state.get("loop_checkpoint_results"),
             )
             # Rows from an interrupted non-awaiting phase have no live producer
-            # after process restart. The explicit tool results above close the
+            # after restoration. The explicit tool results above close the
             # provider protocol; keeping the stale sidecar rows would make the
             # scheduler's quiescence check wait forever after the resumed turn.
             restored.pending_events.clear()
@@ -620,7 +647,53 @@ class Session:
             and raw_state.get("terminal_reason") is not None
             else None
         )
-        self._publish_restored_state(restored, snapshot, path)
+        if phase in {SessionPhase.EXECUTING_TOOLS, SessionPhase.AUTOSAVING} and isinstance(submitted_summary, str):
+            # Accepted submissions survive interruption during their tool_end or autosave events.
+            answer = {"role": "assistant", "content": submitted_summary}
+            if not restored.messages or restored.messages[-1] != answer:
+                restored.append_message(answer)
+            restored.mark_done()
+            restored.terminal_reason = "submitted"
+        if restored.phase is SessionPhase.DONE:
+            completed_turn_start = _restore_active_turn_start(
+                raw_state.get("completed_turn_start_message_index"), restored.messages,
+            )
+            restored.completed_turn_start_message_index = (
+                completed_turn_start if completed_turn_start is not None else restored_turn_start
+            )
+
+    def _normalize_forked_state(self, state: SessionState, raw_state: dict[str, Any]) -> None:
+        state.pending_events.clear()
+        for value in raw_state.get("pending_events", []):
+            row = _restore_pending_row(value)
+            if row is not None:
+                state.pending_events.add(row)
+        turn_start = _restore_active_turn_start(
+            raw_state.get("active_turn_start_message_index"), state.messages,
+        )
+        self._normalize_interrupted_snapshot_state(state, raw_state, turn_start)
+
+    def _completed_tool_results(self) -> list[dict]:
+        state = self.state
+        return (
+            [dict(row) for row in (*self._loop_checkpoint_prefix, *self._loop_checkpoint_results)]
+            if state.step_count == self._loop_checkpoint_step
+            and state.phase not in {SessionPhase.AUTOSAVING, SessionPhase.AWAITING_EVENTS}
+            else []
+        )
+
+    def _fork_runtime_metadata(self) -> dict[str, Any]:
+        state = self.state
+        return {
+            "phase": state.phase.value,
+            "pending_events": [_serialize_pending_row(row) for row in state.pending_events.rows.values()],
+            "active_turn_start_message_index": state.active_turn_start_message_index,
+            "completed_turn_start_message_index": state.completed_turn_start_message_index,
+            "pending_step_latency": state.pending_step_latency,
+            "submitted_summary": state.submitted_summary,
+            "terminal_reason": state.terminal_reason,
+            "loop_checkpoint_results": self._completed_tool_results(),
+        }
 
     def _restore_auto_save_tracking(self, snapshot: dict[str, Any]) -> None:
         sequence = _snapshot_nonnegative_int(snapshot.get("_autosave_sequence"))
@@ -746,13 +819,14 @@ class Session:
             if exclude_ids is not None and tool_call_id in exclude_ids:
                 continue
             if exclude_ids is not None and not restored_state.pending_events.is_empty():
+                completed = tool_call_id in receipts
                 restored_state.pending_events.add(PendingRow(
                     tool_call_id=tool_call_id,
                     kind=RowKind.IMMEDIATE,
                     order=order,
-                    status=RowStatus.FAILED,
-                    result=content,
-                    error=content,
+                    status=RowStatus.DONE if completed else RowStatus.FAILED,
+                    result=receipts.get(tool_call_id, content),
+                    error=None if completed else content,
                 ))
                 continue
             restored_state.append_message(
@@ -838,6 +912,7 @@ class Session:
                     state.pending_external_user_turn
                 ),
                 "active_turn_start_message_index": state.active_turn_start_message_index,
+                "completed_turn_start_message_index": state.completed_turn_start_message_index,
                 "pending_step_latency": state.pending_step_latency,
                 "submitted_summary": state.submitted_summary,
                 "anthropic_history": state.anthropic_history,
@@ -967,19 +1042,21 @@ class Session:
             return None
         return self._auto_save_subscriber.enqueue()
 
-    async def _checkpoint_loop_reservation(self, completed_results: list[dict]) -> None:
-        """Persist a consumed extra dispatch through the existing save owner."""
-        if self._auto_save_path is None:
-            return
+    def _track_tool_results(self, completed_results: list[dict]) -> None:
         pending = [
             {"role": "tool", "tool_call_id": row.tool_call_id, "content": row.result or ""}
             for row in self.state.pending_events.rows.values() if row.status is not RowStatus.PENDING
         ]
-        # Retain the live prefix until this model batch finishes. A cancellation
-        # or failed tool can trigger a later terminal save of the same step.
+        # Keep the live batch visible to snapshots before its results reach the transcript.
         self._loop_checkpoint_prefix = pending
         self._loop_checkpoint_results = completed_results
         self._loop_checkpoint_step = self.state.step_count
+
+    async def _checkpoint_loop_reservation(self, completed_results: list[dict]) -> None:
+        """Persist a consumed extra dispatch through the existing save owner."""
+        if self._auto_save_path is None:
+            return
+        self._track_tool_results(completed_results)
         subscriber = self._auto_save_subscriber
         failures = subscriber.failure_count if subscriber is not None else 0
         owner = self.enqueue_auto_save()

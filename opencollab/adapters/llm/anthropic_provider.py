@@ -82,13 +82,17 @@ def _anthropic_thinking_is_always_on(model: str) -> bool:
     version = _anthropic_model_version(model)
     return (
         version is not None
-        and version[0] in {"fable", "mythos"}
-        and version[1] >= 5
+        and (
+            (version[0] in {"fable", "mythos"} and version[1] >= 5)
+            or version == ("opus", 5, 5)
+        )
     )
 
 def _validate_anthropic_thinking_mode(model: str, thinking_type: str) -> None:
     """Reject mode and native-model combinations known to return HTTP 400."""
     version = _anthropic_model_version(model)
+    if thinking_type == "between_tools" and version != ("sonnet", 5, 5):
+        raise ValueError(f"Anthropic model {model!r} does not support between_tools thinking")
     if (
         thinking_type == "enabled"
         and version is not None
@@ -143,16 +147,17 @@ def _anthropic_thinking_kwargs(
     if not isinstance(thinking_type, str) or thinking_type not in {
         "enabled",
         "adaptive",
+        "between_tools",
     }:
         raise ValueError(
-            "Anthropic thinking_params.thinking.type must be enabled or adaptive"
+            "Anthropic thinking_params.thinking.type must be enabled, adaptive, or between_tools"
         )
     _validate_anthropic_thinking_mode(model, thinking_type)
-    allowed_thinking = (
-        {"type", "budget_tokens", "display"}
-        if thinking_type == "enabled"
-        else {"type", "display"}
-    )
+    allowed_thinking = {"type"}
+    if thinking_type in {"enabled", "adaptive"}:
+        allowed_thinking.add("display")
+    if thinking_type == "enabled":
+        allowed_thinking.add("budget_tokens")
     unknown_thinking = set(thinking_config) - allowed_thinking
     if unknown_thinking:
         names = ", ".join(sorted(map(str, unknown_thinking)))
@@ -274,17 +279,27 @@ def _build_request_kwargs(
         else {}
     )
     _merge_anthropic_reasoning_effort(thinking_kwargs, reasoning_effort)
-
+    version = _anthropic_model_version(model)
     if (
         not thinking
-        and reasoning_effort is None
+        and (reasoning_effort is None or version in {("sonnet", 5, 5), ("opus", 5, 5)})
         and _anthropic_defaults_to_thinking(model)
     ):
         if _anthropic_thinking_is_always_on(model):
             raise ValueError(
-                f"Anthropic model {model!r} cannot disable adaptive thinking"
+                f"Anthropic model {model!r} cannot disable adaptive thinking. "
+                'set thinking=True with thinking_params={"thinking": {"type": "adaptive"}}'
             )
-        thinking_kwargs["thinking"] = {"type": "disabled"}
+        thinking_kwargs["thinking"] = {
+            "type": "between_tools" if version == ("sonnet", 5, 5)
+            else "disabled"
+        }
+
+    if (
+        thinking_kwargs.get("thinking", {}).get("type") == "between_tools"
+        and thinking_kwargs.get("output_config", {}).get("effort") in {"xhigh", "max"}
+    ):
+        raise ValueError("Anthropic between_tools thinking requires effort high or lower")
 
     if not thinking and model_capabilities(model).chat_thinking_protocol == "thinking.type":
         thinking_kwargs["thinking"] = {"type": "disabled"}
@@ -300,7 +315,6 @@ def _build_request_kwargs(
     default_sampling_only = _anthropic_requires_default_sampling(model)
     if default_sampling_only and top_p == 0.99:
         top_p = None
-    version = _anthropic_model_version(model)
     claude_4_sampling = version is not None and version[0] in {"opus", "sonnet", "haiku"} and version[1] == 4
     # Claude 4 accepts at most one of temperature and top_p.
     if not thinking and not default_sampling_only and (top_p is None or not claude_4_sampling):

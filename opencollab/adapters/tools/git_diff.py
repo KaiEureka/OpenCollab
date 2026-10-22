@@ -183,7 +183,7 @@ class GitDiffTool(Tool):
             git_root = ""
             if untracked_paths:
                 root_result = await _read_git(env, "rev-parse --show-toplevel")
-                git_root = root_result.stdout.rstrip("\n")
+                git_root = root_result.stdout.removesuffix("\n")
                 if root_result.returncode != 0 or not git_root:
                     error = (root_result.stderr or root_result.stdout).strip()
                     return "Error locating the Git root for untracked files:\n" + truncate(

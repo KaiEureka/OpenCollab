@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +16,7 @@ import opencollab.adapters.cli.main as cli_main
 import opencollab.adapters.tui as tui_mod
 import opencollab.bootstrap as bootstrap
 from tests.support.asyncio_test_support import assert_cancel_reason
-from tests.support.paths import REPO_ROOT
+from tests.support.paths import PACKAGE_ROOT, REPO_ROOT
 
 
 @pytest.mark.parametrize("config_line", [
@@ -44,10 +46,19 @@ def test_repository_launcher_resolves_symlinked_checkout_to_physical_root(tmp_pa
     launcher = scripts_dir / "start_opencollab.sh"
     launcher.write_bytes(source_launcher.read_bytes())
     launcher.chmod(0o755)
-    (config_dir / ".env").write_text(config_line.format(key="test-key") + "\n", encoding="utf-8")
-    fake_cli = cli_dir / "opencollab"
-    fake_cli.write_text('#!/bin/sh\nprintf "arg=%s\\n" "$@"\n', encoding="utf-8")
-    fake_cli.chmod(0o755)
+    provider_config = ""
+    if "ANTHROPIC_API_KEY" in config_line:
+        provider_config = "OPENCOLLAB_PROVIDER=anthropic\n"
+    elif "DASHSCOPE_API_KEY" in config_line:
+        provider_config = "OPENCOLLAB_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n"
+    (config_dir / ".env").write_text(
+        provider_config + config_line.format(key="test-key") + "\n", encoding="utf-8",
+    )
+    cli = cli_dir / "opencollab"
+    cli.write_text(
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -m opencollab "$@"\n', encoding="utf-8",
+    )
+    cli.chmod(0o755)
 
     logical_parent = tmp_path / "logical"
     logical_parent.symlink_to(physical_parent, target_is_directory=True)
@@ -56,26 +67,30 @@ def test_repository_launcher_resolves_symlinked_checkout_to_physical_root(tmp_pa
         [
             "bash",
             "-c",
-            'cd "$1" && ./scripts/start_opencollab.sh --probe',
+            'cd "$1" && ./scripts/start_opencollab.sh --no-worktrees',
             "launcher-test",
             str(logical_root),
         ],
         capture_output=True,
+        input="exit\n",
         text=True,
         check=False,
-        env={key: value for key, value in os.environ.items() if key not in {
-            "OPENCOLLAB_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DASHSCOPE_API_KEY",
-        }},
+        timeout=30,
+        env={key: value for key, value in os.environ.items()
+             if not key.startswith(("OPENCOLLAB_", "OPENAI_", "ANTHROPIC_", "DASHSCOPE_"))} | {
+            "PYTHONPATH": str(PACKAGE_ROOT), "PYTHONDONTWRITEBYTECODE": "1",
+            "NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "240", "TERMINAL_WIDTH": "240",
+        },
     )
 
     if config_line.startswith("#") or config_line.endswith("="):
         assert result.returncode == 1
-        assert "Missing API key." in result.stdout
-        assert "arg=" not in result.stdout
+        assert "Missing API key" in result.stdout
+        assert str(physical_root) not in result.stdout
         return
     assert result.returncode == 0, result.stderr
-    assert f"arg={physical_root}" in result.stdout
-    assert f"arg={logical_root}" not in result.stdout
+    assert str(physical_root) in result.stdout
+    assert str(logical_root) not in result.stdout
 
 @pytest.mark.parametrize("kind", ["fifo", "symlink", "oversized"])
 def test_cli_prompt_file_rejects_unsafe_or_oversized_input(

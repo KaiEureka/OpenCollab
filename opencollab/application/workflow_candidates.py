@@ -58,6 +58,15 @@ class CandidateRun:
     verified_targets: tuple[str, ...]
     lifecycle_errors: tuple[str, ...] = ()
     source_revision: str | None = None
+    delivery_diff: str | None = None
+    delivery_paths: tuple[str, ...] = ()
+    delivery_source_diff: str | None = None
+
+    @property
+    def effective_diff(self) -> str:
+        if self.delivery_diff is None or self.delivery_source_diff != self.diff:
+            return self.diff
+        return self.delivery_diff
 
 class CandidateCaptureError(RuntimeError):
     """A candidate worktree survived but its diff could not be captured."""
@@ -111,6 +120,10 @@ class _CandidateWorkflowSessionFactory:
         self._environment = environment
         self._isolated_environments: list[tuple[Any, Any]] = []
         self._isolated_sessions: list[Any] = []
+
+    def model_request_window(self) -> tuple[float | None, float] | None:
+        read = getattr(self._factory, "model_request_window", None)
+        return read() if callable(read) else None
 
     @property
     def environment_revoked(self) -> bool:
@@ -235,10 +248,22 @@ class WorkflowCandidatesMixin:
             if current is not None and not already_owned:
                 self._active_call_tasks.discard(current)
 
-    async def _candidate_source_state(self) -> tuple[str | None, str]:
+    async def _candidate_source_state(self) -> tuple[str | None, str, str | None]:
         read_revision = getattr(self._candidate_workspace, "source_revision", None)
         revision = await read_revision() if callable(read_revision) else None
-        return revision, await self._candidate_workspace.source_diff()
+        read_index = getattr(self._candidate_workspace, "source_index_revision", None)
+        index = await read_index() if callable(read_index) else None
+        return revision, await self._candidate_workspace.source_diff(), index
+
+    async def _candidate_source_changed(self, lease: Any, before: tuple[str | None, str, str | None]) -> bool:
+        after = await self._candidate_source_state()
+        if after[0] != before[0] or after[2] != before[2]:
+            return True
+        if after[1] != before[1]:
+            inspect_contents = getattr(lease, "source_contents_changed", None)
+            return bool(await inspect_contents()) if callable(inspect_contents) else True
+        inspect_source = getattr(lease, "physical_source_changed", None)
+        return bool(await inspect_source()) if callable(inspect_source) else False
 
     async def _finish_candidate_run(
         self, lease: Any, candidate: CandidateRun | None, failure: BaseException | None,
@@ -289,22 +314,22 @@ class WorkflowCandidatesMixin:
             raise RuntimeError("candidate workspaces are not available")
         timeout = self._normalize_timeout(timeout)
         selected_tools = _candidate_verification_tools(tools or ())
+        budget_lease: _BudgetLease
 
-        async def run() -> CandidateRun:
+        async def run_candidate() -> CandidateRun:
+            nonlocal budget_lease
             self._raise_if_environment_revoked()
             source_before = await self._candidate_source_state()
             self._raise_if_environment_revoked()
             lease = await self._candidate_workspace.acquire(label)
-            budget_lease = None
             token = None
             candidate: CandidateRun | None = None
             failure: BaseException | None = None
             preserve_lease = False
             try:
                 self._raise_if_environment_revoked()
-                budget_lease = await self._acquire_budget_lease(
-                    budget,
-                    over_budget_ok=False,
+                budget_lease = await self._refresh_budget_lease(
+                    budget_lease, cap=budget, over_budget_ok=False, label=label,
                 )
                 token = self._active_budget_lease.set(budget_lease)
                 self._raise_if_environment_revoked()
@@ -336,7 +361,8 @@ class WorkflowCandidatesMixin:
                     await self.log(f"candidate agent failed ({label}): {exc}")
                 await _wait_for_candidate_cleanup(budget_lease)
                 try:
-                    diff = await lease.diff()
+                    capture = inspect.getattr_static(lease, "capture_changes", None)
+                    diff = await lease.capture_changes() if callable(capture) else await lease.diff()
                 except Exception as exc:
                     preserve_lease = True
                     failure = CandidateCaptureError(
@@ -346,7 +372,7 @@ class WorkflowCandidatesMixin:
                     failure.__cause__ = exc
                     raise failure
                 try:
-                    source_after = await self._candidate_source_state()
+                    source_changed = await self._candidate_source_changed(lease, source_before)
                 except asyncio.CancelledError:
                     preserve_lease = True
                     raise
@@ -359,7 +385,7 @@ class WorkflowCandidatesMixin:
                     )
                     failure.__cause__ = exc
                     raise failure
-                if source_after != source_before:
+                if source_changed:
                     preserve_lease = True
                     failure = CandidateWorkspaceTrackingError(
                         f"source worktree changed during candidate {label}. "
@@ -375,27 +401,43 @@ class WorkflowCandidatesMixin:
                     test_records=records,
                     verified_targets=targets,
                     source_revision=source_before[0],
+                    delivery_diff=getattr(lease, "delivery_diff", None),
+                    delivery_paths=getattr(lease, "delivery_paths", ()),
+                    delivery_source_diff=diff if getattr(lease, "delivery_diff", None) is not None else None,
                 )
             except BaseException as exc:
                 failure = exc
             finally:
                 if token is not None:
                     self._active_budget_lease.reset(token)
-                if budget_lease is not None:
-                    try:
-                        await await_owned_operation(
-                            _wait_for_candidate_cleanup(budget_lease),
-                            propagate_cancellation=True,
-                        )
-                    except asyncio.CancelledError as exc:
-                        if failure is None:
-                            failure = exc
-                    self.budget.release(budget_lease)
+                try:
+                    await await_owned_operation(
+                        _wait_for_candidate_cleanup(budget_lease),
+                        propagate_cancellation=True,
+                    )
+                except asyncio.CancelledError as exc:
+                    if failure is None:
+                        failure = exc
             return await self._finish_candidate_run(
                 lease, candidate, failure, label=label, preserve_lease=preserve_lease,
             )
 
-        return await self._run_owned_candidate_call(lambda: self._run_with_concurrency_permit(run))
+        async def run() -> CandidateRun:
+            nonlocal budget_lease
+            permit = self._active_concurrency_permit.get()
+            if permit is not None and permit.owner is asyncio.current_task():
+                await asyncio.gather(
+                    *(asyncio.shield(task) for task in permit.pending_cleanup_tasks if not task.done()),
+                    return_exceptions=True,
+                )
+            # Register with gather siblings before candidate setup takes a session slot.
+            budget_lease = await self._acquire_budget_lease(budget, over_budget_ok=False, label=label)
+            try:
+                return await self._run_with_concurrency_permit(run_candidate)
+            finally:
+                self.budget.release(budget_lease)
+
+        return await self._run_owned_candidate_call(run)
 
     async def candidate_workflow(
         self,
@@ -456,6 +498,7 @@ class WorkflowCandidatesMixin:
                 child._task_semaphore = self._task_semaphore
                 child._active_task_concurrency_permit = self._active_task_concurrency_permit
                 child._budget_escape_state = self._budget_escape_state
+                child.budget._parent_allocation = (self.budget, budget_lease)
                 try:
                     output = await workflow_fn(child, dict(args))
                 except Exception as exc:  # noqa: BLE001 - preserve candidate edits
@@ -464,7 +507,8 @@ class WorkflowCandidatesMixin:
                     await self.log(f"candidate workflow failed ({label}): {exc}")
                 await child.wait_for_pending_cleanup()
                 try:
-                    diff = await lease.diff()
+                    capture = inspect.getattr_static(lease, "capture_changes", None)
+                    diff = await lease.capture_changes() if callable(capture) else await lease.diff()
                 except Exception as exc:
                     preserve_lease = True
                     failure = CandidateCaptureError(
@@ -474,7 +518,7 @@ class WorkflowCandidatesMixin:
                     failure.__cause__ = exc
                     raise failure
                 try:
-                    source_after = await self._candidate_source_state()
+                    source_changed = await self._candidate_source_changed(lease, source_before)
                 except asyncio.CancelledError:
                     preserve_lease = True
                     raise
@@ -487,7 +531,7 @@ class WorkflowCandidatesMixin:
                     )
                     failure.__cause__ = exc
                     raise failure
-                if source_after != source_before:
+                if source_changed:
                     preserve_lease = True
                     failure = CandidateWorkspaceTrackingError(
                         f"source worktree changed during candidate workflow {label}. "
@@ -502,6 +546,9 @@ class WorkflowCandidatesMixin:
                     test_records=(),
                     verified_targets=(),
                     source_revision=source_before[0],
+                    delivery_diff=getattr(lease, "delivery_diff", None),
+                    delivery_paths=getattr(lease, "delivery_paths", ()),
+                    delivery_source_diff=diff if getattr(lease, "delivery_diff", None) is not None else None,
                 )
             except BaseException as exc:
                 failure = exc
@@ -509,6 +556,12 @@ class WorkflowCandidatesMixin:
                 try:
                     if child is not None:
                         try:
+                            if isinstance(failure, asyncio.CancelledError):
+                                child._agent_run_environment_unsafe = True
+                                current = asyncio.current_task()
+                                for active in tuple(child._active_call_tasks):
+                                    if active is not current:
+                                        active.cancel()
                             await child.wait_for_pending_cleanup()
                             await child.release_isolated_workspaces()
                         except Exception as exc:
@@ -570,9 +623,10 @@ class WorkflowCandidatesMixin:
         if callable(adopt_run):
             # Full-environment backends must retain the chosen candidate's
             # identity even when two candidates have identical file diffs.
-            await adopt_run(candidate, preserve_paths)
+            operation = adopt_run(candidate, preserve_paths)
         else:
-            await self._candidate_workspace.adopt(candidate.diff, preserve_paths)
+            operation = self._candidate_workspace.adopt(candidate.diff, preserve_paths)
+        await await_owned_operation(operation, propagate_cancellation=True)
 
 __all__ = [
     "CandidateCaptureError",

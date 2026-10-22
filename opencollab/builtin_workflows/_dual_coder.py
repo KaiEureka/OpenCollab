@@ -48,7 +48,7 @@ async def _coder_candidate(
         label=label,
         tools=tools,
         budget=None,
-        timeout=coder_role_timeout_seconds(),
+        timeout=coder_role_timeout_seconds(ctx),
     )
     records = [
         dual._public_record(record)
@@ -94,7 +94,7 @@ async def _review_and_select(
                 label="dual-coder-contract-adjudicator" + ("-recheck" if attempt else ""),
                 tools=tools,
                 budget=None,
-                timeout=structured_role_timeout_seconds(),
+                timeout=structured_role_timeout_seconds(ctx),
             )
         except Exception as exc:  # noqa: BLE001
             await ctx.log(f"Duo adjudicator unavailable after {type(exc).__name__}")
@@ -134,6 +134,8 @@ async def run_dual_coder(
     coder_prompts: tuple[str, str] | None = None,
     role_rules: str = SHARED_RULES,
     source_reader: Callable[[], Awaitable[str | None]] | None = None,
+    physical_source_reader: Callable[[], Awaitable[str | None]] | None = None,
+    source_tracker: Callable[[str | None], Awaitable[Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the existing candidate and selection sequence with a per-call prompt."""
     goal = _complete_goal(str(args.get("goal") or args.get("description") or ""))
@@ -153,6 +155,8 @@ async def run_dual_coder(
     prompts = coder_prompts or (MINIMAL_CODER_PROMPT, CROSS_COMPONENT_CODER_PROMPT)
     read_source = source_reader or ctx.diff
     source_before = await read_source()
+    source_snapshot = await source_tracker(source_before) if source_tracker is not None else None
+    physical_before = await physical_source_reader() if physical_source_reader is not None else None
 
     await ctx.phase("dual-coder-a")
     candidate_a = await _coder_candidate(
@@ -195,7 +199,12 @@ async def run_dual_coder(
         )
 
     source_before_adoption = await read_source()
-    if source_before_adoption != source_before:
+    physical_before_adoption = await physical_source_reader() if physical_source_reader is not None else None
+    source_changed = (
+        await source_snapshot.changed(source_before_adoption) if source_snapshot is not None else
+        source_before_adoption != source_before or physical_before_adoption != physical_before
+    )
+    if source_changed:
         raise RuntimeError("candidate_workspace_tracking_failure: source worktree changed before candidate adoption")
 
     candidates = {"A": candidate_a, "B": candidate_b}
@@ -219,17 +228,17 @@ async def run_dual_coder(
         "candidates": {
             "A": {
                 "kind": "minimal-root-cause-coder",
-                "nonempty": bool(candidate_a.diff.strip()),
+                "nonempty": bool(candidate_a.effective_diff.strip()),
                 "diff_bytes": len(candidate_a.diff.encode("utf-8")),
-                "changed_paths": patch_paths(candidate_a.diff),
+                "changed_paths": patch_paths(candidate_a.effective_diff),
                 "public_command": dual._candidate_command(candidate_a),
                 "public_test_records": dual._candidate_records(candidate_a),
             },
             "B": {
                 "kind": "cross-component-contract-coder",
-                "nonempty": bool(candidate_b.diff.strip()),
+                "nonempty": bool(candidate_b.effective_diff.strip()),
                 "diff_bytes": len(candidate_b.diff.encode("utf-8")),
-                "changed_paths": patch_paths(candidate_b.diff),
+                "changed_paths": patch_paths(candidate_b.effective_diff),
                 "public_command": dual._candidate_command(candidate_b),
                 "public_test_records": dual._candidate_records(candidate_b),
             },

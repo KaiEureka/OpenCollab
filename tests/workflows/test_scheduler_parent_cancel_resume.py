@@ -173,6 +173,87 @@ async def test_scheduler_user_turn_waits_or_cancels_surviving_child(cancel_again
         await scheduler.cleanup()
         await asyncio.gather(continued, return_exceptions=True)
 
+
+@pytest.mark.parametrize("serialized", [False, True])
+async def test_held_inbox_suspension_finishes_before_the_next_user_turn(serialized):
+    class MessageFactory(Factory):
+        def build_spawn_session(self, **kwargs):
+            if kwargs["role"] != "worker":
+                return super().build_spawn_session(**kwargs)
+            agent = FakeAgent()
+            agent.name = kwargs["role"]
+            return build_session(
+                agent=agent, aid=kwargs["aid"], max_budget_tokens=kwargs["budget"],
+                llm=FakeLLMClient([llm_response(content="sender ready")]),
+            )
+
+    delivered = asyncio.Event()
+
+    async def delayed_delivery(event):
+        if event.type == "agent_message_delivered" and event.data["to_aid"] == 0:
+            # Let the recipient suspend before its asynchronous delivery observer returns.
+            driver = scheduler._tasks[0]
+            await asyncio.shield(driver)
+            assert session.phase is SessionPhase.AWAITING_EVENTS
+            assert scheduler._tasks.get(0) is None
+            assert session.state.pending_events.rows["inbox-child"].ref in scheduler._tasks
+            delivered.set()
+
+    factory = MessageFactory()
+    scheduler = Scheduler(
+        session_factory=factory, worktree_pool=fake_worktree_pool(),
+        event_sink=EventBus(delayed_delivery), serialize_turns=serialized,
+    )
+    llm = FakeLLMClient([
+        llm_response(tool_calls=[tool_call(
+            "first-child", "spawn_agent", '{"role":"coder","task":"work to cancel"}',
+        )], finish_reason="tool_calls"),
+        llm_response(tool_calls=[tool_call(
+            "inbox-child", "spawn_agent", '{"role":"coder","task":"finish teammate work"}',
+        )], finish_reason="tool_calls"),
+        llm_response(content="completed teammate request"),
+        llm_response(content="completed external request"),
+    ])
+    session = build_session(agent=FakeAgent(tools=[SpawnAgentTool(scheduler)]), llm=llm)
+    scheduler.register_lead(session)
+    sender = await scheduler.spawn(0, "worker", "prepare sender")
+    await scheduler.wait_until_terminal(sender)
+    cancel_event = asyncio.Event()
+    first = asyncio.create_task(scheduler.run("first request", cancel_event=cancel_event))
+    continued = None
+
+    async def wait_for_child():
+        while session.phase is not SessionPhase.AWAITING_EVENTS or factory.client.calls != 1:
+            await asyncio.sleep(0)
+
+    try:
+        await asyncio.wait_for(wait_for_child(), 2)
+        assert "queued" in await scheduler.send_message(sender, 0, "queued work", "TEAMMATE_WORK")
+        cancel_event.set()
+        with pytest.raises(SchedulerTurnError, match="interrupted by user"):
+            await asyncio.wait_for(first, 2)
+        assert session.phase is SessionPhase.STOPPED
+        assert scheduler._message_inbox[0]
+        assert scheduler._shutting_down is False
+
+        continued = asyncio.create_task(scheduler.run("new independent request"))
+        await asyncio.wait_for(delivered.wait(), 2)
+        assert len(llm.calls) == 2
+        assert not any("new independent request" in str(message.get("content", "")) for message in session.messages)
+        factory.client.release.set()
+        assert await asyncio.wait_for(continued, 2) == "completed external request"
+        assert len(llm.calls) == 4
+        assert "TEAMMATE_WORK" in str(llm.calls[1]["messages"])
+        assert "new independent request" not in str(llm.calls[2]["messages"])
+        assert llm.calls[3]["messages"][-1]["content"].startswith("new independent request")
+        assert session.state.pending_events.is_empty()
+        assert not scheduler._message_inbox[0]
+    finally:
+        factory.client.release.set()
+        await scheduler.cleanup()
+        await asyncio.gather(first, *([continued] if continued is not None else []), return_exceptions=True)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("child_ready", [False, True])
 @pytest.mark.parametrize("queued", [False, True])

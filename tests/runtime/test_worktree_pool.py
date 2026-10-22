@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -43,6 +45,30 @@ def _repo(path):
 
 def _branch_exists(repo, branch: str) -> bool:
     return _git(repo, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0
+
+@pytest.mark.parametrize("suffix", ["", " ", "\n"])
+@pytest.mark.parametrize("subdirectory", [False, True])
+async def test_git_worktree_keeps_whitespace_in_repository_root(
+    tmp_path, suffix: str, subdirectory: bool,
+) -> None:
+    source = _repo(tmp_path / f"repo{suffix}")
+    if subdirectory:
+        workspace = source / "packages" / "worker"
+        workspace.mkdir(parents=True)
+        (workspace / "code.py").write_text("value = 1\n", encoding="utf-8")
+        _git(source, "add", ".")
+        _git(source, "commit", "-qm", "add worker")
+        filename = "code.py"
+    else:
+        workspace = source
+        filename = "tracked.txt"
+    env = WorktreeEnvironment(str(workspace))
+
+    candidate = Path(await env.setup())
+    await env.write_file(filename, "changed\n")
+    assert "+changed" in await env.get_diff()
+    await env.cleanup()
+    assert not candidate.exists()
 
 class _OneShotAsyncBarrier:
     """Release all waiters once the expected parties have arrived."""
@@ -259,6 +285,84 @@ async def test_non_git_copy_exports_changes_before_cleanup(tmp_path) -> None:
 
     await env.cleanup()
     assert not os.path.exists(workspace)
+
+
+async def test_non_git_candidate_uses_one_snapshot_when_source_changes_during_setup(
+    tmp_path, monkeypatch,
+) -> None:
+    source = tmp_path / "plain"
+    source.mkdir()
+    (source / "app.py").write_text("print(1)\n", encoding="utf-8")
+    notes = source / "notes.txt"
+    notes.write_text("original\n", encoding="utf-8")
+    actual_copytree = worktree_module.shutil.copytree
+
+    def copy_then_save(src, dst, **kwargs):
+        result = actual_copytree(src, dst, **kwargs)
+        if Path(src) == source:
+            notes.write_text("user saved\n", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(worktree_module.shutil, "copytree", copy_then_save)
+    pool = WorktreePool(str(source), use_worktrees=True, enable_adoption=True)
+    coder = await pool.acquire("coder")
+    try:
+        assert await coder.get_diff() == ""
+        assert await coder.read_file("notes.txt") == "original\n"
+        await coder.write_file("app.py", "print(42)\n")
+        patch = await coder.get_diff()
+        assert "notes.txt" not in patch
+        await pool.adopt(patch)
+        assert (source / "app.py").read_text() == "print(42)\n"
+        assert notes.read_text() == "user saved\n"
+    finally:
+        await pool.release()
+
+@pytest.mark.parametrize("git_source", [False, True])
+async def test_abort_stops_native_process_while_retaining_undelivered_changes(
+    tmp_path, git_source,
+) -> None:
+    source = _repo(tmp_path / "source") if git_source else tmp_path / "source"
+    if not git_source:
+        source.mkdir()
+        (source / "tracked.txt").write_text("base\n", encoding="utf-8")
+    if git_source:
+        (source / ".gitignore").write_text("*.ignored\n", encoding="utf-8")
+        _git(source, "add", ".gitignore")
+        _git(source, "commit", "-qm", "ignore generated files")
+    env = WorktreeEnvironment(str(source))
+    workspace = Path(await env.setup())
+    await env.write_file("tracked.txt", "changed\n")
+    if git_source:
+        (workspace / "build.ignored").write_text("generated\n", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="ignored untracked files"):
+            await env.get_diff()
+    ready = tmp_path / "ready"
+    late_write = tmp_path / "late-write"
+    script = (
+        "from pathlib import Path; import time; "
+        f"Path({str(ready)!r}).touch(); time.sleep(1); Path({str(late_write)!r}).touch()"
+    )
+    worker = asyncio.create_task(env.exec_cmd("exec " + shlex.join([sys.executable, "-c", script])))
+    for _ in range(200):
+        if ready.exists():
+            break
+        await asyncio.sleep(0.01)
+    assert ready.exists()
+
+    with pytest.raises(RuntimeError, match="worktree retained|unexported"):
+        await env.abort()
+    result = await worker
+    assert result.returncode != 0
+    assert not late_write.exists()
+    assert env.revoked and workspace.exists()
+    with pytest.raises(RuntimeError, match="aborted"):
+        await env.exec_cmd("touch unexpected")
+    if git_source:
+        (workspace / "build.ignored").unlink()
+    assert "+changed" in await env.get_diff()
+    await env.cleanup()
+    assert not workspace.exists()
 
 async def test_git_worktree_reports_committed_and_untracked_changes(tmp_path) -> None:
     source = _repo(tmp_path / "repo")
@@ -612,6 +716,53 @@ async def test_worktree_cleanup_stops_when_local_environment_is_not_quiescent(
     await env.cleanup()
     assert not os.path.exists(workspace)
 
+
+@pytest.mark.parametrize("hook_phase", ["post-checkout", "reference-transaction"])
+async def test_cancelled_checkout_removes_registered_worktree_before_return(
+    tmp_path, hook_phase,
+) -> None:
+    source = _repo(tmp_path / "repo")
+    entered = tmp_path / "hook-entered"
+    release = tmp_path / "hook-release"
+    hook = source / ".git/hooks" / hook_phase
+    claim_only = (
+        '[ "$1" = committed ] || exit 0\n'
+        "grep -Eq '^0+ [0-9a-f]+ refs/heads/cancelled-checkout$' || exit 0\n"
+        if hook_phase == "reference-transaction" else ""
+    )
+    hook.write_text(
+        "#!/bin/sh\n"
+        + claim_only
+        + f": > {shlex.quote(str(entered))}\n"
+        + f"while [ ! -e {shlex.quote(str(release))} ]; do sleep 0.05; done\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    env = WorktreeEnvironment(str(source), branch_name="cancelled-checkout")
+    owner = asyncio.create_task(env.setup())
+    try:
+        async def wait_for_hook() -> None:
+            while not entered.exists():
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_for_hook(), 5)
+        candidate = Path(env._worktree_dir) if env._worktree_dir is not None else None
+        owner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(owner, 5)
+        assert candidate is None or not candidate.exists()
+        assert not _branch_exists(source, "cancelled-checkout")
+        listing = _git(source, "worktree", "list", "--porcelain", "-z").stdout
+        assert sum(field.startswith("worktree ") for field in listing.split("\0")) == 1
+        await env.cleanup()
+        assert _git(source, "worktree", "list", "--porcelain", "-z").stdout == listing
+    finally:
+        release.touch()
+        if not owner.done():
+            owner.cancel()
+        await asyncio.gather(owner, return_exceptions=True)
+        await env.cleanup()
+
 async def test_double_cancellation_cannot_interrupt_setup_cleanup(tmp_path, monkeypatch) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -818,6 +969,13 @@ async def test_container_worktree_can_start_as_an_unprivileged_image_user(monkey
 
     container_id = 'f' * 64
     commands = []
+
+    async def physical_tree(_environment, root, _revision, *, strict=False):
+        assert root.startswith(('/tmp/', '/var/tmp/'))
+        assert strict
+        return 'b' * 40
+
+    monkeypatch.setattr('opencollab.adapters._env_container_worktree._physical_tree', physical_tree)
 
     async def docker(self, *args, **kwargs):
         commands.append(args)

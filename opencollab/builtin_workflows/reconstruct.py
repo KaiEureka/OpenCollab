@@ -15,6 +15,7 @@ See FromIO, arXiv 2605.15334, Section 4.6.
 from __future__ import annotations
 
 import importlib
+import json
 import shutil
 import uuid
 from copy import deepcopy
@@ -211,6 +212,13 @@ def _jsonable_ok(value: Any) -> bool:
         return False
 
 
+def _input_key(value: Any) -> str:
+    try:
+        return json.dumps(jsonable(value), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return repr(value)
+
+
 @workflow(
     name="reconstruct",
     description="Reconstruct a hidden program from input/output observations with batched active exploration",
@@ -239,7 +247,8 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
     candidates_dir.mkdir(parents=True, exist_ok=True)
     examples: list[tuple[Any, Any]] = []
     sources: list[str] = []
-    seen: set[str] = set()
+    seen: set[str] = set()  # Preserve the random_inputs callback's existing exclude format.
+    seen_equivalent: set[str] = set()
     events: list[dict[str, Any]] = []
     gate_misses: dict[frozenset[str], int] = {}
     memorisation_rounds = 0
@@ -272,6 +281,7 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
     def accept(batch: list[tuple[Any, Any]], source: str) -> None:
         for inp, out in batch:
             seen.add(repr(inp))
+            seen_equivalent.add(_input_key(inp))
             examples.append((inp, out))
             sources.append(source)
             if task.on_example is not None:
@@ -281,6 +291,10 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
         if not path.is_file():
             return [f"{task.candidate_file} is missing"]
         results = await task.evaluate(path, [i for i, _ in examples])
+        if len(results) != len(examples):
+            raise RuntimeError(
+                f"candidate evaluator returned {len(results)} results for {len(examples)} inputs"
+            )
         out = []
         for (inp, expected), res in zip(examples, results):
             if not res.get("ok"):
@@ -294,11 +308,18 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
         n_random = int(round(n * random_share)) if random_share > 0 else 0
         if n_random and task.random_inputs is not None:
             batch = []
+            random_keys: set[str] = set()
             for inp in task.random_inputs(n_random, set(seen)):
+                key = _input_key(inp)
+                if key in seen_equivalent or key in random_keys:
+                    continue
                 try:
                     batch.append(observe(inp))
                 except Exception:  # noqa: BLE001 - the generator may produce inputs the oracle rejects
                     continue
+                random_keys.add(key)
+                if len(batch) == n_random:
+                    break
             accept(batch, "random")
             events.append({"propose": round_no, "random": len(batch)})
             n -= len(batch)
@@ -337,8 +358,8 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
                 rejection = f"it had {got} inputs, exactly {n} are required."
                 events.append({"propose": round_no, "attempt": attempt, "rejected": rejection})
                 continue
-            keys = [repr(jsonable(p)) if _jsonable_ok(p) else None for p in proposed]
-            dups = sorted({k for k in keys if k is not None and (k in seen or keys.count(k) > 1)})
+            keys = [_input_key(p) if _jsonable_ok(p) else None for p in proposed]
+            dups = sorted({k for k in keys if k is not None and (k in seen_equivalent or keys.count(k) > 1)})
             if None in keys or dups:
                 rejection = (
                     ("these inputs repeat known or proposed ones: " + ", ".join(dups[:10]))
@@ -397,10 +418,11 @@ async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
         if stop_reason:
             break
         fails = await failures(program)
-        passed = len(examples) - len(fails)
+        candidate_exists = program.is_file()
+        passed = len(examples) - len(fails) if candidate_exists else 0
         score = None
         source = ""
-        if program.is_file():
+        if candidate_exists:
             archived.append(candidates_dir / f"iter_{iteration:03d}.py")
             shutil.copy(program, archived[-1])
             source = program.read_text(encoding="utf-8")

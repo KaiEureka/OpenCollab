@@ -51,6 +51,32 @@ def _adoption_scheduler(pool, coder):
     scheduler._sessions[7] = SimpleNamespace(env=coder)
     return scheduler
 
+async def test_retained_team_candidate_can_export_after_abort(tmp_path):
+    source = _project(tmp_path / "project", True)
+    (source / ".gitignore").write_text("*.ignored\n", encoding="utf-8")
+    _git(source, "add", ".gitignore")
+    _git(source, "commit", "-qm", "ignore generated output")
+    pool = WorktreePool(str(source), use_worktrees=True, enable_adoption=True)
+    coder = await pool.acquire("coder")
+    workspace = Path(coder.workspace)
+    await coder.write_file("answer.py", "def answer():\n    return 2\n")
+    (workspace / "build.ignored").write_text("generated\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="ignored untracked files"):
+        await coder.get_diff()
+    with pytest.raises(RuntimeError, match="worktree changes await complete delivery"):
+        await coder.abort()
+    assert coder.revoked and workspace.exists()
+    with pytest.raises(RuntimeError, match="aborted"):
+        await coder.write_file("answer.py", "lost\n")
+
+    (workspace / "build.ignored").unlink()
+    patch = await coder.get_diff()
+    assert "+    return 2" in patch
+    assert "+    return 2" in await coder.diff_captured("", patch)
+    await pool.release()
+    assert not workspace.exists()
+
 @pytest.mark.parametrize("git", [False, True])
 async def test_followup_captures_preserve_bytes_user_edits_and_empty_reverts(tmp_path, git):
     source = _project(tmp_path / "project", git)

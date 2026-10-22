@@ -9,6 +9,7 @@ import json
 import pytest
 
 from opencollab.application.session_run import (
+    _EMPTY_STOP_PLACEHOLDER,
     ENFORCEMENT_OFF,
     ENFORCEMENT_ON,
 )
@@ -426,6 +427,22 @@ def test_harvest_falls_back_to_text_when_no_capture():
 def test_harvest_truly_empty_returns_empty_string():
     # An empty harvest leaves fallback selection to the caller.
     assert harvest_findings(None, fallback_text="", messages=[]) == ""
+
+def test_harvest_preserves_tool_and_model_text_while_omitting_internal_placeholder():
+    messages = [
+        {"role": "tool", "tool_call_id": "read", "content": "fs.py:42: end = start + n"},
+        {"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER, "_opencollab_placeholder": True},
+        {"role": "assistant", "content": _EMPTY_STOP_PLACEHOLDER},
+    ]
+    original = copy.deepcopy(messages)
+
+    report = harvest_findings(None, fallback_text="", messages=messages)
+
+    assert report == (
+        "(partial — scout chopped; 1 tool results)\n\n"
+        f"fs.py:42: end = start + n\n\n{_EMPTY_STOP_PLACEHOLDER}"
+    )
+    assert messages == original
 
 class _Runtime:
     pass

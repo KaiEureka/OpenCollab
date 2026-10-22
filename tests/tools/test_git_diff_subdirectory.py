@@ -12,8 +12,11 @@ from opencollab.application.tool_execution import ToolRuntime
 
 @pytest.mark.parametrize("stat_only", [False, True])
 @pytest.mark.parametrize("focused", [False, True])
-def test_git_diff_reads_untracked_paths_from_a_unicode_subdirectory(tmp_path, stat_only, focused):
-    root = tmp_path / "root repo"
+@pytest.mark.parametrize("root_suffix", ["", "\n"])
+def test_git_diff_reads_untracked_paths_from_a_unicode_subdirectory(
+    tmp_path, stat_only, focused, root_suffix,
+):
+    root = tmp_path / f"root repo{root_suffix}"
     workspace = root / "\u5b50 package"
     workspace.mkdir(parents=True)
 

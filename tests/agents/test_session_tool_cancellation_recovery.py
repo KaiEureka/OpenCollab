@@ -64,10 +64,11 @@ async def test_cancelled_tool_batch_can_continue_with_complete_chat_history(comp
     assert session._open_tool_call_ids() == []
     interrupted = [message for message in session.messages if message["role"] == "tool"]
     assert [message["tool_call_id"] for message in interrupted] == [call["id"] for call in calls]
-    assert all("outcome is unknown" in message["content"] for message in interrupted)
+    assert "outcome is unknown" in interrupted[-1]["content"]
     assert len(completed.calls) == int(completed_first)
     assert output.exists() is completed_first
     if completed_first:
+        assert interrupted[0]["content"] == "work already completed"
         assert output.read_text(encoding="utf-8") == "work already completed"
 
     await session.add_user_message("continue")
@@ -83,7 +84,8 @@ async def test_cancelled_tool_batch_can_continue_with_complete_chat_history(comp
     assert len(completed.calls) == int(completed_first)
 
 @pytest.mark.asyncio
-async def test_cancellation_keeps_deferred_result_with_a_live_producer():
+@pytest.mark.parametrize("completed_prefix", [False, True])
+async def test_cancellation_keeps_deferred_result_with_a_live_producer(completed_prefix):
     class ProducingTool(FakeTool):
         def __init__(self):
             super().__init__(name="spawn_agent")
@@ -101,17 +103,31 @@ async def test_cancellation_keeps_deferred_result_with_a_live_producer():
 
     producer = ProducingTool()
     waiting = WaitingTool()
+    completed = FakeTool(name="completed_tool", result="completed output")
+    completed_event = asyncio.Event()
+
+    async def hold_completed_event(event):
+        if completed_prefix and event.type == "tool_end" and event.data.get("tool_call_id") == "completed":
+            completed_event.set()
+            await asyncio.Event().wait()
+
+    calls = [
+        tool_call("child", "spawn_agent", "{}"),
+        tool_call("waiting", "wait_tool", "{}"),
+    ]
+    if completed_prefix:
+        calls.insert(1, tool_call("completed", "completed_tool", "{}"))
     llm = FakeLLMClient(
-        [llm_response(tool_calls=[
-            tool_call("child", "spawn_agent", "{}"),
-            tool_call("waiting", "wait_tool", "{}"),
-        ], finish_reason="tool_calls")]
+        [llm_response(tool_calls=calls, finish_reason="tool_calls")]
     )
-    session = build_session(agent=FakeAgent(tools=[producer, waiting]), llm=llm)
+    session = build_session(
+        agent=FakeAgent(tools=[producer, completed, waiting]), llm=llm,
+        event_sink=hold_completed_event,
+    )
     producer.state = session.state
     active = asyncio.create_task(session.run_loop())
     try:
-        await asyncio.wait_for(waiting.started.wait(), timeout=0.5)
+        await asyncio.wait_for((completed_event if completed_prefix else waiting.started).wait(), timeout=0.5)
         active.cancel()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(active, timeout=0.5)
@@ -120,8 +136,12 @@ async def test_cancellation_keeps_deferred_result_with_a_live_producer():
         assert row.ref == 7
         assert row.status is RowStatus.PENDING
         assert producer.producer is not None and not producer.producer.done()
-        assert session._open_tool_call_ids() == ["child", "waiting"]
+        assert session._open_tool_call_ids() == [call["id"] for call in calls]
         assert session.state.pending_events.rows["waiting"].status is RowStatus.FAILED
+        if completed_prefix:
+            row = session.state.pending_events.rows["completed"]
+            assert row.status is RowStatus.DONE
+            assert row.result == "completed output"
         assert all(
             message.get("tool_call_id") != "child" for message in session.messages
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -133,6 +134,63 @@ def test_file_write_create_and_str_replace(tmp_path):
     assert "Created/wrote" in create_result
     assert "Replaced in" in replace_result
     assert (workspace / "note.txt").read_text(encoding="utf-8") == "beta\n"
+
+@pytest.mark.parametrize("name_length", [16, 217, 218, 224, 255])
+@pytest.mark.parametrize(
+    ("tool", "params", "existing", "message"),
+    [
+        pytest.param(
+            FileWriteTool(), {"mode": "create", "content": "after\n"},
+            False, "Created/wrote", id="create",
+        ),
+        pytest.param(
+            FileWriteTool(), {"mode": "create", "content": "after\n"},
+            True, "Created/wrote", id="overwrite",
+        ),
+        pytest.param(
+            FileWriteTool(),
+            {"mode": "str_replace", "old_str": "before", "new_str": "after"},
+            True, "Replaced in", id="str-replace",
+        ),
+        pytest.param(
+            ApplyPatchTool(),
+            {
+                "mode": "line_replace", "start_line": 1, "end_line": 1,
+                "expected_str": "before", "new_str": "after",
+            },
+            True, "Applied line_replace", id="line-replace",
+        ),
+        pytest.param(
+            ApplyPatchTool(),
+            {"mode": "unified_diff", "patch": "@@ -1 +1 @@\n-before\n+after\n"},
+            True, "Applied unified_diff", id="unified-diff",
+        ),
+    ],
+)
+async def test_file_tools_edit_legal_basenames(tmp_path, name_length, tool, params, existing, message):
+    name = "n" * (name_length - 4) + ".txt"
+    target = tmp_path / name
+    target.write_bytes(b"before\n")
+    target.chmod(0o751)
+    env = LocalEnvironment(str(tmp_path))
+    runtime = ToolRuntime(
+        environment=env,
+        safety_policy=SandboxInterceptor(str(tmp_path)),
+        permission_policy=None,
+    )
+    try:
+        assert "1\tbefore" in await FileReadTool().execute_with_runtime({"path": name}, runtime)
+        if not existing:
+            target.unlink()
+
+        result = await tool.execute_with_runtime({"path": name, **params}, runtime)
+
+        assert message in result
+        assert target.read_bytes() == b"after\n"
+        assert stat.S_IMODE(target.stat().st_mode) == (0o751 if existing else 0o600)
+        assert list(tmp_path.iterdir()) == [target]
+    finally:
+        await env.cleanup()
 
 @pytest.mark.parametrize("existing", [False, True])
 def test_file_write_create_requires_explicit_content(tmp_path, existing):
