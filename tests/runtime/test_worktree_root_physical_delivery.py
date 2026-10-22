@@ -157,6 +157,60 @@ async def test_default_pool_delivers_own_commit_after_checkout_of_new_source_com
     assert _git(source, "for-each-ref", "--format=%(refname)", "refs/heads/opencollab-") == ""
 
 
+@pytest.mark.parametrize("mutation", ["tracked", "untracked"])
+@pytest.mark.parametrize("setting", ["clean", "crlf"])
+async def test_new_diff_base_preserves_later_source_edits(tmp_path, mutation, setting):
+    source = _source(tmp_path, setting)
+    (source / "notes.txt").write_text("committed notes\n")
+    _git(source, "add", ".")
+    _git(source, "commit", "-qm", "Prepare source representations")
+    old = _git(source, "rev-parse", "HEAD").strip()
+    (source / "version.txt").write_text("new upstream\n")
+    _git(source, "add", "version.txt")
+    _git(source, "commit", "-qm", "Prepare new source revision")
+    new = _git(source, "rev-parse", "HEAD").strip()
+    _git(source, "reset", "--hard", old)
+    pool = WorktreePool(str(source), use_worktrees=True)
+    candidate = await pool.acquire("coder")
+    folder = Path(candidate.workspace)
+    metadata = Path(_git(folder, "rev-parse", "--absolute-git-dir").strip())
+    try:
+        _git(folder, "checkout", "-q", "--force", new)
+        updated = b"one\ntwo\ncandidate\n"
+        if setting == "crlf":
+            updated = updated.replace(b"\n", b"\r\n")
+        (folder / "data.txt").write_bytes(updated)
+        (folder / "app/entry.py").write_text(
+            "from pathlib import Path\n"
+            f"assert Path('data.txt').read_bytes() == {updated!r}\nprint(42)\n",
+        )
+        _git(folder, "add", "app/entry.py", "data.txt")
+        _git(folder, "commit", "-qm", "Save candidate program")
+        tested = await candidate.exec_cmd(shlex.join((sys.executable, "-B", "app/entry.py")))
+        assert (tested.returncode, tested.stdout) == (0, "42\n")
+        _git(source, "checkout", "-q", new)
+        user_file = source / ("notes.txt" if mutation == "tracked" else "user-notes.txt")
+        user_bytes = b"user work created during candidate run\r\n"
+        user_file.write_bytes(user_bytes)
+        source_index, candidate_index = _index(source), _index(folder)
+        patch = await candidate.get_diff()
+        assert candidate.diff_base == new
+        assert _index(source) == source_index
+        assert _index(folder) == candidate_index
+        assert _replay(source, patch) == tested.stdout
+        assert user_file.read_bytes() == user_bytes
+        assert (source / "data.txt").read_bytes() == updated
+        assert _index(source) == source_index
+        assert _index(folder) == candidate_index
+        assert candidate.recovery_location is None
+    finally:
+        await pool.release()
+    assert not folder.exists()
+    assert not metadata.exists()
+    assert _git(source, "worktree", "list", "--porcelain").count("worktree ") == 1
+    assert _git(source, "for-each-ref", "--format=%(refname)", "refs/heads/opencollab-") == ""
+
+
 async def test_default_pool_retains_bytes_that_plain_patch_replay_converts(tmp_path):
     source = _source(tmp_path, "crlf")
     source_index = _index(source)

@@ -328,7 +328,9 @@ async def _tree_patch(
     )
 
 
-async def _checkout_physical_tree(environment: Any, workspace: str, tree: str) -> str:
+async def _checkout_physical_tree(
+    environment: Any, workspace: str, tree: str, *, source_tree: str | None = None,
+) -> str:
     async with _physical_git(environment, workspace) as (raw_git, directory):
         snapshot = directory + "/checkout"
         checkout = (
@@ -344,9 +346,38 @@ async def _checkout_physical_tree(environment: Any, workspace: str, tree: str) -
         _complete(await environment.exec_cmd(
             f"{physical} read-tree {shlex.quote(tree)} && {physical} add -u", timeout=900,
         ), "submodule expected physical contents")
-        return _complete(await environment.exec_cmd(
+        converted = _complete(await environment.exec_cmd(
             f"{physical} write-tree",
         ), "submodule expected physical tree").strip()
+        if source_tree is None or source_tree == converted:
+            return converted
+        git = _git_prefix(workspace)
+        changed = set(_complete(await environment.exec_cmd(
+            f"{git} diff-tree --no-commit-id --no-renames --no-ext-diff --no-textconv --no-color --name-only -r -z "
+            f"{shlex.quote(tree)} {shlex.quote(source_tree)}",
+        ), "source representation comparison").split("\0"))
+        converted_entries = _complete(await environment.exec_cmd(
+            f"{git} diff-tree --no-commit-id --no-renames --no-ext-diff --no-textconv --no-color "
+            "--raw --no-abbrev -r -z "
+            f"{shlex.quote(tree)} {shlex.quote(converted)}",
+        ), "converted source entries").split("\0")
+        entries = []
+        for metadata, path in zip(converted_entries[::2], converted_entries[1::2]):
+            if path not in changed:
+                mode, _converted_mode, oid, _converted_oid, _status = metadata[1:].split()
+                entries.append(f"{mode} {oid}\t{path}\0")
+        if not entries:
+            return converted
+        # Live bytes can select an immutable blob's representation, never its contents.
+        async with _patch_temporary(
+            environment, workspace, "".join(entries), prefix=".worktree-source-representation-",
+        ) as entries_file:
+            _complete(await environment.exec_cmd(
+                f"{physical} update-index -z --index-info < {shlex.quote(entries_file)}", timeout=900,
+            ), "source representation selection")
+        return _complete(await environment.exec_cmd(
+            f"{physical} write-tree",
+        ), "source representation tree").strip()
 
 
 async def _replay_physical_tree(environment: Any, workspace: str, before: str, patch: str) -> str:

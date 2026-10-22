@@ -597,14 +597,11 @@ class WorktreeEnvironment(Environment):
         original = self._physical_source_trees.get(base_revision)
         if original is None:
             assert self._repository_root is not None
-            source_revision = _complete(await self._git(
-                "rev-parse", "--verify", "HEAD^{commit}",
-            ), "source worktree revision").strip()
-            original = (
-                await _physical_tree(
-                    owner, self._repository_root, base_revision, exclude_paths=self._source_untracked_exclusions(),
-                ) if source_revision == base_revision else
-                await _checkout_physical_tree(owner, self._repository_root, base_revision)
+            source_tree = await _physical_tree(
+                owner, self._repository_root, base_revision, exclude_paths=self._source_untracked_exclusions(),
+            )
+            original = await _checkout_physical_tree(
+                owner, self._repository_root, base_revision, source_tree=source_tree,
             )
             await self._remember_physical_source(base_revision, original)
         current = await _physical_tree(owner, self._worktree_dir, base_revision)
