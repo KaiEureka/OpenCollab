@@ -83,7 +83,8 @@ async def test_candidate_tracks_source_revision_at_execution_and_adoption(tmp_pa
             with pytest.raises(CandidateWorkspaceTrackingError, match="worktree preserved"):
                 await generate()
             assert Path(leases[0].candidate_workspace).exists()
-            assert await leases[0].environment.read_file("source.py") == "value = 2\n"
+            assert leases[0].environment._workspace_fd is None
+            assert (Path(leases[0].candidate_workspace) / "source.py").read_text(encoding="utf-8") == "value = 2\n"
         else:
             candidate = await generate()
             assert candidate.output == "done"
