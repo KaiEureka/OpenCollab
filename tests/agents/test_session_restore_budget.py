@@ -1,14 +1,14 @@
 """Restored threshold cadence follows the snapshot in fresh and reused Sessions."""
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
 from tests.runtime.test_llm_chat_streaming import FakeClient
 from tests.runtime.test_llm_chat_streaming_session import completion
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
-async def make_session(tmp_path, *spends):
+async def make_session(local_environment_factory, tmp_path, *spends):
     responses = []
     for spend in spends:
         response = completion("done", [], "stop")
@@ -22,23 +22,23 @@ async def make_session(tmp_path, *spends):
     client._openai = wire
     session = build_session(
         agent=Agent(name="coder", system_prompt="system", model="gpt-4o"),
-        llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=100_000, max_steps=None,
+        llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=100_000, max_steps=None,
     )
     return session, wire
 
-async def test_restore_reused_session_matches_fresh_threshold_cadence(tmp_path, monkeypatch):
+async def test_restore_reused_session_matches_fresh_threshold_cadence(local_environment_factory, tmp_path, monkeypatch):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "thresholds")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
-    source, _ = await make_session(tmp_path, 25_000)
+    source, _ = await make_session(local_environment_factory, tmp_path, 25_000)
     await source.add_user_message("source turn")
     assert await source.run_loop() == "done"
     snapshot = tmp_path / "restore.json"
     source.save(str(snapshot))
 
-    reused, reused_wire = await make_session(tmp_path, 200, 25_000, 25_000)
+    reused, reused_wire = await make_session(local_environment_factory, tmp_path, 200, 25_000, 25_000)
     await reused.add_user_message("earlier turn")
     assert await reused.run_loop() == "done"
-    fresh, fresh_wire = await make_session(tmp_path, 25_000, 25_000)
+    fresh, fresh_wire = await make_session(local_environment_factory, tmp_path, 25_000, 25_000)
 
     for session in (reused, fresh):
         session.restore(str(snapshot))

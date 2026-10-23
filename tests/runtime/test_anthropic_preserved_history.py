@@ -140,6 +140,7 @@ async def test_native_steering_prefix_survives_tool_rounds_and_new_user_turns(mo
             session.save(str(tmp_path / "session.json"))
             if restore:
                 await session.aclose()
+                await session.env.cleanup()
                 session = load_session(str(tmp_path / "session.json"),
                                        agent=_agent(thinking=thinking, model=model), llm=client,
                                        env=LocalEnvironment(str(tmp_path)), max_budget_tokens=100_000, max_steps=20)
@@ -148,6 +149,7 @@ async def test_native_steering_prefix_survives_tool_rounds_and_new_user_turns(mo
             assert await session.run_loop() == "done"
         finally:
             await session.aclose()
+            await session.env.cleanup()
     assert len(peer.requests) == 4
     assert all(request["thinking"] == {"type": "adaptive" if thinking else "between_tools"}
                for request in peer.requests)
@@ -179,6 +181,7 @@ async def test_compacted_native_view_survives_restore_and_disabling_the_shaper(m
             before = copy.deepcopy(session.state.anthropic_history)
             session.save(str(tmp_path / "session.json"))
             await session.aclose()
+            await session.env.cleanup()
             session = load_session(str(tmp_path / "session.json"), agent=_agent(), llm=client,
                                    env=LocalEnvironment(str(tmp_path)), max_budget_tokens=100_000, max_steps=20)
             assert session.state.anthropic_history == before
@@ -188,6 +191,7 @@ async def test_compacted_native_view_survives_restore_and_disabling_the_shaper(m
             assert await session.run_loop() == "done"
         finally:
             await session.aclose()
+            await session.env.cleanup()
     assert len(peer.requests) == 6
     if mode == "first-trim":
         assert peer.retired == set()
@@ -216,6 +220,7 @@ async def test_appended_system_and_changed_tools_retire_old_native_thinking(monk
             assert peer.requests[-1].get("tools") is None
         finally:
             await session.aclose()
+            await session.env.cleanup()
 
 async def test_chronological_compaction_marker_retains_earlier_valid_thinking(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
@@ -242,6 +247,7 @@ async def test_chronological_compaction_marker_retains_earlier_valid_thinking(mo
             assert _signatures(peer.requests[-1]) == ["signed-1", "redacted-1", "signed-2", "redacted-2"]
         finally:
             await session.aclose()
+            await session.env.cleanup()
 
 async def test_hard_steering_restricts_tools_and_removes_old_prefix_thinking(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "on")
@@ -264,6 +270,7 @@ async def test_hard_steering_restricts_tools_and_removes_old_prefix_thinking(mon
             assert any(message.get("provider_state") for message in session.messages)
         finally:
             await session.aclose()
+            await session.env.cleanup()
 
 async def test_auxiliary_summary_omits_bound_thinking_and_preserves_the_transcript(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
@@ -279,6 +286,7 @@ async def test_auxiliary_summary_omits_bound_thinking_and_preserves_the_transcri
             assert session.messages == original
         finally:
             await session.aclose()
+            await session.env.cleanup()
     assert _signatures(peer.requests[-1]) == []
     assert "Retain this evidence" in json.dumps(peer.requests[-1])
     assert peer.requests[-1].get("system") is None

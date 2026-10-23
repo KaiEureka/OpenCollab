@@ -140,6 +140,7 @@ async def test_deepseek_default_mode_reaches_all_public_entries(
                 assert await session.run_loop() == "done"
             finally:
                 await session.aclose()
+                await session.env.cleanup()
         else:
             async with LLMClient(
                 model=model, api_key="fake-key-for-test",  # pragma: allowlist secret

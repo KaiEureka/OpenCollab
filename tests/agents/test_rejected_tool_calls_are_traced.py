@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from opencollab.application.event_bus import EventBus
 from opencollab.bootstrap import build_session as Session
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -16,7 +17,7 @@ from tests.support.session_characterization_test_support import (
 )
 
 
-def _run_session(calls):
+def _run_session(local_environment_factory, calls):
     known_tool = FakeTool(name="known_tool")
     fake_llm = FakeLLMClient(
         [
@@ -27,7 +28,7 @@ def _run_session(calls):
     tracer = FakeTracer()
     _, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(tools=[known_tool]),
+        env=local_environment_factory(), agent=FakeAgent(tools=[known_tool]),
         llm=fake_llm,
         tracer=tracer,
         event_sink=EventBus(on_event),
@@ -36,8 +37,8 @@ def _run_session(calls):
     assert known_tool.calls == []
     return session, [step for step in tracer.steps if step["step_type"] == "tool_error"]
 
-def test_out_of_role_call_in_a_session_is_traced():
-    _, errors = _run_session([tool_call(name="missing_tool", arguments='{"value": 1}')])
+def test_out_of_role_call_in_a_session_is_traced(local_environment_factory):
+    _, errors = _run_session(local_environment_factory, [tool_call(name="missing_tool", arguments='{"value": 1}')])
 
     assert len(errors) == 1
     payload = errors[0]["payload"]
@@ -45,13 +46,13 @@ def test_out_of_role_call_in_a_session_is_traced():
     assert payload["error"] == "unknown_tool"
     assert payload["batch_rejected"] is False
 
-def test_every_call_of_a_rejected_batch_is_traced():
+def test_every_call_of_a_rejected_batch_is_traced(local_environment_factory):
     calls = [
         tool_call(name="known_tool", arguments='{"value": 1}', call_id="call-ok"),
         tool_call(name="missing_tool", arguments='{"value": 2}', call_id="call-out"),
     ]
 
-    session, errors = _run_session(calls)
+    session, errors = _run_session(local_environment_factory, calls)
 
     replies = [m for m in session.messages if m.get("role") == "tool"]
     assert [m["tool_call_id"] for m in replies] == ["call-ok", "call-out"]

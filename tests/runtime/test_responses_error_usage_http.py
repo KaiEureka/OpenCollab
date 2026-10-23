@@ -25,6 +25,7 @@ from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
 from tests.runtime.test_async_compaction import history
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import install_sdk_transport
 from tests.support.responses_provider_test_support import function_item, message_item
 
@@ -132,10 +133,12 @@ def _client(model, base_url, *, retries=0):
 def _agent(model="gpt-4o"):
     return Agent(name="reader", system_prompt="Reply briefly", model=model, wire_protocol="responses")
 
-async def test_ordinary_success_usage_is_charged_once(local_responses_server, usage_log, trajectory):
+async def test_ordinary_success_usage_is_charged_once(
+    local_environment_factory, local_responses_server, usage_log, trajectory,
+):
     base_url, requests = local_responses_server([{}])
     async with _client("gpt-4o", base_url) as client:
-        session = build_session(agent=_agent(), llm=client, tracer=trajectory)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client, tracer=trajectory)
         await session.add_user_message("Give a short answer")
         assert await session.run_loop() == "ok"
     assert session.phase is SessionPhase.DONE
@@ -154,6 +157,7 @@ async def test_ordinary_success_usage_is_charged_once(local_responses_server, us
 @pytest.mark.parametrize("model", ["gpt-4o", "o1-pro"])
 @pytest.mark.parametrize("kind", ["filter", "failed"])
 async def test_reported_terminal_error_usage_reaches_session_and_ledger(
+    local_environment_factory,
     model, kind, local_responses_server, usage_log, trajectory,
 ):
     reported = {
@@ -162,7 +166,9 @@ async def test_reported_terminal_error_usage_reaches_session_and_ledger(
     }
     base_url, requests = local_responses_server([{"kind": kind, "usage": reported}])
     async with _client(model, base_url) as client:
-        session = build_session(agent=_agent(model), llm=client, tracer=trajectory, aid=7)
+        session = build_session(
+            env=local_environment_factory(),
+            agent=_agent(model), llm=client, tracer=trajectory, aid=7)
         await session.add_user_message("Give a short answer")
         with pytest.raises(ResponsesProtocolError) as captured:
             await session.run_loop()
@@ -266,12 +272,13 @@ async def test_public_structured_correction_accounts_for_every_request(
 @pytest.mark.parametrize("first_kind", ["empty", "failed"])
 @pytest.mark.parametrize("recover", [False, True])
 async def test_retry_usage_is_charged_once_with_final_request_context(
+    local_environment_factory,
     model, first_kind, recover, local_responses_server, usage_log,
 ):
     specs = [{"kind": first_kind}, {"kind": "answer" if recover else first_kind}]
     base_url, requests = local_responses_server(specs)
     async with _client(model, base_url, retries=1) as client:
-        session = build_session(agent=_agent(model), llm=client)
+        session = build_session(env=local_environment_factory(), agent=_agent(model), llm=client)
         await session.add_user_message("Give a short answer")
         if recover:
             assert await session.run_loop() == "ok"
@@ -291,11 +298,11 @@ async def test_retry_usage_is_charged_once_with_final_request_context(
     assert records[0]["usage"]["total_tokens"] == 74
     assert records[0]["usage"]["raw_usage"]["attempts"] == [KNOWN_USAGE, KNOWN_USAGE]
 
-async def test_retry_cost_can_exhaust_session_budget(local_responses_server, usage_log):
+async def test_retry_cost_can_exhaust_session_budget(local_environment_factory, local_responses_server, usage_log):
     usage = {**KNOWN_USAGE, "input_tokens": 600, "output_tokens": 300, "total_tokens": 900}
     base_url, requests = local_responses_server([{"kind": "empty", "usage": usage}, {"usage": usage}])
     async with _client("gpt-4o", base_url, retries=1) as client:
-        session = build_session(agent=_agent(), llm=client, max_budget_tokens=1200)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client, max_budget_tokens=1200)
         await session.add_user_message("Give a short answer")
         await session.run_loop()
     assert len(requests) == 2
@@ -308,13 +315,15 @@ async def test_retry_cost_can_exhaust_session_budget(local_responses_server, usa
     assert records[0]["usage"]["total_tokens"] == 1800
 
 @pytest.mark.parametrize("recover", [False, True])
-async def test_unknown_failure_usage_is_retained_as_unknown(recover, local_responses_server, usage_log, trajectory):
+async def test_unknown_failure_usage_is_retained_as_unknown(
+    local_environment_factory, recover, local_responses_server, usage_log, trajectory,
+):
     specs = [{"kind": "empty" if recover else "filter", "usage": None}]
     if recover:
         specs.append({})
     base_url, requests = local_responses_server(specs)
     async with _client("gpt-4o", base_url, retries=int(recover)) as client:
-        session = build_session(agent=_agent(), llm=client, tracer=trajectory)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client, tracer=trajectory)
         await session.add_user_message("Give a short answer")
         if recover:
             assert await session.run_loop() == "ok"
@@ -332,10 +341,12 @@ async def test_unknown_failure_usage_is_retained_as_unknown(recover, local_respo
     assert len(_llm_records(trajectory)) == int(recover)
 
 @pytest.mark.parametrize("reported", [{"input_tokens": 30}, {"input_tokens": 30, "output_tokens": 0}])
-async def test_partial_and_zero_failure_counts_use_only_reported_tokens(reported, local_responses_server, usage_log):
+async def test_partial_and_zero_failure_counts_use_only_reported_tokens(
+    local_environment_factory, reported, local_responses_server, usage_log,
+):
     base_url, _requests = local_responses_server([{"kind": "filter", "usage": reported}])
     async with _client("gpt-4o", base_url) as client:
-        session = build_session(agent=_agent(), llm=client)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client)
         await session.add_user_message("Give a short answer")
         with pytest.raises(ResponsesProtocolError):
             await session.run_loop()
@@ -347,6 +358,7 @@ async def test_partial_and_zero_failure_counts_use_only_reported_tokens(reported
 
 @pytest.mark.parametrize("failed_summary", [False, True])
 async def test_summary_attempts_and_answer_are_each_charged_once(
+    local_environment_factory,
     failed_summary, local_responses_server, usage_log, trajectory,
 ):
     specs = [{"kind": "filter"}] if failed_summary else [
@@ -355,7 +367,7 @@ async def test_summary_attempts_and_answer_are_each_charged_once(
     specs.append({"text": "answer"})
     base_url, requests = local_responses_server(specs)
     async with _client("gpt-4o", base_url, retries=1) as client:
-        session = build_session(agent=_agent(), llm=client, tracer=trajectory)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client, tracer=trajectory)
         session.messages = history()
         assert await session.run_loop() == "answer"
     assert len(requests) == (2 if failed_summary else 3)
@@ -383,6 +395,7 @@ async def _drain(session):
 @pytest.mark.parametrize("kind", ["filter", "answer"])
 @pytest.mark.parametrize("repeat_cancel", [False, True])
 async def test_late_sdk_terminal_usage_is_saved_once(
+    local_environment_factory,
     monkeypatch, tmp_path, usage_log, summary, trigger, kind, repeat_cancel, trajectory,
 ):
     started = asyncio.Event()
@@ -403,6 +416,7 @@ async def test_late_sdk_terminal_usage_is_saved_once(
     snapshot_path = tmp_path / "late.json"
     async with _client("gpt-4o", "http://controlled.invalid/v1") as client:
         session = build_session(
+            env=local_environment_factory(),
             agent=_agent(), llm=client, llm_timeout=0.01 if trigger == "timeout" else 600,
             auto_save_path=str(snapshot_path), tracer=trajectory,
         )
@@ -455,7 +469,9 @@ async def test_late_sdk_terminal_usage_is_saved_once(
             await _drain(session)
 
 @pytest.mark.parametrize("trace", [False, True])
-async def test_error_trace_preserves_original_exception_and_persisted_usage(tmp_path, monkeypatch, trace, trajectory):
+async def test_error_trace_preserves_original_exception_and_persisted_usage(
+    local_environment_factory, tmp_path, monkeypatch, trace, trajectory,
+):
     monkeypatch.delenv("OPENCOLLAB_API_USAGE_LOG", raising=False)
     error = RuntimeError("provider failure with billed usage")
     error.usage = SimpleNamespace(input_tokens=30, output_tokens=7, total_tokens=37, raw_usage=KNOWN_USAGE)
@@ -478,6 +494,7 @@ async def test_error_trace_preserves_original_exception_and_persisted_usage(tmp_
 
     snapshot_path = tmp_path / "error.json"
     session = build_session(
+        env=local_environment_factory(),
         agent=_agent(), llm=Provider(), tracer=trajectory if trace else None,
         auto_save_path=str(snapshot_path),
     )
@@ -496,6 +513,7 @@ async def test_error_trace_preserves_original_exception_and_persisted_usage(tmp_
         assert failed_calls[0]["usage"]["raw_usage"] == KNOWN_USAGE
 
 async def test_cancellation_during_retry_retains_previous_terminal_usage(
+    local_environment_factory,
     monkeypatch, local_responses_server, usage_log,
 ):
     backoff_started = asyncio.Event()
@@ -507,7 +525,7 @@ async def test_cancellation_during_retry_retains_previous_terminal_usage(
     monkeypatch.setattr(retry, "extract_retry_after_seconds", retry_after)
     base_url, requests = local_responses_server([{"kind": "empty"}])
     async with _client("gpt-4o", base_url, retries=1) as client:
-        session = build_session(agent=_agent(), llm=client)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client)
         await session.add_user_message("Give a short answer")
         turn = asyncio.create_task(session.run_loop())
         await asyncio.wait_for(backoff_started.wait(), 1)
@@ -526,6 +544,7 @@ async def test_cancellation_during_retry_retains_previous_terminal_usage(
 
 @pytest.mark.parametrize("kind", ["filter", "answer"])
 async def test_cancellation_during_ledger_write_does_not_duplicate_usage(
+    local_environment_factory,
     monkeypatch, local_responses_server, usage_log, kind,
 ):
     started = threading.Event()
@@ -540,7 +559,7 @@ async def test_cancellation_during_ledger_write_does_not_duplicate_usage(
     monkeypatch.setattr(client_module, "record_api_usage", delayed_record)
     base_url, requests = local_responses_server([{"kind": kind}])
     async with _client("gpt-4o", base_url) as client:
-        session = build_session(agent=_agent(), llm=client)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client)
         await session.add_user_message("Give a short answer")
         turn = asyncio.create_task(session.run_loop())
         try:

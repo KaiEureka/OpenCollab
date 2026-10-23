@@ -15,6 +15,7 @@ from opencollab.bootstrap import build_session as Session
 from opencollab.domain.events import SessionRuntimeEvent as SessionEvent
 from opencollab.domain.pending import PendingRow, RowKind, RowStatus
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -100,15 +101,15 @@ def test_event_bus_accepts_sync_sink():
 
     assert events == ["sink_event"]
 
-def test_session_auto_save_path_is_public():
+def test_session_auto_save_path_is_public(local_environment_factory):
     fake_llm = FakeLLMClient()
-    with_path = Session(agent=FakeAgent(), llm=fake_llm, auto_save_path="foo.jsonl")
-    without_path = Session(agent=FakeAgent(), llm=fake_llm)
+    with_path = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm, auto_save_path="foo.jsonl")
+    without_path = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm)
 
     assert with_path.auto_save_path == "foo.jsonl"
     assert without_path.auto_save_path is None
 
-def test_add_user_message_appends_resets_hashes_and_autosaves():
+def test_add_user_message_appends_resets_hashes_and_autosaves(local_environment_factory):
     class FakeStore:
         def __init__(self):
             self.save_calls = []
@@ -118,7 +119,7 @@ def test_add_user_message_appends_resets_hashes_and_autosaves():
 
     store = FakeStore()
     session = Session(
-        agent=FakeAgent(),
+        env=local_environment_factory(), agent=FakeAgent(),
         llm=FakeLLMClient(),
         store=store,
         auto_save_path="autosave.jsonl",
@@ -138,12 +139,12 @@ def test_add_user_message_appends_resets_hashes_and_autosaves():
     assert saved_messages[-1]["content"] == "hello"
     assert "timestamp" in saved_messages[-1]
 
-def test_new_user_turn_restores_agent_tools_and_wind_down_latches():
+def test_new_user_turn_restores_agent_tools_and_wind_down_latches(local_environment_factory):
     original_tool = object()
     forced_submit_tool = object()
     agent = FakeAgent(tools=[original_tool])
     agent.tool_choice = None
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.agent.tools = [forced_submit_tool]
     session.agent.tool_choice = {
         "type": "function",
@@ -162,8 +163,8 @@ def test_new_user_turn_restores_agent_tools_and_wind_down_latches():
     assert session.state.wind_down_attempts == 0
     assert session.state.wind_down_token_mark == 0
 
-def test_session_rejects_a_second_queued_user_turn_before_the_first_runs():
-    session = Session(agent=FakeAgent(), llm=FakeLLMClient())
+def test_session_rejects_a_second_queued_user_turn_before_the_first_runs(local_environment_factory):
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient())
     run(session.add_user_message("first queued turn"))
     before = copy.deepcopy(session.messages)
 
@@ -175,7 +176,7 @@ def test_session_rejects_a_second_queued_user_turn_before_the_first_runs():
     assert session.state.pending_external_user_turn["content"] == "first queued turn"
 
 @pytest.mark.asyncio
-async def test_session_rejects_a_second_runner_while_a_turn_is_active():
+async def test_session_rejects_a_second_runner_while_a_turn_is_active(local_environment_factory):
     class GatedLLM:
         def __init__(self):
             self.calls = 0
@@ -190,7 +191,7 @@ async def test_session_rejects_a_second_runner_while_a_turn_is_active():
             return llm_response(content="done")
 
     llm = GatedLLM()
-    session = Session(agent=FakeAgent(), llm=llm)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=llm)
     first = asyncio.create_task(session.run_loop())
     await asyncio.wait_for(llm.started.wait(), timeout=0.5)
     second = asyncio.create_task(session.run_loop())
@@ -208,7 +209,7 @@ async def test_session_rejects_a_second_runner_while_a_turn_is_active():
         await asyncio.gather(first, second, return_exceptions=True)
 
 @pytest.mark.asyncio
-async def test_session_rejects_user_message_while_provider_turn_is_active():
+async def test_session_rejects_user_message_while_provider_turn_is_active(local_environment_factory):
     class GatedLLM:
         def __init__(self):
             self.started = asyncio.Event()
@@ -221,7 +222,7 @@ async def test_session_rejects_user_message_while_provider_turn_is_active():
             return llm_response(content="done")
 
     llm = GatedLLM()
-    session = Session(agent=FakeAgent(), llm=llm)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=llm)
     run_task = asyncio.create_task(session.run_loop())
     await asyncio.wait_for(llm.started.wait(), timeout=0.5)
     before = list(session.messages)
@@ -235,7 +236,7 @@ async def test_session_rejects_user_message_while_provider_turn_is_active():
         await run_task
 
 @pytest.mark.asyncio
-async def test_direct_run_loop_cancellation_leaves_session_reusable():
+async def test_direct_run_loop_cancellation_leaves_session_reusable(local_environment_factory):
     class GatedLLM:
         def __init__(self):
             self.calls = 0
@@ -250,7 +251,7 @@ async def test_direct_run_loop_cancellation_leaves_session_reusable():
             return llm_response(content="fresh answer")
 
     llm = GatedLLM()
-    session = Session(agent=FakeAgent(), llm=llm)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=llm)
     cancelled = asyncio.create_task(session.run_loop())
     await asyncio.wait_for(llm.started.wait(), timeout=0.5)
 
@@ -266,8 +267,8 @@ async def test_direct_run_loop_cancellation_leaves_session_reusable():
     assert session.state.phase is SessionPhase.DONE
     assert llm.calls == 2
 
-def test_session_rejects_user_message_for_a_suspended_turn():
-    session = Session(agent=FakeAgent(), llm=FakeLLMClient())
+def test_session_rejects_user_message_for_a_suspended_turn(local_environment_factory):
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient())
     session.phase = SessionPhase.AWAITING_EVENTS
     before = list(session.messages)
 
@@ -276,9 +277,9 @@ def test_session_rejects_user_message_for_a_suspended_turn():
 
     assert session.messages == before
 
-def test_snapshot_rejects_an_environment_without_a_safe_fork():
+def test_snapshot_rejects_an_environment_without_a_safe_fork(local_environment_factory):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.messages.append({"role": "assistant", "content": "old answer"})
     session.used_tokens = 123
     session.step_count = 4
@@ -338,11 +339,11 @@ def test_snapshot_copies_full_state_and_isolates_agent_and_environment():
     assert session.agent.tools
     assert "pending-1" in state.pending_events.rows
 
-def test_budget_exceeded_stops_before_llm_call_and_emits_error():
+def test_budget_exceeded_stops_before_llm_call_and_emits_error(local_environment_factory):
     fake_llm = FakeLLMClient()
     events, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(),
+        env=local_environment_factory(), agent=FakeAgent(),
         llm=fake_llm,
         max_budget_tokens=10,
         event_sink=EventBus(on_event),
@@ -362,7 +363,7 @@ def test_budget_exceeded_stops_before_llm_call_and_emits_error():
         ("error", {"reason": "budget exceeded: 10 tokens used", "aid": -1})
     ]
 
-def test_run_loop_does_not_route_to_mutating_compaction():
+def test_run_loop_does_not_route_to_mutating_compaction(local_environment_factory):
     # Read-time shaping compacts history without an extra summarization turn.
     fake_llm = FakeLLMClient([
         llm_response(content="direct answer", input_tokens=3, output_tokens=4),
@@ -370,7 +371,7 @@ def test_run_loop_does_not_route_to_mutating_compaction():
     tracer = FakeTracer()
     events, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(),
+        env=local_environment_factory(), agent=FakeAgent(),
         llm=fake_llm,
         tracer=tracer,
         event_sink=EventBus(on_event),
@@ -384,14 +385,14 @@ def test_run_loop_does_not_route_to_mutating_compaction():
     assert "compaction" not in [event.type for event in events]
     assert all(step["step_type"] != "compaction" for step in tracer.steps)
 
-def test_no_tool_calls_marks_done_and_emits_text_delta():
+def test_no_tool_calls_marks_done_and_emits_text_delta(local_environment_factory):
     fake_llm = FakeLLMClient([
         llm_response(content="plain answer", input_tokens=2, output_tokens=3),
     ])
     tracer = FakeTracer()
     events, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(),
+        env=local_environment_factory(), agent=FakeAgent(),
         llm=fake_llm,
         tracer=tracer,
         event_sink=EventBus(on_event),
@@ -415,11 +416,11 @@ def test_no_tool_calls_marks_done_and_emits_text_delta():
     ]
     assert tracer.steps[3]["payload"]["content"] == "plain answer"
 
-def test_session_accepts_explicit_llm_client():
+def test_session_accepts_explicit_llm_client(local_environment_factory):
     fake_llm = FakeLLMClient([
         llm_response(content="explicit llm answer", input_tokens=2, output_tokens=3),
     ])
-    session = Session(agent=FakeAgent(), llm=fake_llm)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm)
 
     assert session._llm is fake_llm
     assert session.runner.llm is fake_llm
@@ -429,7 +430,7 @@ def test_session_accepts_explicit_llm_client():
     assert result == "explicit llm answer"
     assert fake_llm.calls
 
-def test_session_event_sink_wires_through_to_runtime():
+def test_session_event_sink_wires_through_to_runtime(local_environment_factory):
     fake_llm = FakeLLMClient([
         llm_response(content="event sink answer"),
     ])
@@ -440,7 +441,7 @@ def test_session_event_sink_wires_through_to_runtime():
             sink_events.append(event.type)
 
     sink = Sink()
-    session = Session(agent=FakeAgent(), llm=fake_llm, event_sink=sink)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm, event_sink=sink)
 
     assert session.event_bus.sink is sink
     assert session.runner.event_publisher is session.event_bus
@@ -451,9 +452,9 @@ def test_session_event_sink_wires_through_to_runtime():
     assert result == "event sink answer"
     assert sink_events == ["step_start", "text_delta", "step_end"]
 
-def test_run_loop_when_already_done_returns_latest_assistant_without_llm_call():
+def test_run_loop_when_already_done_returns_latest_assistant_without_llm_call(local_environment_factory):
     fake_llm = FakeLLMClient()
-    session = Session(agent=FakeAgent(), llm=fake_llm)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm)
     session.messages.append({"role": "assistant", "content": "already done"})
     session.is_done = True
 
@@ -462,9 +463,9 @@ def test_run_loop_when_already_done_returns_latest_assistant_without_llm_call():
     assert result == "already done"
     assert fake_llm.calls == []
 
-def test_run_loop_with_zero_max_steps_exits_without_llm_call():
+def test_run_loop_with_zero_max_steps_exits_without_llm_call(local_environment_factory):
     fake_llm = FakeLLMClient()
-    session = Session(agent=FakeAgent(), llm=fake_llm, max_steps=0)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm, max_steps=0)
 
     result = run(session.run_loop())
 
@@ -475,7 +476,7 @@ def test_run_loop_with_zero_max_steps_exits_without_llm_call():
     assert session.phase == SessionPhase.STOPPED
     assert session.state.terminal_reason == "step limit reached: 0 steps"
 
-def test_tool_calls_execute_append_tool_result_and_continue():
+def test_tool_calls_execute_append_tool_result_and_continue(local_environment_factory):
     tool = FakeTool(result=lambda args: f"echo {args['value']}")
     fake_llm = FakeLLMClient([
         llm_response(tool_calls=[tool_call(arguments='{"value": 7}')], finish_reason="tool_calls"),
@@ -488,7 +489,7 @@ def test_tool_calls_execute_append_tool_result_and_continue():
         return True
 
     session = Session(
-        agent=FakeAgent(tools=[tool]),
+        env=local_environment_factory(), agent=FakeAgent(tools=[tool]),
         llm=fake_llm,
         tracer=tracer,
         event_sink=EventBus(on_event),
@@ -537,7 +538,7 @@ def test_tool_calls_execute_append_tool_result_and_continue():
     ],
     ids=["permission-error", "tool-exception"],
 )
-def test_tool_errors_are_returned_as_tool_messages(error, final_answer, expected_content):
+def test_tool_errors_are_returned_as_tool_messages(local_environment_factory, error, final_answer, expected_content):
     tool = FakeTool(exc=error)
     fake_llm = FakeLLMClient(
         [
@@ -547,7 +548,7 @@ def test_tool_errors_are_returned_as_tool_messages(error, final_answer, expected
     )
     events, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(tools=[tool]),
+        env=local_environment_factory(), agent=FakeAgent(tools=[tool]),
         llm=fake_llm,
         event_sink=EventBus(on_event),
     )
@@ -573,7 +574,7 @@ def test_tool_errors_are_returned_as_tool_messages(error, final_answer, expected
     ],
     ids=["invalid-json", "unknown-tool"],
 )
-def test_invalid_tool_calls_append_error_without_execution(call, expected_content):
+def test_invalid_tool_calls_append_error_without_execution(local_environment_factory, call, expected_content):
     known_tool = FakeTool(name="known_tool")
     fake_llm = FakeLLMClient(
         [
@@ -583,7 +584,7 @@ def test_invalid_tool_calls_append_error_without_execution(call, expected_conten
     )
     events, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(tools=[known_tool]),
+        env=local_environment_factory(), agent=FakeAgent(tools=[known_tool]),
         llm=fake_llm,
         event_sink=EventBus(on_event),
     )
@@ -599,7 +600,7 @@ def test_invalid_tool_calls_append_error_without_execution(call, expected_conten
     }
     assert "tool_start" not in [event.type for event in events]
 
-def test_loop_detection_skips_third_identical_tool_call():
+def test_loop_detection_skips_third_identical_tool_call(local_environment_factory):
     tool = FakeTool(result="same result")
     fake_llm = FakeLLMClient([
         llm_response(tool_calls=[tool_call(call_id="call-1", arguments='{"value": 1}')], finish_reason="tool_calls"),
@@ -609,7 +610,7 @@ def test_loop_detection_skips_third_identical_tool_call():
     ])
     events, on_event = event_collector()
     session = Session(
-        agent=FakeAgent(tools=[tool]),
+        env=local_environment_factory(), agent=FakeAgent(tools=[tool]),
         llm=fake_llm,
         event_sink=EventBus(on_event),
     )
@@ -631,7 +632,7 @@ def test_loop_detection_skips_third_identical_tool_call():
         ("loop_detected", {"tool": "fake_tool", "count": 3, "aid": -1})
     ]
 
-def test_tool_output_is_persisted_in_full_in_messages():
+def test_tool_output_is_persisted_in_full_in_messages(local_environment_factory):
     # The tool-result shaper caps the model-facing copy while history retains the full result.
     long_result = "a" * 25_000 + "b" * 123 + "c" * 25_000
     tool = FakeTool(result=long_result)
@@ -639,14 +640,14 @@ def test_tool_output_is_persisted_in_full_in_messages():
         llm_response(tool_calls=[tool_call(arguments='{"value": 1}')], finish_reason="tool_calls"),
         llm_response(content="done"),
     ])
-    session = Session(agent=FakeAgent(tools=[tool]), llm=fake_llm)
+    session = Session(env=local_environment_factory(), agent=FakeAgent(tools=[tool]), llm=fake_llm)
 
     result = run(session.run_loop())
 
     assert result == "done"
     assert session.messages[2]["content"] == long_result
 
-def test_event_callback_exception_is_swallowed():
+def test_event_callback_exception_is_swallowed(local_environment_factory):
     fake_llm = FakeLLMClient([
         llm_response(content="answer despite bad callback"),
     ])
@@ -654,7 +655,8 @@ def test_event_callback_exception_is_swallowed():
     def bad_on_event(_event):
         raise RuntimeError("callback failed")
 
-    session = Session(agent=FakeAgent(), llm=fake_llm, event_sink=EventBus(bad_on_event))
+    session = Session(
+        env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm, event_sink=EventBus(bad_on_event))
 
     result = run(session.run_loop())
 

@@ -2,7 +2,6 @@
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
@@ -13,6 +12,7 @@ from opencollab.domain.token_estimation import (
 )
 from tests.runtime.test_llm_chat_streaming import FakeClient, chunk, usage_chunk
 from tests.runtime.test_llm_chat_streaming_session import completion
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def _reasoning_heavy_messages(reasoning_chars: int = 600_000):
@@ -227,7 +227,9 @@ def test_chat_restored_large_content_with_empty_native_items_triggers_history_si
 
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("thinking", [False, True])
-async def test_session_output_reservation_matches_actual_thinking_request(tmp_path, monkeypatch, stream, thinking):
+async def test_session_output_reservation_matches_actual_thinking_request(
+    local_environment_factory, tmp_path, monkeypatch, stream, thinking,
+):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     messages = _reasoning_heavy_messages(reasoning_chars=60_000)
@@ -243,7 +245,7 @@ async def test_session_output_reservation_matches_actual_thinking_request(tmp_pa
         thinking_params={"thinking": {"type": "enabled"}}, max_tokens_per_step=50_000,
     )
     session = build_session(
-        agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)),
+        agent=agent, llm=client, env=local_environment_factory(str(tmp_path)),
         max_steps=3, max_budget_tokens=budget,
     )
     session.state.messages = messages
@@ -258,7 +260,9 @@ async def test_session_output_reservation_matches_actual_thinking_request(tmp_pa
 
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("thinking", [False, True])
-async def test_reasoning_heavy_history_stops_only_when_reasoning_is_sent(tmp_path, monkeypatch, stream, thinking):
+async def test_reasoning_heavy_history_stops_only_when_reasoning_is_sent(
+    local_environment_factory, tmp_path, monkeypatch, stream, thinking,
+):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     messages = _reasoning_heavy_messages(reasoning_chars=60_000)
     budget = estimate_request_tokens(messages, keep_reasoning_content=False) + 2_000
@@ -271,7 +275,7 @@ async def test_reasoning_heavy_history_stops_only_when_reasoning_is_sent(tmp_pat
     client._openai = wire
     agent = Agent(name="coder", system_prompt="system", model="gpt-4o", thinking=thinking)
     session = build_session(
-        agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=budget,
+        agent=agent, llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=budget,
     )
     session.state.messages = messages
 

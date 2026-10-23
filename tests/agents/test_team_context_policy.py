@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from opencollab.application.event_bus import EventBus
@@ -12,6 +14,7 @@ from opencollab.bootstrap.context_policy import ContextPolicy, resolve_context_p
 from opencollab.bootstrap.team_config import RoleConfig, TeamConfig, load_team_config
 from opencollab.domain.agent import Agent
 from opencollab.domain.team import Topology
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_loop_test_support import FakeTracer
 
 SCHED = object()
@@ -72,29 +75,29 @@ def test_the_policy_names_are_normalized() -> None:
     assert resolve_context_policy(" No-History-Compaction ").name == "no_history_compaction"
     assert resolve_context_policy(None) == ContextPolicy()
 
-def _shaper(policy: ContextPolicy | None):
+def _shaper(local_environment_factory, policy: ContextPolicy | None):
     runtime = build_session_runtime(
-        agent=Agent(name="coder", system_prompt="sys", model="fake-model"),
+        env=local_environment_factory(), agent=Agent(name="coder", system_prompt="sys", model="fake-model"),
         llm=_Llm(),
         context_policy=policy,
     )
     return runtime.runner.shaper
 
-def test_the_default_policy_builds_todays_pipeline() -> None:
+def test_the_default_policy_builds_todays_pipeline(local_environment_factory) -> None:
     """The regression that matters: runs already made used exactly this."""
     today = _layers(_build_default_shaper(_Llm(), lambda _: "summary"))
-    assert _layers(_shaper(None)) == today
-    assert _layers(_shaper(ContextPolicy())) == today
+    assert _layers(_shaper(local_environment_factory, None)) == today
+    assert _layers(_shaper(local_environment_factory, ContextPolicy())) == today
 
-def test_no_history_compaction_keeps_only_the_per_result_budget() -> None:
-    shaper = _shaper(ContextPolicy(name="no_history_compaction", tool_result_budget=8_000))
+def test_no_history_compaction_keeps_only_the_per_result_budget(local_environment_factory) -> None:
+    shaper = _shaper(local_environment_factory, ContextPolicy(name="no_history_compaction", tool_result_budget=8_000))
     assert _layers(shaper) == [PerToolResultBudgetShaper]
     assert shaper._shapers[0].max_chars == 8_000
 
-def test_the_session_record_names_the_policy() -> None:
+def test_the_session_record_names_the_policy(local_environment_factory) -> None:
     tracer = FakeTracer()
     build_session_runtime(
-        agent=Agent(name="coder", system_prompt="sys", model="fake-model"),
+        env=local_environment_factory(), agent=Agent(name="coder", system_prompt="sys", model="fake-model"),
         llm=_Llm(),
         tracer=tracer,
         context_policy=ContextPolicy(name="no_history_compaction"),
@@ -138,7 +141,10 @@ def test_every_seat_carries_the_teams_policy(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(session_factory, "build_session", capture)
     factory = session_factory.DefaultSessionFactory(_cfg(), team_cfg=team, lead_workspace=str(tmp_path))
-    factory.create_lead_session(
-        scheduler=SCHED, launch=LaunchSpec(session_file=None, auto_save_path=None), budget=1_000,
-    )
-    assert seen["adopter"] == policy
+    try:
+        factory.create_lead_session(
+            scheduler=SCHED, launch=LaunchSpec(session_file=None, auto_save_path=None), budget=1_000,
+        )
+        assert seen["adopter"] == policy
+    finally:
+        asyncio.run(factory.lead_environment.cleanup())

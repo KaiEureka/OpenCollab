@@ -12,6 +12,7 @@ from opencollab.application.session import Session as SessionFacade
 from opencollab.bootstrap import build_session as Session
 from opencollab.bootstrap import load_session
 from opencollab.bootstrap.container import build_session_runtime
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -27,7 +28,7 @@ def _records(tracer: Tracer) -> list[dict]:
     with open(tracer._path, encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
-def test_every_record_a_session_writes_names_its_agent(tmp_path) -> None:
+def test_every_record_a_session_writes_names_its_agent(local_environment_factory, tmp_path) -> None:
     tracer = Tracer("run-1", output_dir=str(tmp_path), filename="trajectory.jsonl")
     agent = FakeAgent(tools=[FakeTool(name="known_tool")])
     agent.name = "coder"
@@ -40,7 +41,8 @@ def test_every_record_a_session_writes_names_its_agent(tmp_path) -> None:
             llm_response(content="recovered"),
         ]
     )
-    session = Session(agent=agent, llm=fake_llm, tracer=tracer, event_sink=EventBus(None), aid=3)
+    session = Session(
+        env=local_environment_factory(), agent=agent, llm=fake_llm, tracer=tracer, event_sink=EventBus(None), aid=3)
     try:
         assert run(session.run_loop()) == "recovered"
         records = _records(tracer)
@@ -87,9 +89,10 @@ def _one_turn_llm() -> FakeLLMClient:
         ]
     )
 
-def test_a_restored_session_writes_under_the_identity_it_restored(tmp_path) -> None:
+def test_a_restored_session_writes_under_the_identity_it_restored(local_environment_factory, tmp_path) -> None:
     """``load_session`` builds with the default aid, then restores aid 7."""
-    saved = Session(agent=FakeAgent(), llm=_one_turn_llm(), event_sink=EventBus(None), aid=7)
+    saved = Session(
+        env=local_environment_factory(), agent=FakeAgent(), llm=_one_turn_llm(), event_sink=EventBus(None), aid=7)
     snapshot = tmp_path / "session.json"
     saved.save(str(snapshot))
 
@@ -97,7 +100,8 @@ def test_a_restored_session_writes_under_the_identity_it_restored(tmp_path) -> N
     agent = FakeAgent(tools=[FakeTool(name="known_tool")])
     agent.name = "coder"
     session = load_session(
-        str(snapshot), agent, llm=_one_turn_llm(), tracer=tracer, event_sink=EventBus(None)
+        str(snapshot), agent, env=local_environment_factory(),
+        llm=_one_turn_llm(), tracer=tracer, event_sink=EventBus(None)
     )
     assert session.state.aid == 7
     try:
@@ -109,11 +113,12 @@ def test_a_restored_session_writes_under_the_identity_it_restored(tmp_path) -> N
     assert records
     assert {(r["aid"], r["role"]) for r in records} == {(7, "coder")}
 
-def test_a_tracer_set_on_a_live_session_names_that_session(tmp_path) -> None:
+def test_a_tracer_set_on_a_live_session_names_that_session(local_environment_factory, tmp_path) -> None:
     """Replacing ``session.tracer`` with a plain ``Tracer`` keeps attribution."""
     agent = FakeAgent(tools=[FakeTool(name="known_tool")])
     agent.name = "coder"
-    session = Session(agent=agent, llm=_one_turn_llm(), event_sink=EventBus(None), aid=3)
+    session = Session(
+        env=local_environment_factory(), agent=agent, llm=_one_turn_llm(), event_sink=EventBus(None), aid=3)
     tracer = Tracer("run-2", output_dir=str(tmp_path), filename="trajectory.jsonl")
     session.tracer = tracer
     try:
@@ -125,16 +130,22 @@ def test_a_tracer_set_on_a_live_session_names_that_session(tmp_path) -> None:
     assert records
     assert {(r["aid"], r["role"]) for r in records} == {(3, "coder")}
 
-def test_restoring_into_a_built_session_moves_its_records_to_the_restored_aid(tmp_path) -> None:
+def test_restoring_into_a_built_session_moves_its_records_to_the_restored_aid(
+    local_environment_factory, tmp_path,
+) -> None:
     """``Session.restore`` changes ``state.aid`` after the runner exists."""
-    saved = Session(agent=FakeAgent(), llm=_one_turn_llm(), event_sink=EventBus(None), aid=7)
+    saved = Session(
+        env=local_environment_factory(), agent=FakeAgent(), llm=_one_turn_llm(), event_sink=EventBus(None), aid=7)
     snapshot = tmp_path / "session.json"
     saved.save(str(snapshot))
 
     tracer = Tracer("run-1", output_dir=str(tmp_path), filename="trajectory.jsonl")
     agent = FakeAgent(tools=[FakeTool(name="known_tool")])
     agent.name = "coder"
-    session = Session(agent=agent, llm=_one_turn_llm(), tracer=tracer, event_sink=EventBus(None), aid=3)
+    session = Session(
+        env=local_environment_factory(), agent=agent, llm=_one_turn_llm(),
+        tracer=tracer, event_sink=EventBus(None), aid=3,
+    )
     session.restore(str(snapshot))
     try:
         assert run(session.run_loop()) == "recovered"
@@ -147,13 +158,14 @@ def test_restoring_into_a_built_session_moves_its_records_to_the_restored_aid(tm
     assert {(r["aid"], r["role"]) for r in run_records} == {(7, "coder")}
 
 @pytest.mark.parametrize("tracer_argument", ["omitted", "none", "replacement"])
-def test_direct_runtime_session_preserves_tracing(tmp_path, tracer_argument) -> None:
+def test_direct_runtime_session_preserves_tracing(local_environment_factory, tmp_path, tracer_argument) -> None:
     original = Tracer("original", output_dir=str(tmp_path))
     replacement = Tracer("replacement", output_dir=str(tmp_path))
     agent = FakeAgent(tools=[FakeTool(name="known_tool")])
     agent.name = "coder"
     try:
         runtime = build_session_runtime(
+            env=local_environment_factory(),
             agent=agent, llm=_one_turn_llm(), tracer=original, event_sink=EventBus(None), aid=7,
         )
         kwargs = {} if tracer_argument == "omitted" else {
@@ -172,7 +184,7 @@ def test_direct_runtime_session_preserves_tracing(tmp_path, tracer_argument) -> 
             assert len(_records(original)) == 1
 
         snapshot = tmp_path / "session.json"
-        saved = Session(agent=agent, llm=_one_turn_llm(), aid=9)
+        saved = Session(env=local_environment_factory(), agent=agent, llm=_one_turn_llm(), aid=9)
         saved.save(str(snapshot))
         session.restore(str(snapshot))
         session.agent.name = "reviewer"

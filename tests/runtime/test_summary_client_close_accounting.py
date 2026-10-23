@@ -63,6 +63,7 @@ def test_returned_summary_usage_survives_cancellation_during_owned_client_close(
             await asyncio.wait_for(asyncio.gather(owner, return_exceptions=True), 0.2)
             await asyncio.wait_for(asyncio.gather(*session.pending_cleanup_tasks, return_exceptions=True), 0.2)
             await session.aclose()
+            await session.env.cleanup()
 
     asyncio.run(scenario())
     assert session.used_tokens == 7_600
@@ -94,6 +95,7 @@ def test_returned_summary_usage_survives_owned_client_close_failure(monkeypatch)
     async def scenario():
         assert await asyncio.wait_for(session.run_loop(), 0.2) == "answer"
         await session.aclose()
+        await session.env.cleanup()
 
     asyncio.run(scenario())
     assert session.used_tokens == 7_610
@@ -139,6 +141,7 @@ def test_late_summary_usage_is_charged_once_before_owned_client_close_finishes(m
             clients[1].release_close.set()
             await asyncio.wait_for(asyncio.gather(*session.pending_cleanup_tasks), 0.2)
             await session.aclose()
+            await session.env.cleanup()
 
     asyncio.run(scenario())
     assert session.used_tokens == 7_600

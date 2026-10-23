@@ -122,6 +122,7 @@ async def test_public_session_delivers_submitted_text_once_to_its_agent(tmp_path
         assert console.file.getvalue().count(SUMMARY) == 1
     finally:
         await session.aclose()
+        await session.env.cleanup()
 
 def _call(tool, params):
     return run(tool.execute_with_runtime(params, None))

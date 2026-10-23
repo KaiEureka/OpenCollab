@@ -68,6 +68,7 @@ async def test_explicit_thinking_off_sends_native_disable(monkeypatch, tmp_path,
         await session.add_user_message("answer")
         await session.run_loop()
         await session.aclose()
+        await session.env.cleanup()
         assert session.agent.thinking is False
     else:
         async with LLMClient(model="configured-hybrid", api_key="fake-key-for-test",  # pragma: allowlist secret
@@ -232,6 +233,7 @@ async def test_restored_session_keeps_callers_protocol_source(monkeypatch, tmp_p
     path = tmp_path / "snapshot.json"
     source.save(str(path))
     await source.aclose()
+    await source.env.cleanup()
     if legacy:
         data = json.loads(path.read_text())
         for key in ("snapshot_version", "session_state"):
@@ -241,6 +243,7 @@ async def test_restored_session_keeps_callers_protocol_source(monkeypatch, tmp_p
     restored.restore(str(path))
     await restored.run_loop()
     await restored.aclose()
+    await restored.env.cleanup()
     assert restored.agent.thinking is False
     assert restored.agent.thinking_params_explicit is explicit
     assert ("enable_thinking" in requests[0]) is explicit
@@ -272,6 +275,7 @@ async def test_direct_spawn_config_tracks_declared_protocol(monkeypatch, tmp_pat
     await session.add_user_message("answer")
     await session.run_loop()
     await session.aclose()
+    await session.env.cleanup()
     assert len(requests) == 1
     assert ("enable_thinking" in requests[0]) is (isinstance(params, dict) and "enable_thinking" in params)
     assert ("thinking" in requests[0]) is (isinstance(params, dict) and "thinking" in params)
@@ -393,6 +397,7 @@ async def test_responses_thinking_off_reaches_all_public_entries(monkeypatch, tm
         await session.add_user_message("answer")
         await session.run_loop()
         await session.aclose()
+        await session.env.cleanup()
         assert session.agent.thinking is False
     else:
         async with LLMClient(

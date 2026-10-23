@@ -103,6 +103,7 @@ async def test_restored_session_summary_preserves_latest_revision(monkeypatch, t
         assert traces[1]["usage"]["total_tokens"] == 4
     finally:
         await session.aclose()
+        await session.env.cleanup()
         if client is not None:
             assert client._closed is False
             await client.close()
@@ -151,6 +152,7 @@ async def test_always_on_summary_respects_finite_budget(monkeypatch, tmp_path, b
             assert session.used_tokens == 4
     finally:
         await session.aclose()
+        await session.env.cleanup()
         if client is not None:
             await client.close()
 
@@ -207,6 +209,7 @@ async def test_summary_budget_uses_explicit_native_thinking_params(monkeypatch, 
             assert session.used_tokens == 4
         finally:
             await session.aclose()
+            await session.env.cleanup()
 
 @pytest.mark.parametrize("thinking", [False, True])
 async def test_ordinary_completion_trace_preserves_configured_thinking(monkeypatch, tmp_path, thinking):
@@ -237,6 +240,7 @@ async def test_ordinary_completion_trace_preserves_configured_thinking(monkeypat
         assert session.used_tokens == calls[0]["usage"]["total_tokens"] == 4
     finally:
         await session.aclose()
+        await session.env.cleanup()
 
 @pytest.mark.parametrize("model,thinking", [("claude-sonnet-4-6", False), ("claude-fable-5-1", True)])
 async def test_late_summary_trace_keeps_resolved_thinking(monkeypatch, tmp_path, model, thinking):
@@ -278,3 +282,4 @@ async def test_late_summary_trace_keeps_resolved_thinking(monkeypatch, tmp_path,
         release.set()
         await asyncio.wait_for(asyncio.gather(*session.pending_cleanup_tasks, return_exceptions=True), 1)
         await session.aclose()
+        await session.env.cleanup()

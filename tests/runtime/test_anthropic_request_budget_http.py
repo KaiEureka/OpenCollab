@@ -7,13 +7,13 @@ import json
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.tools.fs import FileReadTool
 from opencollab.bootstrap import build_session, load_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
 from opencollab.domain.token_estimation import estimate_request_tokens
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, http_response, install_sdk_transport
 
 _MODEL = "claude-sonnet-4-6"
@@ -39,6 +39,7 @@ def _wire_input_tokens(request):
     (7000, True, 4700, 1),
 ])
 async def test_long_thinking_tool_round_uses_one_native_copy(
+    local_environment_factory,
     monkeypatch, tmp_path, budget, thinking, expected_tokens, expected_calls,
 ):
     requests = []
@@ -74,7 +75,7 @@ async def test_long_thinking_tool_round_uses_one_native_copy(
                       provider="anthropic", tools=[FileReadTool()], thinking=thinking,
                       thinking_params=_THINKING if thinking else {})
         session = build_session(
-            agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)),
+            agent=agent, llm=client, env=local_environment_factory(str(tmp_path)),
             max_budget_tokens=budget, max_steps=3,
         )
         await session.add_user_message("Read sample.txt and answer ok")
@@ -198,7 +199,9 @@ async def test_reservation_handles_large_manual_thinking_configuration(monkeypat
     assert reserved == _wire_input_tokens(requests[0])
 
 @pytest.mark.parametrize("native", [False, True], ids=["legacy-message-only", "native-snapshot"])
-async def test_saved_anthropic_history_reserves_the_replayed_payload(monkeypatch, tmp_path, native):
+async def test_saved_anthropic_history_reserves_the_replayed_payload(
+    local_environment_factory, monkeypatch, tmp_path, native,
+):
     requests = []
 
     async def handler(request):
@@ -223,7 +226,7 @@ async def test_saved_anthropic_history_reserves_the_replayed_payload(monkeypatch
     ) as client:
         agent = Agent(name="restore", system_prompt="Read the file and answer", model=_MODEL,
                       provider="anthropic", tools=[FileReadTool()], thinking=True, thinking_params=_THINKING)
-        source = build_session(agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)))
+        source = build_session(agent=agent, llm=client, env=local_environment_factory(str(tmp_path)))
         source.messages = history
         path = tmp_path / "saved.json"
         if native:
@@ -232,7 +235,8 @@ async def test_saved_anthropic_history_reserves_the_replayed_payload(monkeypatch
         else:
             source.store.save(str(path), history)
         budget = 11_000 if native else 1500
-        loaded = load_session(str(path), agent=agent, llm=client, max_budget_tokens=budget)
+        loaded = load_session(str(path),
+            env=local_environment_factory(), agent=agent, llm=client, max_budget_tokens=budget)
         assert loaded.used_tokens == (4700 if native else 0)
         assert await loaded.run_loop() == "ok"
         assert loaded.phase is SessionPhase.DONE

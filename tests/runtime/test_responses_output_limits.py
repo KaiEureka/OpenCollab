@@ -3,12 +3,13 @@
 import pytest
 
 from opencollab.adapters.llm.responses_provider import _consume_stream, _parse_stream
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.responses_provider_test_support import FakeStream, completed_response, function_item, ns
 
 
 @pytest.mark.parametrize("streamed, emit_done", [(False, False), (True, False), (True, True)])
 @pytest.mark.asyncio
-async def test_output_limit_keeps_usage_without_executing_partial_tool(streamed, emit_done):
+async def test_output_limit_keeps_usage_without_executing_partial_tool(local_environment_factory, streamed, emit_done):
     from opencollab.adapters.llm.responses_provider import parse_responses_response
     from opencollab.bootstrap import build_session
     from opencollab.domain.session import SessionPhase
@@ -33,7 +34,7 @@ async def test_output_limit_keeps_usage_without_executing_partial_tool(streamed,
     assert parsed.provider_items == []
     assert parsed.usage.total_tokens == 150
     assert parsed.usage.estimated is False
-    session = build_session(agent=FakeAgent(), llm=FakeLLMClient([parsed]))
+    session = build_session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient([parsed]))
     await session.run_loop()
     assert session.phase is SessionPhase.STOPPED
     assert session.used_tokens == 150
@@ -41,7 +42,7 @@ async def test_output_limit_keeps_usage_without_executing_partial_tool(streamed,
 
 @pytest.mark.parametrize("encrypted", [None, "opaque encrypted reasoning"])
 @pytest.mark.asyncio
-async def test_hidden_reasoning_output_limit_returns_once_with_reported_usage(encrypted):
+async def test_hidden_reasoning_output_limit_returns_once_with_reported_usage(local_environment_factory, encrypted):
     from opencollab.adapters.llm.responses_provider import complete_responses
     from opencollab.bootstrap import build_session
     from opencollab.domain.session import SessionPhase
@@ -72,7 +73,7 @@ async def test_hidden_reasoning_output_limit_returns_once_with_reported_usage(en
     assert parsed.provider_items == [item]
     assert parsed.usage.total_tokens == 150
     assert parsed.usage.reasoning_tokens == 9
-    session = build_session(agent=FakeAgent(), llm=FakeLLMClient([parsed]))
+    session = build_session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient([parsed]))
     await session.run_loop()
     assert session.phase is SessionPhase.STOPPED
     assert session.used_tokens == 150

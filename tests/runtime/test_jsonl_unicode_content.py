@@ -10,14 +10,16 @@ import pytest
 from opencollab.adapters.storage import SessionStore
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import FakeLLM
 
 
 @pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\u0085", "\n", "\r", "\t"])
-def test_autosave_restores_unicode_string_content(tmp_path, separator):
+def test_autosave_restores_unicode_string_content(local_environment_factory, tmp_path, separator):
     path = str(tmp_path / "autosave.json")
     content = f"first{separator}second"
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="unicode", system_prompt="system"),
         llm=FakeLLM(),
         auto_save_path=path,

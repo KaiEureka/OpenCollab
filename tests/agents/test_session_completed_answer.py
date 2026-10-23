@@ -56,7 +56,9 @@ async def test_completed_turn_answer_survives_reread_and_snapshot(tmp_path, seco
     finally:
         for restored in copies:
             await restored.aclose()
+            await restored.env.cleanup()
         await session.aclose()
+        await session.env.cleanup()
 
 
 async def test_completed_submission_keeps_priority_over_assistant_text(tmp_path):
@@ -87,7 +89,9 @@ async def test_completed_submission_keeps_priority_over_assistant_text(tmp_path)
     finally:
         if restored is not None:
             await restored.aclose()
+            await restored.env.cleanup()
         await session.aclose()
+        await session.env.cleanup()
 
 
 @pytest.mark.parametrize("cursor", ["missing", None, True, -1, 10_000, "3"])
@@ -119,4 +123,6 @@ async def test_legacy_completed_snapshot_keeps_answer_query(tmp_path, cursor):
     finally:
         if restored is not None:
             await restored.aclose()
+            await restored.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()

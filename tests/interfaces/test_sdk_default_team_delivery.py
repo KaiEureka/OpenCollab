@@ -16,16 +16,17 @@ import opencollab.adapters.cli.main as cli_main
 from opencollab import OpenCollab
 from opencollab.adapters.worktree_pool import WorktreePool
 from opencollab.application._scheduler_constants import WORKTREE_DIFF_MAX_CHARS
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, http_response, install_sdk_transport
 from tests.support.worktree_delivery_support import CONTAINER_ID, git, make_repo
 from tests.support.worktree_delivery_support import worktree_transport as worktree_transport
 
 
 @pytest.mark.parametrize("backend", ["local", "container"])
-async def test_default_team_executes_with_initialized_dependency(
+async def test_default_team_executes_with_initialized_dependency(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend,
 ):
-    from opencollab.environments import attach_container, local_environment
+    from opencollab.environments import attach_container
 
     source = make_repo(tmp_path / "source")
     dependency = make_repo(tmp_path / "dependency")
@@ -75,7 +76,7 @@ async def test_default_team_executes_with_initialized_dependency(
     install_sdk_transport(monkeypatch, "openai", handler)
     environment = (
         attach_container(container_id=CONTAINER_ID, workspace=str(source))
-        if backend == "container" else local_environment(source)
+        if backend == "container" else local_environment_factory(str(source))
     )
     result = await OpenCollab(
         source, environment=environment, model="offline", api_key="controlled-test",  # pragma: allowlist secret

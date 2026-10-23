@@ -210,6 +210,7 @@ async def test_default_session_keeps_latest_filename_after_four_real_reads(tmp_p
             assert not any(message.get("compacted") for request in model.requests for message in request)
     finally:
         await session.aclose()
+        await session.env.cleanup()
 
 async def test_failed_summary_leaves_real_overflow_to_the_existing_controlled_stop(monkeypatch):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
@@ -255,3 +256,4 @@ async def test_failed_summary_leaves_real_overflow_to_the_existing_controlled_st
         assert session.messages[:-1] == original
     finally:
         await session.aclose()
+        await session.env.cleanup()

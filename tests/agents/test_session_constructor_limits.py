@@ -8,6 +8,7 @@ from opencollab.application.session import Session
 from opencollab.bootstrap import build_session, load_session
 from opencollab.bootstrap.container import build_session_runtime
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -38,17 +39,18 @@ def _model():
         ("max_steps", None, 0, 2, SessionPhase.DONE),
     ],
 )
-async def test_explicit_constructor_limits_control_execution(
+async def test_explicit_constructor_limits_control_execution(local_environment_factory,
     entry, limit, value, runtime_value, calls, phase,
 ):
     tool = FakeTool()
     agent = FakeAgent([tool])
     model = _model()
     if entry == "direct":
-        runtime = build_session_runtime(agent=agent, llm=model, **{limit: runtime_value})
+        runtime = build_session_runtime(
+            env=local_environment_factory(), agent=agent, llm=model, **{limit: runtime_value})
         session = Session(agent, runtime=runtime, **{limit: value})
     else:
-        session = build_session(agent=agent, llm=model, **{limit: value})
+        session = build_session(env=local_environment_factory(), agent=agent, llm=model, **{limit: value})
 
     await session.add_user_message("Complete the assigned task.")
     await session.run_loop()
@@ -60,10 +62,11 @@ async def test_explicit_constructor_limits_control_execution(
     await session.aclose()
 
 
-async def test_omitted_constructor_limits_inherit_the_runtime():
+async def test_omitted_constructor_limits_inherit_the_runtime(local_environment_factory):
     agent = FakeAgent()
     model = FakeLLMClient([llm_response(content="completed")])
-    runtime = build_session_runtime(agent=agent, llm=model, max_budget_tokens=0, max_steps=7)
+    runtime = build_session_runtime(
+        env=local_environment_factory(), agent=agent, llm=model, max_budget_tokens=0, max_steps=7)
     session = Session(agent, runtime=runtime)
 
     await session.add_user_message("Complete the assigned task.")
@@ -79,11 +82,11 @@ async def test_omitted_constructor_limits_inherit_the_runtime():
 @pytest.mark.parametrize("entry", ["direct", "factory"])
 @pytest.mark.parametrize("limit", ["max_budget_tokens", "max_steps"])
 @pytest.mark.parametrize("value", [0, 1, None])
-async def test_restoration_retains_the_constructed_limits(tmp_path, entry, limit, value):
+async def test_restoration_retains_the_constructed_limits(local_environment_factory, tmp_path, entry, limit, value):
     path = tmp_path / "saved.json"
     agent = FakeAgent()
     source = build_session(
-        agent=agent,
+        env=local_environment_factory(), agent=agent,
         llm=FakeLLMClient([llm_response(content="saved answer")]),
     )
     await source.add_user_message("Create the saved answer.")
@@ -93,11 +96,12 @@ async def test_restoration_retains_the_constructed_limits(tmp_path, entry, limit
 
     model = FakeLLMClient([llm_response(content="restored answer")])
     if entry == "direct":
-        runtime = build_session_runtime(agent=agent, llm=model, **{limit: 0 if value is None else 10_000})
+        runtime = build_session_runtime(
+            env=local_environment_factory(), agent=agent, llm=model, **{limit: 0 if value is None else 10_000})
         session = Session(agent, runtime=runtime, **{limit: value})
         session.restore(str(path))
     else:
-        session = load_session(str(path), agent=agent, llm=model, **{limit: value})
+        session = load_session(str(path), env=local_environment_factory(), agent=agent, llm=model, **{limit: value})
     await session.add_user_message("Continue the saved task.")
     await session.run_loop()
 

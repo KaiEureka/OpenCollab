@@ -12,6 +12,7 @@ from opencollab.application.session_run import GenerationTimeoutError
 from opencollab.application.shaping import AutoCompactShaper, ShaperPipeline
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import llm_response
 
 
@@ -49,9 +50,12 @@ class SlowModel:
         return llm_response(content="<summary>Earlier context.</summary>" if summary else "answer")
 
 @pytest.mark.parametrize("long", [False, True])
-def test_default_summary_obeys_the_generation_ceiling_and_yields_to_observers(long):
+def test_default_summary_obeys_the_generation_ceiling_and_yields_to_observers(long, local_environment_factory):
     model = SlowModel(answer_delay=0.15 if not long else 0)
-    session = build_session(agent=Agent(name="timing", system_prompt="system"), llm=model, llm_timeout=0.02)
+    session = build_session(
+        env=local_environment_factory(), agent=Agent(name="timing", system_prompt="system"),
+        llm=model, llm_timeout=0.02,
+    )
     session.messages = history(long)
 
     async def scenario():
@@ -79,9 +83,12 @@ def test_default_summary_obeys_the_generation_ceiling_and_yields_to_observers(lo
     assert session.pending_cleanup_tasks == ()
 
 @pytest.mark.parametrize("long", [False, True])
-def test_outer_cancellation_reaches_the_owned_summary_and_prevents_an_answer(long):
+def test_outer_cancellation_reaches_the_owned_summary_and_prevents_an_answer(long, local_environment_factory):
     model = SlowModel(answer_delay=0.15 if not long else 0)
-    session = build_session(agent=Agent(name="cancel", system_prompt="system"), llm=model, llm_timeout=None)
+    session = build_session(
+        env=local_environment_factory(), agent=Agent(name="cancel", system_prompt="system"),
+        llm=model, llm_timeout=None,
+    )
     session.messages = history(long)
 
     async def scenario():
@@ -99,7 +106,7 @@ def test_outer_cancellation_reaches_the_owned_summary_and_prevents_an_answer(lon
     assert model.finished == []
     assert session.pending_cleanup_tasks == ()
 
-def test_forced_compaction_retry_awaits_summary_and_restores_forced_flags():
+def test_forced_compaction_retry_awaits_summary_and_restores_forced_flags(local_environment_factory):
     class OverflowModel(SlowModel):
         async def complete(self, messages, tools=None, **kwargs):
             if not self.calls:
@@ -108,7 +115,10 @@ def test_forced_compaction_retry_awaits_summary_and_restores_forced_flags():
             return await super().complete(messages, tools, **kwargs)
 
     model = OverflowModel()
-    session = build_session(agent=Agent(name="overflow", system_prompt="system"), llm=model, llm_timeout=0.02)
+    session = build_session(
+        env=local_environment_factory(), agent=Agent(name="overflow", system_prompt="system"),
+        llm=model, llm_timeout=0.02,
+    )
     session.messages = history(False)
     session.runner._is_context_overflow = lambda error: isinstance(error, ValueError)
 
@@ -145,6 +155,7 @@ def test_owned_summary_client_closes_after_cancellation(monkeypatch):
             await asyncio.wait_for(session.run_loop(), 0.3)
         await asyncio.gather(*session.pending_cleanup_tasks, return_exceptions=True)
         await session.aclose()
+        await session.env.cleanup()
 
     asyncio.run(scenario())
     assert len(clients) == 2

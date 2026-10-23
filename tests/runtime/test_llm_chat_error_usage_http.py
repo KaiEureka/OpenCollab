@@ -11,6 +11,7 @@ import pytest
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import install_sdk_transport
 
 _MODEL = "gpt-4o"
@@ -63,8 +64,9 @@ def _client(*, max_retries, stream_chat=True):
         base_url="https://controlled.invalid/v1", max_retries=max_retries, stream_chat=stream_chat,
     )
 
-def _session(client):
+def _session(client, *, local_environment_factory):
     return build_session(
+        env=local_environment_factory(),
         agent=Agent(name="worker", system_prompt="Complete the task.", model=_MODEL),
         llm=client, max_budget_tokens=50_000,
     )
@@ -93,6 +95,7 @@ def _ledger(path):
          "unknown-then-known", "all-unknown"],
 )
 async def test_session_charges_reported_usage_from_every_chat_attempt(
+    local_environment_factory,
     monkeypatch, usage_log, attempts, expected_tokens, estimated,
 ):
     requests = []
@@ -111,7 +114,7 @@ async def test_session_charges_reported_usage_from_every_chat_attempt(
     install_sdk_transport(monkeypatch, "openai", handler)
     monkeypatch.setattr("opencollab.adapters.llm.retry.asyncio.sleep", no_delay)
     async with _client(max_retries=len(attempts) - 1) as client:
-        session = _session(client)
+        session = _session(client, local_environment_factory=local_environment_factory)
         await session.add_user_message("Reply ok.")
         if attempts[-1][0]:
             with pytest.raises(httpx.ReadError, match="peer reset") as captured:
@@ -149,7 +152,7 @@ async def test_session_charges_reported_usage_from_every_chat_attempt(
                 )
             )
 
-async def test_cancelling_chat_retry_backoff_retains_reported_usage(monkeypatch, usage_log):
+async def test_cancelling_chat_retry_backoff_retains_reported_usage(local_environment_factory, monkeypatch, usage_log):
     entered_backoff = asyncio.Event()
     requests = []
 
@@ -167,7 +170,7 @@ async def test_cancelling_chat_retry_backoff_retains_reported_usage(monkeypatch,
     install_sdk_transport(monkeypatch, "openai", handler)
     monkeypatch.setattr("opencollab.adapters.llm.retry.asyncio.sleep", wait_for_cancellation)
     async with _client(max_retries=1) as client:
-        session = _session(client)
+        session = _session(client, local_environment_factory=local_environment_factory)
         await session.add_user_message("Reply ok.")
         run = asyncio.create_task(session.run_loop())
         await asyncio.wait_for(entered_backoff.wait(), 1)
@@ -215,7 +218,7 @@ async def test_chat_retry_preserves_successful_markup_recovery(monkeypatch, usag
     assert response.usage.context_tokens == 30
     assert _ledger(usage_log)[0]["usage"]["total_tokens"] == 68
 
-async def test_nonstreaming_chat_usage_retains_its_original_shape(monkeypatch, usage_log):
+async def test_nonstreaming_chat_usage_retains_its_original_shape(local_environment_factory, monkeypatch, usage_log):
     requests = []
 
     def handler(request):
@@ -228,7 +231,7 @@ async def test_nonstreaming_chat_usage_retains_its_original_shape(monkeypatch, u
 
     install_sdk_transport(monkeypatch, "openai", handler)
     async with _client(max_retries=0, stream_chat=False) as client:
-        session = _session(client)
+        session = _session(client, local_environment_factory=local_environment_factory)
         await session.add_user_message("Reply ok.")
         assert await session.run_loop() == "ok"
 

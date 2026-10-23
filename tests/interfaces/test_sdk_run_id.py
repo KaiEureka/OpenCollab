@@ -12,6 +12,7 @@ from opencollab import OpenCollab, RunControl, workflow
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.bootstrap import build_runtime_context, build_scheduler, load_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.prebuilt_team_test_support import CONFIG
 
 
@@ -93,7 +94,7 @@ async def test_agent_snapshot_carries_run_identity_independently_of_tracing(
     ("load_kwargs", "expected_run_id"),
     [({}, "resume-id"), ({"run_id": "continued-id"}, "continued-id"), ({"run_id": None}, None)],
 )
-async def test_loading_an_sdk_snapshot_keeps_the_selected_run_identity(
+async def test_loading_an_sdk_snapshot_keeps_the_selected_run_identity(local_environment_factory,
     tmp_path, trace, load_kwargs, expected_run_id
 ):
     artifacts = tmp_path / "original"
@@ -107,7 +108,7 @@ async def test_loading_an_sdk_snapshot_keeps_the_selected_run_identity(
     events = []
     restored = load_session(
         str(source),
-        agent=Agent(name="saved-agent", system_prompt="Answer briefly."),
+        env=local_environment_factory(), agent=Agent(name="saved-agent", system_prompt="Answer briefly."),
         llm=ReplyLLM(),
         run_control=RunControl(on_event=events.append),
         **load_kwargs,
@@ -133,7 +134,7 @@ async def test_loading_an_sdk_snapshot_keeps_the_selected_run_identity(
         await restored.aclose()
 
 @pytest.mark.parametrize("saved_id", [None, "", "  ", 7, "invalid\x00id"])
-def test_loading_an_unusable_saved_run_id_preserves_agent_identity(tmp_path, saved_id):
+def test_loading_an_unusable_saved_run_id_preserves_agent_identity(local_environment_factory, tmp_path, saved_id):
     path = tmp_path / "snapshot.json"
     path.write_text(json.dumps({
         "messages": [{"role": "system", "content": "sys"}],
@@ -141,13 +142,14 @@ def test_loading_an_unusable_saved_run_id_preserves_agent_identity(tmp_path, sav
         "run_id": saved_id,
     }), encoding="utf-8")
 
-    restored = load_session(str(path), agent=Agent(name="saved", system_prompt="sys"), llm=ReplyLLM())
+    restored = load_session(str(path), env=local_environment_factory(),
+    agent=Agent(name="saved", system_prompt="sys"), llm=ReplyLLM())
 
     assert restored.run_id is None
     assert restored.state.aid == 7
 
 @pytest.mark.parametrize("document", [None, "{}"])
-def test_loading_an_unreadable_snapshot_preserves_the_restore_error(tmp_path, document):
+def test_loading_an_unreadable_snapshot_preserves_the_restore_error(local_environment_factory, tmp_path, document):
     path = tmp_path / "snapshot.json"
     if document is not None:
         path.write_text(document, encoding="utf-8")
@@ -155,7 +157,8 @@ def test_loading_an_unreadable_snapshot_preserves_the_restore_error(tmp_path, do
     error = FileNotFoundError if document is None else ValueError
     message = str(path) if document is None else "missing required 'messages' list"
     with pytest.raises(error, match=re.escape(message)):
-        load_session(str(path), agent=Agent(name="saved", system_prompt="sys"), llm=ReplyLLM())
+        load_session(str(path), env=local_environment_factory(),
+        agent=Agent(name="saved", system_prompt="sys"), llm=ReplyLLM())
 
 async def test_a_workflow_run_id_is_unique_and_joins_manifest_and_result(tmp_path):
     client = OpenCollab(tmp_path)

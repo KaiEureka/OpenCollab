@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.bootstrap import container
 from opencollab.bootstrap.team_config import default_team_config
 from opencollab.bootstrap.tool_registry import build_tools_for_role
 from opencollab.sdk import OpenCollab
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def _call(name, args):
@@ -21,7 +21,9 @@ def _call(name, args):
 
 @pytest.mark.parametrize(("prebuild", "delegate"), [(False, False), (True, False), (False, True)])
 @pytest.mark.parametrize(("fail", "escape"), [(False, False), (True, False), (False, True)])
-async def test_team_runs_nested_workflow_and_accounts_usage(tmp_path, monkeypatch, prebuild, delegate, fail, escape):
+async def test_team_runs_nested_workflow_and_accounts_usage(
+    local_environment_factory, tmp_path, monkeypatch, prebuild, delegate, fail, escape,
+):
     workflows = tmp_path / "workflows"
     workflows.mkdir()
     (workflows / "nested.py").write_text('''
@@ -98,7 +100,7 @@ topology:
     monkeypatch.setattr(container, "LLMClient", OfflineLLM)
     workspace = tmp_path / "actual"
     workspace.mkdir()
-    env = LocalEnvironment(str(workspace))
+    env = local_environment_factory(str(workspace))
     result = await OpenCollab(tmp_path, environment=env, config={
         "model": "gpt-4o", "provider": "openai", "api_key": "test-key",  # pragma: allowlist secret
         "budget": 100_000,
@@ -131,7 +133,7 @@ def test_workflow_dispatch_requires_explicit_team_permission():
         build_tools_for_role(["run_workflow"])
 
 
-async def test_cancelled_workflow_quiesces_before_tool_finishes(tmp_path):
+async def test_cancelled_workflow_quiesces_before_tool_finishes(local_environment_factory, tmp_path):
     from opencollab.application.event_bus import EventBus
     from opencollab.application.tool_execution import ToolRuntime
     from opencollab.application.workflow_registry import Registry, WorkflowSpec
@@ -163,7 +165,7 @@ async def test_cancelled_workflow_quiesces_before_tool_finishes(tmp_path):
 
     registry = Registry()
     registry.register(WorkflowSpec(name="waiting", description="wait", fn=flow))
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     parent = build_session(agent=Agent(name="caller", system_prompt="caller", tools=[]),
                            env=env, max_budget_tokens=100_000, llm=WaitingLLM())
     config = SpawnConfig(model="gpt-4o", provider="openai", api_key=None, base_url=None,
@@ -184,7 +186,9 @@ async def test_cancelled_workflow_quiesces_before_tool_finishes(tmp_path):
     "mode", ["agent", "agent_run", "structured", "parallel", "candidate_agent", "candidate_workflow"],
 )
 @pytest.mark.parametrize("release_response", [False, True])
-async def test_user_stop_cancels_workflow_before_further_execution(tmp_path, mode, release_response):
+async def test_user_stop_cancels_workflow_before_further_execution(
+    local_environment_factory, tmp_path, mode, release_response,
+):
     import subprocess
 
     from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace
@@ -230,7 +234,7 @@ async def test_user_stop_cancels_workflow_before_further_execution(tmp_path, mod
                 "mode": "create", "path": "after-cancel.txt", "content": "unexpected",
             })], usage=usage, finish_reason="tool_calls")
 
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
 
     async def child(ctx, args):
         child_workspaces.append(ctx.workspace_root)

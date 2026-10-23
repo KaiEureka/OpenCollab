@@ -50,6 +50,7 @@ def test_public_read_and_restore_accept_readonly_standalone_export(
             assert session.state.aid == 7
         finally:
             asyncio.run(session.aclose())
+            asyncio.run(session.env.cleanup())
         assert list(export.iterdir()) == [path]
         assert path.read_bytes() == original
         assert stat.S_IMODE(path.stat().st_mode) == file_mode

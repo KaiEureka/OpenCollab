@@ -11,6 +11,7 @@ from opencollab.adapters.tools.base import Tool
 from opencollab.bootstrap import build_session, load_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, http_response, install_sdk_transport
 
 
@@ -77,6 +78,7 @@ def _tool_exchange_error(messages, provider):
 @pytest.mark.parametrize("snapshot_format", ["legacy-json", "legacy-jsonl", "current-json"])
 @pytest.mark.parametrize("closed", [False, True], ids=["interrupted", "completed"])
 async def test_saved_tool_exchange_can_continue_without_replaying_effects(
+    local_environment_factory,
     monkeypatch, tmp_path, provider, snapshot_format, closed,
 ):
     monkeypatch.setenv("OPENCOLLAB_API_USAGE_LOG", str(tmp_path / "usage.jsonl"))
@@ -123,7 +125,7 @@ async def test_saved_tool_exchange_can_continue_without_replaying_effects(
         api_key="controlled-test",  # pragma: allowlist secret
         base_url="https://controlled.invalid/v1", max_retries=0,
     ) as client:
-        source = build_session(agent=agent, llm=client, aid=7)
+        source = build_session(env=local_environment_factory(), agent=agent, llm=client, aid=7)
         tool.session = source
         await source.add_user_message("Perform two writes.")
         assert await source.run_loop() == "continued answer"
@@ -132,7 +134,7 @@ async def test_saved_tool_exchange_can_continue_without_replaying_effects(
         original_effects = effects.read_text(encoding="utf-8")
         assert original_effects == "effect 1\neffect 2\n"
 
-        loaded = load_session(str(path), agent=agent, llm=client)
+        loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=client)
         if snapshot_format != "current-json":
             assert loaded.phase is SessionPhase.IDLE
             assert loaded.used_tokens == loaded.step_count == loaded.state.context_tokens == 0

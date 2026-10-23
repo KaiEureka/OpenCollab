@@ -9,7 +9,8 @@ import pytest
 
 from opencollab import OpenCollab
 from opencollab.adapters import worktree_pool
-from opencollab.environments import attach_container, local_environment
+from opencollab.environments import attach_container
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import http_response, install_sdk_transport
 from tests.support.worktree_delivery_support import CONTAINER_ID, git
 from tests.support.worktree_delivery_support import worktree_transport as worktree_transport
@@ -22,7 +23,7 @@ def _call(name, arguments):
 @pytest.mark.parametrize("backend", ["local", "container"])
 @pytest.mark.parametrize("trace", [False, True])
 @pytest.mark.parametrize("target", ["tracked", "untracked", "parent"])
-async def test_public_team_reports_unpatchable_modules_and_retains_files(
+async def test_public_team_reports_unpatchable_modules_and_retains_files(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend, trace, target,
 ):
     source, module_path = _source_with_dependency(tmp_path, False)
@@ -77,7 +78,7 @@ async def test_public_team_reports_unpatchable_modules_and_retains_files(
     install_sdk_transport(monkeypatch, "openai", handler)
     environment = (
         attach_container(container_id=CONTAINER_ID, workspace=str(source))
-        if backend == "container" else local_environment(source)
+        if backend == "container" else local_environment_factory(str(source))
     )
     result = await OpenCollab(
         source, model="offline", api_key="fixture-key",  # pragma: allowlist secret
@@ -112,6 +113,10 @@ async def test_public_team_reports_unpatchable_modules_and_retains_files(
         assert (source / module_path / "source.py").read_text() == "value = 1\n"
         assert not (source / module_path / "new_source.py").exists()
     finally:
-        if workspace.exists():
-            git(source, "worktree", "remove", "--force", "--force", str(workspace))
-            git(source, "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        try:
+            if workspace.exists():
+                git(source, "worktree", "remove", "--force", "--force", str(workspace))
+                git(source, "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        finally:
+            if backend == "local" and env._local_env is not None:
+                await env._local_env.cleanup()

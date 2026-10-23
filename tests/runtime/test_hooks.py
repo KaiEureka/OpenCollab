@@ -501,11 +501,14 @@ def _scheduler_with_stop_hook(tmp_path, monkeypatch, *, enable_hooks):
 
 def test_wiring_fires_hook_on_team_bus(tmp_path, monkeypatch):
     scheduler, sentinel = _scheduler_with_stop_hook(tmp_path, monkeypatch, enable_hooks=True)
-    bus = scheduler._event_sink
-    assert any(isinstance(t, HookEventSubscriber) for t in bus._targets)
+    try:
+        bus = scheduler._event_sink
+        assert any(isinstance(t, HookEventSubscriber) for t in bus._targets)
 
-    asyncio.run(bus.emit(SchedulerEvent(type="agent_completed", data={"aid": 0, "parent_aid": None})))
-    assert sentinel.exists()
+        asyncio.run(bus.emit(SchedulerEvent(type="agent_completed", data={"aid": 0, "parent_aid": None})))
+        assert sentinel.exists()
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_wiring_runs_relative_hook_in_runtime_workspace(tmp_path, monkeypatch):
     workspace = tmp_path / "target workspace"
@@ -526,18 +529,20 @@ def test_wiring_runs_relative_hook_in_runtime_workspace(tmp_path, monkeypatch):
         auto_save=False,
         enable_hooks=True,
     )
-
-    asyncio.run(
-        scheduler._event_sink.emit(
-            SchedulerEvent(
-                type="agent_completed",
-                data={"aid": 0, "parent_aid": None},
+    try:
+        asyncio.run(
+            scheduler._event_sink.emit(
+                SchedulerEvent(
+                    type="agent_completed",
+                    data={"aid": 0, "parent_aid": None},
+                )
             )
         )
-    )
 
-    assert (workspace / "relative-stop-fired").exists()
-    assert not (launch_directory / "relative-stop-fired").exists()
+        assert (workspace / "relative-stop-fired").exists()
+        assert not (launch_directory / "relative-stop-fired").exists()
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_hook_process_cleanup_failure_reaches_scheduler_cleanup(tmp_path, monkeypatch):
     cleanup_error = hooks_adapter.ProcessCleanupError("descendant remained alive")
@@ -551,27 +556,32 @@ def test_hook_process_cleanup_failure_reaches_scheduler_cleanup(tmp_path, monkey
         monkeypatch,
         enable_hooks=True,
     )
-
-    asyncio.run(
-        scheduler._event_sink.emit(
-            SchedulerEvent(
-                type="agent_completed",
-                data={"aid": 0, "parent_aid": None},
+    try:
+        asyncio.run(
+            scheduler._event_sink.emit(
+                SchedulerEvent(
+                    type="agent_completed",
+                    data={"aid": 0, "parent_aid": None},
+                )
             )
         )
-    )
 
-    with pytest.raises(
-        RuntimeError,
-        match="technical scheduler cleanup failed: hook processes did not quiesce",
-    ) as caught:
-        asyncio.run(scheduler.cleanup())
-    assert caught.value.__cause__ is cleanup_error
+        with pytest.raises(
+            RuntimeError,
+            match="technical scheduler cleanup failed: hook processes did not quiesce",
+        ) as caught:
+            asyncio.run(scheduler.cleanup())
+        assert caught.value.__cause__ is cleanup_error
+    finally:
+        asyncio.run(scheduler._worktree_pool.release())
 
 def test_wiring_disabled_when_enable_hooks_false(tmp_path, monkeypatch):
     scheduler, sentinel = _scheduler_with_stop_hook(tmp_path, monkeypatch, enable_hooks=False)
-    bus = scheduler._event_sink
-    assert not any(isinstance(t, HookEventSubscriber) for t in bus._targets)
+    try:
+        bus = scheduler._event_sink
+        assert not any(isinstance(t, HookEventSubscriber) for t in bus._targets)
 
-    asyncio.run(bus.emit(SchedulerEvent(type="agent_completed", data={"aid": 0, "parent_aid": None})))
-    assert not sentinel.exists()
+        asyncio.run(bus.emit(SchedulerEvent(type="agent_completed", data={"aid": 0, "parent_aid": None})))
+        assert not sentinel.exists()
+    finally:
+        asyncio.run(scheduler.cleanup())

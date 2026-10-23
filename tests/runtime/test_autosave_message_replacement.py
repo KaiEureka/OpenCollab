@@ -10,6 +10,7 @@ import pytest
 from opencollab.adapters.storage import SessionStore
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import FakeLLM
 
 
@@ -39,11 +40,13 @@ class PausedStore(SessionStore):
 @pytest.mark.parametrize("replace_during_append", [False, True])
 @pytest.mark.parametrize("initial_saves", [0, 2])
 def test_message_replacement_survives_the_single_autosave_owner(
+    local_environment_factory,
     tmp_path, replace_during_append, initial_saves,
 ):
     path = str(tmp_path / "autosave.json")
     store = PausedStore()
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="replacement", system_prompt="system"),
         llm=FakeLLM(), store=store, auto_save_path=path,
     )

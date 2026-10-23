@@ -171,3 +171,4 @@ async def test_snapshot_restores_original_tools_only_for_the_next_user_turn(tmp_
         for session in (branch, source):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()

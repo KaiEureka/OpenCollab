@@ -11,7 +11,6 @@ import httpx
 import openai
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm._attempt_usage import _combine_attempt_usage
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage
@@ -23,6 +22,7 @@ from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.token_estimation import estimate_request_message_tokens
 from tests.runtime.test_responses_http_contract import _response
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.responses_provider_test_support import function_item, message_item
 from tests.support.session_run_loop_test_support import build_runner
 
@@ -169,7 +169,9 @@ async def test_anthropic_projection_counts_native_blocks_once():
     finally:
         await client.close()
 
-async def test_responses_session_keeps_encrypted_history_on_real_sdk_wire(tmp_path, monkeypatch):
+async def test_responses_session_keeps_encrypted_history_on_real_sdk_wire(
+    local_environment_factory, tmp_path, monkeypatch,
+):
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     requests = []
@@ -209,7 +211,7 @@ async def test_responses_session_keeps_encrypted_history_on_real_sdk_wire(tmp_pa
     )
     agent = Agent(name="coder", system_prompt="inspect the files", model="gpt-5.6-luna",
                   tools=[FileReadTool()], reasoning_effort="max")
-    session = build_session(agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)),
+    session = build_session(agent=agent, llm=client, env=local_environment_factory(str(tmp_path)),
                             max_steps=12, max_budget_tokens=None)
     try:
         await session.add_user_message("Inspect source_0.py through source_7.py.")

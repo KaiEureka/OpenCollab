@@ -11,6 +11,7 @@ from opencollab.application.structured_output import StructuredOutputTool
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import install_sdk_transport
 from tests.support.responses_provider_test_support import FakeStream, completed_response, message_item, ns
 
@@ -52,7 +53,9 @@ async def test_schema_limit_preserves_reported_usage_and_skips_projection(stream
     assert response.tool_calls == []
     assert response.provider_items == items
 
-async def test_real_sdk_schema_limit_stops_session_and_keeps_billed_usage(monkeypatch, tmp_path):
+async def test_real_sdk_schema_limit_stops_session_and_keeps_billed_usage(
+    local_environment_factory, monkeypatch, tmp_path,
+):
     requests = []
 
     async def handler(request):
@@ -84,7 +87,7 @@ async def test_real_sdk_schema_limit_stops_session_and_keeps_billed_usage(monkey
         api_key="controlled-test",  # pragma: allowlist secret
         base_url="https://controlled.invalid/v1",
     ) as client:
-        session = build_session(agent=agent, llm=client, max_budget_tokens=10000)
+        session = build_session(env=local_environment_factory(), agent=agent, llm=client, max_budget_tokens=10000)
         await session.add_user_message("Return a result")
         await session.run_loop()
     assert len(requests) == 1

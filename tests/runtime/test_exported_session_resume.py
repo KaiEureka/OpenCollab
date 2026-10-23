@@ -51,6 +51,7 @@ async def test_manual_export_resumes_original_autosave_and_continues(
         tokens = original.used_tokens
     finally:
         await original.aclose()
+        await original.env.cleanup()
 
     continuation = model()
     restored = None
@@ -76,6 +77,7 @@ async def test_manual_export_resumes_original_autosave_and_continues(
     finally:
         if restored is not None:
             await restored.aclose()
+            await restored.env.cleanup()
 
 async def test_export_keeps_original_autosave_bytes_unchanged(tmp_path):
     automatic = tmp_path / "automatic.json"
@@ -95,6 +97,7 @@ async def test_export_keeps_original_autosave_bytes_unchanged(tmp_path):
         assert saved["session_state"] == source["session_state"]
     finally:
         await original.aclose()
+        await original.env.cleanup()
 
 async def test_older_export_still_cannot_replace_a_newer_autosave(tmp_path):
     automatic = tmp_path / "automatic.json"
@@ -107,6 +110,7 @@ async def test_older_export_still_cannot_replace_a_newer_autosave(tmp_path):
         await converse(original, 4)
     finally:
         await original.aclose()
+        await original.env.cleanup()
     source_paths = [automatic, tmp_path / "automatic.json.journal"]
     before = {path: path.read_bytes() for path in source_paths}
     restored = build_session(agent=agent, llm=model(), auto_save_path=str(automatic))
@@ -116,6 +120,7 @@ async def test_older_export_still_cannot_replace_a_newer_autosave(tmp_path):
         assert {path: path.read_bytes() for path in source_paths} == before
     finally:
         await restored.aclose()
+        await restored.env.cleanup()
 
 async def test_restored_export_can_be_exported_again_before_resuming(tmp_path):
     automatic = str(tmp_path / "automatic.json")
@@ -129,17 +134,20 @@ async def test_restored_export_can_be_exported_again_before_resuming(tmp_path):
         messages = original.messages.copy()
     finally:
         await original.aclose()
+        await original.env.cleanup()
     reader = load_session(first, agent=agent, llm=model())
     try:
         reader.save(second)
     finally:
         await reader.aclose()
+        await reader.env.cleanup()
     restored = build_session(agent=agent, llm=model(), auto_save_path=automatic)
     try:
         restored.restore(second)
         assert restored.messages == messages
     finally:
         await restored.aclose()
+        await restored.env.cleanup()
 
 @pytest.mark.parametrize("target_kind", ["same-file", "new-target"])
 async def test_export_without_original_autosave_can_start_autosaving(tmp_path, target_kind):
@@ -153,6 +161,7 @@ async def test_export_without_original_autosave_can_start_autosaving(tmp_path, t
         messages = original.messages.copy()
     finally:
         await original.aclose()
+        await original.env.cleanup()
     restored = load_session(exported, agent=agent, llm=model(), auto_save_path=target)
     try:
         assert restored.messages == messages
@@ -161,6 +170,7 @@ async def test_export_without_original_autosave_can_start_autosaving(tmp_path, t
         assert transcript(SessionStore().load_snapshot(target, agent.system_prompt)) == restored.messages
     finally:
         await restored.aclose()
+        await restored.env.cleanup()
 
 class SnapshotOnlyStore:
     """Exercise full-snapshot persistence without journal support."""
@@ -275,3 +285,4 @@ async def test_rejected_restore_preserves_live_conversation_and_continues(
         assert exported.read_bytes() == before_files[exported]
     finally:
         await session.aclose()
+        await session.env.cleanup()

@@ -15,6 +15,7 @@ from tests.runtime.test_llm_chat_streaming import (
     usage_chunk,
 )
 from tests.runtime.test_llm_chat_streaming_session import USAGE, completion, session_with_wire
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 ZERO_OUTPUT = {"prompt_tokens": 100, "completion_tokens": 0, "total_tokens": 100}
 
@@ -54,7 +55,7 @@ async def test_empty_stream_still_requires_consistent_reported_usage(usage):
         await run_stream(script)
 
 @pytest.mark.parametrize("stream", [False, True])
-async def test_empty_zero_output_turn_reaches_session_correction_and_tools(tmp_path, stream):
+async def test_empty_zero_output_turn_reaches_session_correction_and_tools(local_environment_factory, tmp_path, stream):
     (tmp_path / "input.txt").write_text("source content\n", encoding="utf-8")
     calls = [
         {"id": "read", "type": "function", "function": {
@@ -78,7 +79,10 @@ async def test_empty_zero_output_turn_reaches_session_correction_and_tools(tmp_p
         first.usage.total_tokens = 100
         scripts = [first, completion(None, calls, "tool_calls"), completion("done", [], "stop")]
     wire = FakeClient(scripts)
-    session = await session_with_wire(tmp_path, wire, stream=stream, tools=[FileReadTool(), FileWriteTool()])
+    session = await session_with_wire(
+        tmp_path, wire, stream=stream, tools=[FileReadTool(), FileWriteTool()],
+        local_environment_factory=local_environment_factory,
+    )
 
     assert await session.run_loop() == "done"
     assert session.phase is SessionPhase.DONE
@@ -92,7 +96,9 @@ async def test_empty_zero_output_turn_reaches_session_correction_and_tools(tmp_p
     assert all(stream.closed for stream in wire.streams)
 
 @pytest.mark.parametrize("stream", [False, True])
-async def test_zero_output_provider_limit_still_stops_without_executing_tools(tmp_path, stream):
+async def test_zero_output_provider_limit_still_stops_without_executing_tools(
+    local_environment_factory, tmp_path, stream,
+):
     if stream:
         script = [chunk(delta={"role": "assistant"}), chunk(finish_reason="length"), usage_chunk(ZERO_OUTPUT)]
     else:
@@ -100,7 +106,10 @@ async def test_zero_output_provider_limit_still_stops_without_executing_tools(tm
         script.usage.completion_tokens = 0
         script.usage.total_tokens = 100
     wire = FakeClient([script])
-    session = await session_with_wire(tmp_path, wire, stream=stream, tools=[FileWriteTool()])
+    session = await session_with_wire(
+        tmp_path, wire, stream=stream, tools=[FileWriteTool()],
+        local_environment_factory=local_environment_factory,
+    )
 
     await session.run_loop()
 
