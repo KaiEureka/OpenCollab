@@ -42,6 +42,7 @@ async def _finish_cleanup(operation):
 class WorktreePool:
     """Lend isolated environments and track them for cleanup.
 
+    ``owned_environments`` transfers existing environments into pool cleanup.
     With ``use_worktrees=False``, return ``LocalEnvironment(workspace)``.
     ``base_environment`` selects host worktrees by default or worktrees inside
     an attached container. Container worktrees avoid host mounts so bounded
@@ -57,6 +58,7 @@ class WorktreePool:
         owned_save_dir: str | None = None,
         enable_adoption: bool = False,
         owned_output_paths: Sequence[str] = (),
+        owned_environments: Sequence[Environment] = (),
     ):
         self._workspace = workspace
         self._use_worktrees = use_worktrees
@@ -66,7 +68,7 @@ class WorktreePool:
         self._owned_output_paths = tuple(os.path.realpath(path) for path in owned_output_paths)
         self._delivery_lock = asyncio.Lock()
         self._owned_delivery_environment: LocalEnvironment | None = None
-        self._envs: list[Environment] = []
+        self._envs: list[Environment] = list(owned_environments)
         self._source_dependencies: dict[Environment, Environment] = {}
         self._lifecycle = asyncio.Condition()
         self._release_lock = asyncio.Lock()

@@ -89,6 +89,11 @@ class LocalEnvironment(Environment):
             raise RuntimeError("Local environment workspace is closed.")
         return self._workspace_fd
 
+    def _close_workspace(self) -> None:
+        if self._workspace_fd is not None:
+            os.close(self._workspace_fd)
+            self._workspace_fd = None
+
     async def exec_cmd(self, cmd: str, timeout: float = 120.0) -> ExecResult:
         self._ensure_active()
         try:
@@ -257,8 +262,7 @@ class LocalEnvironment(Environment):
         # closing this descriptor while an owned path remains would make that
         # retry permanently incapable of reaching the anchored workspace.
         if not self._temporary_files and self._workspace_fd is not None:
-            os.close(self._workspace_fd)
-            self._workspace_fd = None
+            self._close_workspace()
 
         if failures:
             failure = OSError("failed to remove one or more environment temporary files")
