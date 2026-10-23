@@ -598,19 +598,21 @@ def _parse_stream(
         state.output_items = [item for item in state.output_items if item.get("type") == "reasoning"]
         state.output_items.append(synthetic_item)
         content = None
+    usage = parse_responses_usage(
+        state.completed_response,
+        messages,
+        content,
+        tool_calls,
+        tools,
+        reasoning=reasoning,
+    )
     content = rescue_empty_turn(content, tool_calls, reasoning)
     if not content and not tool_calls and finish_reason != "max_tokens":
         raise ResponsesEmptyOutputError("response.completed contained no message or function call")
     return LLMResponse(
         content=content,
         tool_calls=tool_calls,
-        usage=parse_responses_usage(
-            state.completed_response,
-            messages,
-            content,
-            tool_calls,
-            tools,
-        ),
+        usage=usage,
         finish_reason=("tool_calls" if tool_calls and finish_reason == "stop" else finish_reason),
         reasoning=reasoning,
         provider_items=state.output_items,

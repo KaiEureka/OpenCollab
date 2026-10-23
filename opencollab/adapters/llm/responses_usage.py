@@ -48,6 +48,8 @@ def parse_responses_usage(
     content: str | None,
     tool_calls: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
+    *,
+    reasoning: str | None = None,
 ) -> Usage:
     """Build normalized usage while retaining provider-native counters.
 
@@ -72,7 +74,7 @@ def parse_responses_usage(
             prefer_response_items=True,
         )
     if output_tokens is None:
-        text = content or ""
+        text = (reasoning or "") + (content or "")
         for call in tool_calls:
             function = call["function"]
             text += str(function.get("name") or "") + str(function.get("arguments") or "")
