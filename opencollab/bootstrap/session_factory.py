@@ -25,6 +25,8 @@ from opencollab.adapters.safe_files import ensure_directory_no_symlinks
 from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
+from opencollab.application.compaction_summary import run_coro_blocking
+from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.ports import (
     AskUserPort,
     EventPublisherPort,
@@ -311,62 +313,68 @@ def snapshot_session(
         (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
         label="agent",
     )
-    environment = _fork_snapshot_environment(session.env)
-    new = build_session(
-        agent=agent,
-        env=environment,
-        max_budget_tokens=session.max_budget_tokens,
-        max_steps=session.max_steps,
-        event_sink=event_sink,
-        permission_policy=_clone_snapshot_component(
-            session.permission_policy,
-            label="permission policy",
-        ),
-        ask_policy=_clone_snapshot_component(
-            session.tool_execution.ask_policy,
-            label="ask policy",
-        ),
-        safety_policy=_clone_snapshot_component(
-            session.tool_execution.safety_policy,
-            label="safety policy",
-        ),
-        llm=session._llm,
-        llm_timeout=session.runner._per_call_timeout,
-        aid=session.state.aid,
-        run_id=session.run_id,
-    )
+    permission_policy = _clone_snapshot_component(session.permission_policy, label="permission policy")
+    ask_policy = _clone_snapshot_component(session.tool_execution.ask_policy, label="ask policy")
+    safety_policy = _clone_snapshot_component(session.tool_execution.safety_policy, label="safety policy")
     state = _clone_snapshot_component(session.state, label="session state")
-    if state.phase not in {
-        SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
-    } or new._open_tool_call_ids(state):
-        new._normalize_forked_state(state, session._fork_runtime_metadata())
-        new.runner.reset_for_restore()
-    # Keep the current turn's restrictions through normalization, then retain
-    # the original capabilities for the next user turn.
-    new.runner._initial_agent_tools = initial_tools
-    new.runner._initial_agent_tool_choice = initial_tool_choice
-    new.state = state
-    new.runner.state = state
-    new.tool_execution.state = state
-    # Clone the effective pipeline, including injected shapers and live caches.
-    # Session-owned collaborators resolve to this branch's existing owners.
-    memo = {
-        id(session): new,
-        id(session.state): state,
-        id(session.runner): new.runner,
-        id(session.tool_execution): new.tool_execution,
-        id(session.event_bus): new.event_bus,
-        id(session.agent): new.agent,
-        id(session.env): new.env,
-        id(session._llm): session._llm,
-    }
-    if session._context_summarizer is not None:
-        memo[id(session._context_summarizer)] = new._context_summarizer
-    shaper = _clone_snapshot_component(session.runner.shaper, label="context shaper", memo=memo)
-    if shaper is not None and shaper is session.runner.shaper:
-        raise SnapshotSessionError("cannot clone context shaper for an independent snapshot")
-    new.runner.shaper = shaper
-    return new
+    environment = _fork_snapshot_environment(session.env)
+    try:
+        new = build_session(
+            agent=agent,
+            env=environment,
+            max_budget_tokens=session.max_budget_tokens,
+            max_steps=session.max_steps,
+            event_sink=event_sink,
+            permission_policy=permission_policy,
+            ask_policy=ask_policy,
+            safety_policy=safety_policy,
+            llm=session._llm,
+            llm_timeout=session.runner._per_call_timeout,
+            aid=session.state.aid,
+            run_id=session.run_id,
+        )
+        if state.phase not in {
+            SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
+        } or new._open_tool_call_ids(state):
+            new._normalize_forked_state(state, session._fork_runtime_metadata())
+            new.runner.reset_for_restore()
+        # Keep the current turn's restrictions through normalization, then retain
+        # the original capabilities for the next user turn.
+        new.runner._initial_agent_tools = initial_tools
+        new.runner._initial_agent_tool_choice = initial_tool_choice
+        new.state = state
+        new.runner.state = state
+        new.tool_execution.state = state
+        # Clone the effective pipeline, including injected shapers and live caches.
+        # Session-owned collaborators resolve to this branch's existing owners.
+        memo = {
+            id(session): new,
+            id(session.state): state,
+            id(session.runner): new.runner,
+            id(session.tool_execution): new.tool_execution,
+            id(session.event_bus): new.event_bus,
+            id(session.agent): new.agent,
+            id(session.env): new.env,
+            id(session._llm): session._llm,
+        }
+        if session._context_summarizer is not None:
+            memo[id(session._context_summarizer)] = new._context_summarizer
+        shaper = _clone_snapshot_component(session.runner.shaper, label="context shaper", memo=memo)
+        if shaper is not None and shaper is session.runner.shaper:
+            raise SnapshotSessionError("cannot clone context shaper for an independent snapshot")
+        new.runner.shaper = shaper
+        return new
+    except BaseException as error:
+        try:
+            # Finish rollback before the synchronous caller loses the new owner.
+            run_coro_blocking(environment.cleanup)
+        except BaseException as cleanup_error:
+            add_exception_note(
+                error,
+                f"snapshot environment cleanup failed for {environment.workspace!r} "
+                f"with {type(cleanup_error).__name__} ({cleanup_error})",
+            )
+        raise
 
 def _clone_snapshot_component(value: Any, *, label: str, memo: dict[int, Any] | None = None) -> Any:
     try:
