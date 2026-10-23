@@ -171,23 +171,25 @@ def test_overflowed_child_delivers_controlled_result_not_crash():
     )
     lead = LeadSession(runner, lead_state, lead_agent)
     scheduler.register_lead(lead)
+    try:
+        result = run(scheduler.run("please build it via a coder"))
 
-    result = run(scheduler.run("please build it via a coder"))
+        assert result == "Lead recovered after child overflow"
+        assert lead_state.phase is SessionPhase.DONE
+        assert lead_state.pending_events.is_empty()
 
-    assert result == "Lead recovered after child overflow"
-    assert lead_state.phase is SessionPhase.DONE
-    assert lead_state.pending_events.is_empty()
+        child = factory.child
+        assert child.state.phase is SessionPhase.STOPPED
+        assert len(child.llm.calls) == 2
 
-    child = factory.child
-    assert child.state.phase is SessionPhase.STOPPED
-    assert len(child.llm.calls) == 2
+        child_scb = scheduler.table.get(child.state.aid)
+        assert child_scb.state.phase is SessionPhase.STOPPED
 
-    child_scb = scheduler.table.get(child.state.aid)
-    assert child_scb.state.phase is SessionPhase.STOPPED
-
-    second_call_msgs = lead_llm.calls[1]["messages"]
-    tool_results = [m for m in second_call_msgs if m.get("role") == "tool" and m.get("tool_call_id") == "call-1"]
-    assert len(tool_results) == 1
+        second_call_msgs = lead_llm.calls[1]["messages"]
+        tool_results = [m for m in second_call_msgs if m.get("role") == "tool" and m.get("tool_call_id") == "call-1"]
+        assert len(tool_results) == 1
+    finally:
+        run(scheduler.cleanup())
 
 def test_delivery_status_of_overflowed_child_is_failed_with_terminal_reason():
     factory = OverflowChildFactory()
@@ -220,11 +222,13 @@ def test_delivery_status_of_overflowed_child_is_failed_with_terminal_reason():
     )
     lead = LeadSession(runner, lead_state, lead_agent)
     scheduler.register_lead(lead)
+    try:
+        run(scheduler.run("delegate"))
 
-    run(scheduler.run("delegate"))
-
-    assert factory.child.state.phase is SessionPhase.STOPPED
-    assert lead_state.phase is SessionPhase.DONE
-    tool_msg = next(m for m in lead_state.messages if m.get("role") == "tool" and m.get("tool_call_id") == "c1")
-    assert tool_msg["content"].startswith("Error: agent stopped: context overflow:")
-    assert RowStatus.FAILED is not RowStatus.DONE
+        assert factory.child.state.phase is SessionPhase.STOPPED
+        assert lead_state.phase is SessionPhase.DONE
+        tool_msg = next(m for m in lead_state.messages if m.get("role") == "tool" and m.get("tool_call_id") == "c1")
+        assert tool_msg["content"].startswith("Error: agent stopped: context overflow:")
+        assert RowStatus.FAILED is not RowStatus.DONE
+    finally:
+        run(scheduler.cleanup())
