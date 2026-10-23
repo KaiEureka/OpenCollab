@@ -273,7 +273,7 @@ class _ChildFactory:
         agent = FakeAgent()
         agent.name = kwargs["role"]
         self.session = build_session(
-            agent=agent, llm=self.provider, aid=kwargs["aid"], max_budget_tokens=kwargs["budget"],
+            agent=agent, llm=self.provider, env=kwargs["env"], aid=kwargs["aid"], max_budget_tokens=kwargs["budget"],
             auto_save_path=self.auto_save_path,
         )
         return self.session
