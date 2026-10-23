@@ -368,9 +368,6 @@ async def run_agent(
     )
     _claim_artifacts(artifacts)
     owned_environment = environment is None
-    resolved_environment = (
-        environment if environment is not None else LocalEnvironment(workspace)
-    )
     transcript_path = None if artifacts is None else artifacts / "agent.json"
     tracer = None
     if artifacts is not None and trace:
@@ -381,6 +378,9 @@ async def run_agent(
         )
     primary_failure: BaseException | None = None
     try:
+        resolved_environment = (
+            environment if environment is not None else LocalEnvironment(workspace)
+        )
         try:
             internal = await _run_agent(
                 agent=agent,
