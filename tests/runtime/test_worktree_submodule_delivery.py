@@ -94,7 +94,11 @@ async def test_unpatchable_module_changes_survive_capture_and_cleanup(
         assert (source / "source.py").read_text() == "value = 1\n"
         assert (source / module_path / "source.py").read_text() == "value = 1\n"
     finally:
-        _remove_retained(source, env)
+        try:
+            _remove_retained(source, env)
+        finally:
+            if backend == "local" and env._local_env is not None:
+                await env._local_env.cleanup()
 
 @pytest.mark.parametrize("backend", ["local", "container"])
 async def test_parent_commit_of_module_gitlink_retains_module_objects(
@@ -119,7 +123,11 @@ async def test_parent_commit_of_module_gitlink_retains_module_objects(
         assert str(workspace) in env.recovery_location
         assert (source / module_path / "source.py").read_text() == "value = 1\n"
     finally:
-        _remove_retained(source, env)
+        try:
+            _remove_retained(source, env)
+        finally:
+            if backend == "local" and env._local_env is not None:
+                await env._local_env.cleanup()
 
 @pytest.mark.parametrize("backend", ["local", "container"])
 async def test_clean_modules_and_parent_patch_export_and_cleanup(

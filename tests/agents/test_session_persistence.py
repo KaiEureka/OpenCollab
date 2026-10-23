@@ -516,18 +516,21 @@ async def test_manifest_records_parent_child_relationship(tmp_path) -> None:
         worktree_pool=WorktreePool(".", use_worktrees=False),
         event_sink=EventBus(None),
     )
-    def write_manifest() -> None:
-        SessionStore().save_manifest(
-            str(path), {"run_id": "run", "agents": scheduler.team_snapshot()}
-        )
+    try:
+        def write_manifest() -> None:
+            SessionStore().save_manifest(
+                str(path), {"run_id": "run", "agents": scheduler.team_snapshot()}
+            )
 
-    scheduler.set_manifest_writer(write_manifest)
-    scheduler.register_lead(_FakeLead())
-    child = await scheduler.spawn(0, "coder", "do it")
-    task = scheduler._tasks.get(child)
-    if task is not None:
-        await task
-    write_manifest()
-    agents = {entry["aid"]: entry for entry in json.loads(path.read_text())["agents"]}
-    assert agents[0]["parent_aid"] is None
-    assert agents[child]["parent_aid"] == 0
+        scheduler.set_manifest_writer(write_manifest)
+        scheduler.register_lead(_FakeLead())
+        child = await scheduler.spawn(0, "coder", "do it")
+        task = scheduler._tasks.get(child)
+        if task is not None:
+            await task
+        write_manifest()
+        agents = {entry["aid"]: entry for entry in json.loads(path.read_text())["agents"]}
+        assert agents[0]["parent_aid"] is None
+        assert agents[child]["parent_aid"] == 0
+    finally:
+        await scheduler.cleanup()

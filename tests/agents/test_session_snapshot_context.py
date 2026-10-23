@@ -485,6 +485,7 @@ async def test_snapshot_events_follow_registered_lead_identity(tmp_path):
         assert {event.type for event in events} >= {"step_start", "text_delta", "tool_start", "tool_end"}
     finally:
         await scheduler.cleanup()
+        await snapshot.env.cleanup()
         await source.aclose()
         await source.env.cleanup()
 

@@ -413,7 +413,11 @@ async def test_default_worktree_compares_crlf_submodules_after_a_new_diff_base(
         if removed is not None:
             (tmp_path / "source-backup").rename(removed)
         if candidate.recovery_location is not None:
-            _remove_retained(source, candidate)
+            try:
+                _remove_retained(source, candidate)
+            finally:
+                if candidate._local_env is not None:
+                    await candidate._local_env.cleanup()
         else:
             await pool.release()
     assert not folder.exists()
@@ -483,7 +487,11 @@ async def test_candidate_conversion_metadata_cannot_define_delivered_submodule_b
         assert _index(source / module_path) == source_module_index
     finally:
         if candidate.recovery_location is not None:
-            _remove_retained(source, candidate)
+            try:
+                _remove_retained(source, candidate)
+            finally:
+                if candidate._local_env is not None:
+                    await candidate._local_env.cleanup()
         else:
             await pool.release()
     assert not folder.exists()
