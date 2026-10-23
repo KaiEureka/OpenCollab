@@ -152,6 +152,24 @@ async def test_stream_rejects_conflicting_reasoning_ciphertext():
     with pytest.raises(ResponsesProtocolError, match="disagrees with streamed"):
         _parse_stream(state, [{"role": "user", "content": "work"}], "gpt-fake")
 
+
+@pytest.mark.asyncio
+async def test_stream_rejects_conflicting_native_reasoning_text():
+    streamed = {**_reasoning_item(None), "content": [{"type": "reasoning_text", "text": "First reasoning."}]}
+    terminal = {**_reasoning_item(None), "content": [{"type": "reasoning_text", "text": "Changed reasoning."}]}
+    state = await _consume_stream(
+        FakeStream([
+            ns(type="response.output_item.done", output_index=0, item=streamed),
+            ns(type="response.completed", response=completed_response(output=[terminal])),
+        ]),
+        1,
+        1,
+        "gpt-fake",
+    )
+
+    with pytest.raises(ResponsesProtocolError, match="disagrees with streamed"):
+        _parse_stream(state, [{"role": "user", "content": "work"}], "gpt-fake")
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stream_cipher,terminal_cipher", [("stream-A", None), (None, "terminal-A")])
 async def test_stream_accepts_one_sided_reasoning_ciphertext_projection(

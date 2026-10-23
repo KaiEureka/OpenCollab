@@ -46,8 +46,9 @@ def _reply(request, body, items, usage):
 @pytest.mark.parametrize("usage", [None, {"input_tokens": 0, "output_tokens": 0}, _REPORTED],
                          ids=["missing", "zero", "reported"])
 @pytest.mark.parametrize("response_kind", ["short-answer", "tool-roundtrip", "reasoning-only"])
+@pytest.mark.parametrize("reasoning_source", ["summary", "content", "both"])
 async def test_public_agent_estimates_visible_reasoning_and_replays_native_state(
-    monkeypatch, tmp_path, model, usage, response_kind,
+    monkeypatch, tmp_path, model, usage, response_kind, reasoning_source,
 ):
     with_tool = response_kind == "tool-roundtrip"
     reasoning_only = response_kind == "reasoning-only"
@@ -57,7 +58,14 @@ async def test_public_agent_estimates_visible_reasoning_and_replays_native_state
     monkeypatch.setenv("OPENCOLLAB_UNBOUNDED_LIMITS", "false")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     (tmp_path / "source.txt").write_text("verified source", encoding="utf-8")
-    items = [_REASONING]
+    reasoning_item = dict(_REASONING)
+    if reasoning_source != "summary":
+        reasoning_item["content"] = [{"type": "reasoning_text", "text": _SUMMARY}]
+        reasoning_item["summary"] = (
+            [{"type": "summary_text", "text": "Short summary."}]
+            if reasoning_source == "both" else []
+        )
+    items = [reasoning_item]
     if not reasoning_only:
         items.append(_CALL if with_tool else message_item("42"))
 
@@ -67,7 +75,7 @@ async def test_public_agent_estimates_visible_reasoning_and_replays_native_state
         if len(requests) == 1:
             return _reply(request, body, items, usage)
         replayed = [item for item in body["input"] if item.get("type") == "reasoning"]
-        assert replayed == [_REASONING]
+        assert replayed == [reasoning_item]
         outputs = [item for item in body["input"] if item.get("type") == "function_call_output"]
         assert len(outputs) == 1 and "verified source" in outputs[0]["output"]
         return _reply(request, body, [message_item("42")], _REPORTED)
@@ -79,12 +87,15 @@ async def test_public_agent_estimates_visible_reasoning_and_replays_native_state
         config={"wire_protocol": "responses", "llm_max_retries": 0},
     ).agent("Read source.txt and answer." if with_tool else "Answer briefly.",
             tools=[FileReadTool()] if with_tool else [], budget=100_000,
-            max_steps=3, trace=False)
+            max_steps=3, artifacts=tmp_path / "artifacts")
 
     assert result.ok and result.output == (_SUMMARY if reasoning_only else "42"), result.reason
     assert len(requests) == (2 if with_tool else 1)
     assert requests[0]["stream"] is (model == "o3")
     records = [json.loads(line) for line in usage_path.read_text().splitlines()]
+    trajectory = [json.loads(line) for line in (result.artifacts / "trajectory.jsonl").read_text().splitlines()]
+    calls = [record for record in trajectory if record["type"] == "llm_call"]
+    assert calls[0]["payload"]["reasoning"] == _SUMMARY
     first = records[0]["usage"]
     assert first.get("raw_usage", {}) == (usage or {})
     if usage == _REPORTED:
