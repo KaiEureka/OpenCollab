@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import threading
 import uuid
 from collections.abc import Callable
 from typing import TypeVar
@@ -61,7 +62,7 @@ class LocalEnvironment(Environment):
         self.source_workspace = self.workspace
         self._processes = ProcessRegistry()
         self._temporary_files: set[str] = set()
-        self._file_io_semaphore = asyncio.Semaphore(_FILE_IO_CONCURRENCY)
+        self._file_io_semaphore = threading.BoundedSemaphore(_FILE_IO_CONCURRENCY)
         self._file_operations: set[asyncio.Task] = set()
 
     def _relative_path(self, path: str) -> str:
@@ -112,8 +113,12 @@ class LocalEnvironment(Environment):
         *args: object,
         **kwargs: object,
     ) -> T:
-        async with self._file_io_semaphore:
+        while not self._file_io_semaphore.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
             return await asyncio.to_thread(operation, *args, **kwargs)
+        finally:
+            self._file_io_semaphore.release()
 
     async def _run_file_operation(
         self,
