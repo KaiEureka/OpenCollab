@@ -1,6 +1,6 @@
 # VM 成员自编 Workflow
 
-[English](README.md)
+[英文版](README.md)
 
 按照 [VM 使用指南](../../docs/virtual-machines.zh-CN.md) 准备两台现有 Linux VM。
 在控制端和两台来宾中安装相同版本的 OpenCollab，再参照
