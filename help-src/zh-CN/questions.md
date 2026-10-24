@@ -1,6 +1,6 @@
 # 问题导航
 
-[帮助中心](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
+[Wiki](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
 
 找到你关心的问题，点击右侧指南查看解释和示例。
 

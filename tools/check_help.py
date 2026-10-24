@@ -69,7 +69,7 @@ def main() -> None:
         if not (OUTPUT / ident / "index.html").is_file():
             errors.append(f"Missing generated page: {ident}")
     homepage = (ROOT / "index.html").read_text()
-    if homepage.count('href="help/">Help Center</a>') != 3:
+    if homepage.count('href="help/">Wiki</a>') != 3:
         errors.append("Homepage help links are missing")
     for page in parsed:
         if page.parent == ROOT:
