@@ -225,7 +225,16 @@ def _input_key(value: Any) -> str:
     phases=["probe", "code", "select"],
 )
 async def reconstruct(ctx: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """Run the active-exploration protocol for one hidden program (see the module docstring)."""
+    """Reconstruct a hidden program with a caller-provided task integration.
+
+    Required input ``task`` is a single-use register_task() token or an importable
+    "module:callable" factory returning ReconstructionTask. Optional ``task_args``
+    supplies that factory's keyword arguments. The caller must provide the oracle,
+    workspace and evaluation integration; a natural-language goal alone is insufficient.
+    Other optional inputs include initial_batch, batch_step, max_iterations,
+    early_stop, propose_attempts, examples_shown and random_share. The coverage_gate,
+    memorisation_gate, complexity_gate and domain_check flags default to false.
+    """
     task = resolve_task(args)
     initial_batch = _positive_int(args, "initial_batch", INITIAL_BATCH)
     batch_step = _positive_int(args, "batch_step", BATCH_STEP)

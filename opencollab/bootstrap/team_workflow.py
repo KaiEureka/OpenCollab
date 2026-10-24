@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import tempfile
 from collections.abc import Callable
@@ -26,7 +27,8 @@ class TeamWorkflowTool(Tool):
     name = "run_workflow"
     description = (
         "Run a registered Workflow in your current workspace and wait for its result. "
-        "Pass its inputs in args (usually goal). The workflow may compose sub-workflows. "
+        "Use action=describe with its name to inspect its input instructions before running it. "
+        "Pass those inputs in args with action=run (the default). The workflow may compose sub-workflows. "
         "Its tokens are charged to your remaining Team budget."
     )
     disable_outer_timeout = True
@@ -42,6 +44,7 @@ class TeamWorkflowTool(Tool):
         self.parameters = {
             "type": "object",
             "properties": {
+                "action": {"type": "string", "enum": ["run", "describe"], "default": "run"},
                 "name": {
                     "type": "string",
                     "enum": [spec.name for spec in registry.list_specs()],
@@ -49,16 +52,25 @@ class TeamWorkflowTool(Tool):
                         f"{spec.name}: {spec.description}" for spec in registry.list_specs()
                     ),
                 },
-                "args": {"type": "object", "description": "Workflow inputs, including goal."},
+                "args": {"type": "object", "description": "Required for run. Use the inputs reported by describe."},
                 "budget": {"type": "integer", "minimum": 1},
                 "concurrency": {"type": "integer", "minimum": 1, "default": 4},
             },
-            "required": ["name", "args"],
+            "required": ["name"],
             "additionalProperties": False,
         }
 
     async def execute_with_runtime(self, params: dict[str, Any], runtime: ToolRuntime) -> str:
         spec = self._registry.get(params["name"])
+        action = params.get("action", "run")
+        if action == "describe":
+            return json.dumps({"name": spec.name, "description": spec.description,
+                               "inputs": inspect.getdoc(spec.fn) or spec.description,
+                               "phases": spec.phases}, ensure_ascii=False)
+        if action != "run":
+            raise ValueError("action must be run or describe")
+        if "args" not in params:
+            return "Error: run requires args. Call action=describe with the workflow name for its input instructions."
         parent = self._get_session()
         cancel_event = parent.runner.default_cancel_event or parent.runner._run_cancel_event
         budget = params.get("budget")

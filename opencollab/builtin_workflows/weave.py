@@ -647,6 +647,12 @@ async def weave(ctx: WorkflowContext, args: dict[str, Any]) -> dict[str, Any]:
     Each group supplies an id and prompt, with optional weight, dependencies,
     resources and targets. Config fields are optional. Test commands retain
     parser-backed passing evidence; command probes supply expected_output.
+    Required input ``groups`` is a nonempty list of those objects. ``check_commands``
+    supplies test-command strings or {"command": "...", "expected_output": "..."}
+    probes; verified delivery requires executed passing checks. Optional ``config``
+    supplies WeaveConfig fields and ``state`` supplies saved workflow state.
+    Example inputs: {"groups": [{"id": "parser", "prompt": "Fix the parser"}],
+    "check_commands": ["python -m pytest tests/test_parser.py -q"]}.
     """
     values = args.get("groups")
     if isinstance(values, str) or not isinstance(values, Sequence):

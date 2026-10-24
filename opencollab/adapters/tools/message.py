@@ -27,7 +27,8 @@ _DELIVERY_NOTE = (
 
 _SERIALIZED_DELIVERY_NOTE = (
     "Turns on this team run one at a time. The teammate cannot start until you "
-    "end your turn. Call submit now with what you have so far. If it answers, "
+    "end your turn. Give a final response without tool calls with what you have so far. "
+    "If the submit tool is available, you may use it to end the turn instead. If it answers, "
     "the answer arrives as a message and reopens your turn."
 )
 

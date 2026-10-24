@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shlex
+from copy import deepcopy
 from typing import Any
 
 from opencollab.adapters._env_base import TextFileRange
@@ -214,6 +215,17 @@ class FileWriteTool(Tool):
         # ``allow_create=False`` restricts the coder to ``str_replace`` on existing
         # files, disabling new files and whole-file replacement.
         self.allow_create = allow_create
+
+    def to_openai_schema(self) -> dict[str, Any]:
+        schema = deepcopy(super().to_openai_schema())
+        if not self.allow_create:
+            schema["function"]["parameters"]["properties"]["mode"]["enum"] = ["str_replace"]
+            schema["function"]["description"] = (
+                "Edit an existing file with mode='str_replace'. Read the target span first, "
+                "then replace a unique old_str with new_str. This session permits targeted "
+                "replacements only; creating files and replacing whole files are disabled."
+            )
+        return schema
 
     async def execute_with_runtime(
         self,
