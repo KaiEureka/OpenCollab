@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 from types import SimpleNamespace
 
+from opencollab.application.shaping import AutoCompactShaper
 from opencollab.bootstrap.container import _build_default_shaper
 
 
@@ -30,3 +32,22 @@ def test_large_window_keeps_default_history_and_does_not_clear_early():
             ]
         )
     assert pipeline.shape(messages) == messages
+
+def test_an_oversized_summary_keeps_original_history_without_growth():
+    messages = [{"role": "system", "content": "instructions"}]
+    for index in range(5):
+        messages.extend(
+            [
+                {
+                    "role": "assistant",
+                    "tool_calls": [{"id": str(index), "function": {"name": "file_read", "arguments": "{}"}}],
+                },
+                {"role": "tool", "tool_call_id": str(index), "content": "source code" * 300},
+            ]
+        )
+    original = copy.deepcopy(messages)
+    shaper = AutoCompactShaper(
+        summarizer=lambda _: "summary" * 20_000, trigger_tokens=1000, target_tokens=500, keep_recent_groups=1
+    )
+    assert shaper.shape(messages) == original
+    assert messages == original
