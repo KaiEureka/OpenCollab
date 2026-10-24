@@ -7,6 +7,9 @@ import json
 import math
 import posixpath
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -15,8 +18,10 @@ from opencollab.adapters._env_base import Environment, ExecResult, TextFileRange
 from opencollab.adapters.llm import errors as llm_errors
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage, to_plain_data
+from opencollab.adapters.tools.base import host_write_lock
 from opencollab.application._session_run_usage import _normalize_completion_usage
-from opencollab.application.async_timeout import await_owned_operation
+from opencollab.application.async_timeout import await_owned_operation, consume_task_result
+from opencollab.application.exception_notes import add_exception_note
 
 _METADATA = {"context_window", "estimate_request_tokens", "estimate_context_tokens", "minimum_output_tokens"}
 _COMPLETION = {"messages", "tools", "temperature", "thinking", "thinking_params", "reasoning_effort",
@@ -41,6 +46,58 @@ def _restore_error(value: dict[str, Any]) -> Exception:
     return error
 
 
+class _FileEdit:
+    """Run native operations in the task holding their environment's edit lock."""
+
+    def __init__(self, environment: Any, path: str) -> None:
+        self.environment = environment
+        self.ready = asyncio.get_running_loop().create_future()
+        self.ready.add_done_callback(consume_task_result)
+        self.calls: asyncio.Queue[tuple[str, dict[str, Any], asyncio.Future[Any]] | None] = asyncio.Queue()
+        self.task = asyncio.create_task(self._run(path))
+
+    async def _run(self, path: str) -> None:
+        try:
+            async with host_write_lock(path, self.environment):
+                self.ready.set_result(None)
+                while (call := await self.calls.get()) is not None:
+                    action, arguments, reply = call
+                    if reply.cancelled():
+                        continue
+                    try:
+                        value = await getattr(self.environment, action)(**arguments)
+                    except asyncio.CancelledError:
+                        reply.cancel()
+                        raise
+                    except Exception as exc:
+                        if not reply.done():
+                            reply.set_exception(exc)
+                    else:
+                        if not reply.done():
+                            reply.set_result(value)
+        except BaseException as exc:
+            if not self.ready.done():
+                self.ready.set_exception(exc)
+            raise
+        finally:
+            while not self.calls.empty():
+                call = self.calls.get_nowait()
+                if call is not None and not call[2].done():
+                    call[2].set_exception(RuntimeError("file edit lock closed"))
+
+    async def call(self, action: str, arguments: dict[str, Any]) -> Any:
+        if self.task.done():
+            self.task.result()
+            raise RuntimeError("file edit lock closed")
+        reply = asyncio.get_running_loop().create_future()
+        self.calls.put_nowait((action, arguments, reply))
+        return await reply
+
+    async def release(self) -> None:
+        self.calls.put_nowait(None)
+        await self.task
+
+
 class AuthoredWorkflowBridge:
     """Own only this authored run's strategy pools and admitted operations."""
 
@@ -59,6 +116,7 @@ class AuthoredWorkflowBridge:
         self.tokens = 0
         self._tasks: dict[str, asyncio.Task] = {}
         self._handles: dict[str, int] = {}
+        self._edits: dict[str, _FileEdit] = {}
 
     def _model(self) -> Any:
         if self._llm is None:
@@ -96,6 +154,8 @@ class AuthoredWorkflowBridge:
                 self._handles[identity] = handle
             if request.get("cancel") and not self._tasks[identity].cancelling():
                 self._tasks[identity].cancel()
+                if identity in self._edits:
+                    self._edits[identity].task.cancel()
         for identity, task in tuple(self._tasks.items()):
             if identity not in requests and task.done():
                 task.result()
@@ -126,6 +186,28 @@ class AuthoredWorkflowBridge:
         if isinstance(handle, bool) or not isinstance(handle, int) or handle not in self._environments:
             raise ValueError("unknown environment for this authored run")
         environment = self._environments[handle]
+        if action == "file_write_lock":
+            if set(arguments) != {"path"}:
+                raise ValueError("file edit lock needs a path")
+            edit = _FileEdit(environment, arguments["path"])
+            self._edits[identity] = edit
+            try:
+                await asyncio.shield(edit.ready)
+            except BaseException:
+                edit.task.cancel()
+                await await_owned_operation(asyncio.gather(edit.task, return_exceptions=True))
+                del self._edits[identity]
+                raise
+            return identity
+        if action == "file_write_unlock":
+            if set(arguments) != {"id"}:
+                raise ValueError("file edit unlock needs its owned lock")
+            edit = self._edits.get(arguments["id"])
+            if edit is None or edit.environment is not environment:
+                raise ValueError("unknown file edit lock for this environment")
+            await edit.release()
+            del self._edits[arguments["id"]]
+            return None
         if action == "metadata":
             name = arguments["name"]
             if name == "requires_thinking_prefix":
@@ -169,6 +251,8 @@ class AuthoredWorkflowBridge:
                 raise ValueError("release needs an owned child environment")
             pending = [task for key, task in self._tasks.items() if key != identity and not task.done()
                        and self._environments.get(self._handles[key]) is environment]
+            pending.extend(edit.task for edit in self._edits.values()
+                           if edit.environment is environment and not edit.task.done())
             for task in pending:
                 if not task.cancelling():
                     task.cancel()
@@ -189,7 +273,14 @@ class AuthoredWorkflowBridge:
                 arguments["timeout"] = math.inf
             if "input_bytes" in arguments:
                 arguments["input_bytes"] = base64.b64decode(arguments["input_bytes"], validate=True)
-        result = await getattr(environment, action)(**arguments)
+        edit_id = request.get("edit")
+        if edit_id is None:
+            result = await getattr(environment, action)(**arguments)
+        else:
+            edit = self._edits.get(edit_id)
+            if edit is None or edit.environment is not environment:
+                raise ValueError("unknown file edit lock for this environment")
+            result = await edit.call(action, arguments)
         if isinstance(result, (ExecResult, TextFileRange)):
             result = asdict(result)
             if result.get("stdout_bytes") is not None:
@@ -197,10 +288,11 @@ class AuthoredWorkflowBridge:
         return result
 
     async def aclose(self) -> None:
-        for task in self._tasks.values():
+        tasks = [*self._tasks.values(), *(edit.task for edit in self._edits.values())]
+        for task in tasks:
             if not task.done() and not task.cancelling():
                 task.cancel()
-        results = await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         if self._llm is not None:
             await self._llm.close()
         await self._pool.release()
@@ -221,10 +313,12 @@ class BridgeClient:
     def _publish(self) -> None:
         _write_json(self.directory / "requests.json", self._pending)
 
-    def _begin(self, action: str, arguments: dict[str, Any], environment: int) -> str:
+    def _begin(self, action: str, arguments: dict[str, Any], environment: int, edit: str | None = None) -> str:
         self._next += 1
         identity = str(self._next)
         self._pending[identity] = {"action": action, "arguments": arguments, "environment": environment}
+        if edit is not None:
+            self._pending[identity]["edit"] = edit
         self._publish()
         return identity
 
@@ -244,8 +338,8 @@ class BridgeClient:
         return self._result(identity)
 
     async def call(self, action: str, arguments: dict[str, Any], environment: int = 0,
-                   *, on_admitted: Any = None) -> Any:
-        identity = self._begin(action, arguments, environment)
+                   *, on_admitted: Any = None, edit: str | None = None) -> Any:
+        identity = self._begin(action, arguments, environment, edit)
         try:
             while not (self.directory / f"{identity}.json").exists():
                 if on_admitted is not None and (self.directory / f"{identity}.admitted").exists():
@@ -268,6 +362,11 @@ class BridgeClient:
                 usage = getattr(exc, "usage", None)
             else:
                 usage = Usage(**value["usage"]) if action == "complete" and isinstance(value, dict) else None
+                if action == "file_write_lock":
+                    try:
+                        await await_owned_operation(self.call("file_write_unlock", {"id": value}, environment))
+                    except Exception as exc:
+                        add_exception_note(cancellation, f"file edit lock cleanup also failed: {exc}")
             if usage is not None:
                 cancellation.usage = usage
             raise
@@ -296,31 +395,47 @@ class BridgeEnvironment(Environment):
         self.client, self.handle = client, options["handle"]
         self.workspace, self.process_isolated = options["workspace"], options["process_isolated"]
         self._released = False
+        self._edit: ContextVar[str | None] = ContextVar("authored_file_edit", default=None)
+
+    async def _call(self, action: str, arguments: dict[str, Any]) -> Any:
+        return await self.client.call(action, arguments, self.handle, edit=self._edit.get())
+
+    @asynccontextmanager
+    async def file_write_lock(self, path: str) -> AsyncIterator[None]:
+        identity = await self.client.call("file_write_lock", {"path": path}, self.handle)
+        token = self._edit.set(identity)
+        try:
+            yield None
+        finally:
+            self._edit.reset(token)
+            await await_owned_operation(
+                self.client.call("file_write_unlock", {"id": identity}, self.handle),
+                propagate_cancellation=True,
+            )
 
     async def exec_cmd(self, cmd: str, timeout: float = 120.0, *, input_bytes: bytes | None = None) -> ExecResult:
         arguments: dict[str, Any] = {"cmd": cmd, "timeout": timeout if math.isfinite(timeout) else None}
         if input_bytes is not None:
             arguments["input_bytes"] = base64.b64encode(input_bytes).decode()
-        result = await self.client.call("exec_cmd", arguments, self.handle)
+        result = await self._call("exec_cmd", arguments)
         if result.get("stdout_bytes") is not None:
             result["stdout_bytes"] = base64.b64decode(result["stdout_bytes"])
         return ExecResult(**result)
 
     async def read_file(self, path: str) -> str:
-        return await self.client.call("read_file", {"path": path}, self.handle)
+        return await self._call("read_file", {"path": path})
 
     async def read_text_range(self, path: str, **kwargs: Any) -> TextFileRange:
-        return TextFileRange(**await self.client.call("read_text_range", {"path": path, **kwargs}, self.handle))
+        return TextFileRange(**await self._call("read_text_range", {"path": path, **kwargs}))
 
     async def write_file(self, path: str, content: str) -> None:
-        await self.client.call("write_file", {"path": path, "content": content}, self.handle)
+        await self._call("write_file", {"path": path, "content": content})
 
     async def write_temp_file(self, content: str, *, prefix: str, suffix: str = ".tmp") -> str:
-        return await self.client.call("write_temp_file", {"content": content, "prefix": prefix, "suffix": suffix},
-                                      self.handle)
+        return await self._call("write_temp_file", {"content": content, "prefix": prefix, "suffix": suffix})
 
     async def remove_file(self, path: str) -> None:
-        await self.client.call("remove_file", {"path": path}, self.handle)
+        await self._call("remove_file", {"path": path})
 
     async def cleanup(self) -> None:
         if not self._released:

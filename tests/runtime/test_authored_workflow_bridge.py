@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from types import SimpleNamespace
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
+from opencollab.adapters.env import DockerEnvironment, LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.errors import TransientProviderError
 from opencollab.adapters.llm.request_admission import request_slot
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.session_environments import SessionEnvironmentPool
+from opencollab.adapters.tools.fs import FileWriteTool
 from opencollab.application._session_run_shared import _TokenBudgetStop
 from opencollab.application.ports import (
     ContextTokenEstimatorPort,
@@ -18,9 +20,193 @@ from opencollab.application.ports import (
     RequestTokenEstimatorPort,
 )
 from opencollab.application.tool_execution import ToolRuntime
-from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge, BridgeClient, BridgeLLM
+from opencollab.bootstrap.authored_workflow_bridge import (
+    AuthoredWorkflowBridge,
+    BridgeClient,
+    BridgeEnvironment,
+    BridgeLLM,
+)
 from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
+
+
+@pytest.mark.parametrize("docker", [False, True])
+async def test_bridge_retains_native_whole_edit_lock(tmp_path, monkeypatch, docker):
+    image = os.environ.get("OPENCOLLAB_DOCKER_TEST_IMAGE")
+    if docker and not image:
+        pytest.skip("local Docker image enables the native edit-lock probe")
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    environment = DockerEnvironment(image=image) if docker else LocalEnvironment(str(workspace))
+    mailbox = LocalEnvironment(str(tmp_path))
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    bridge = AuthoredWorkflowBridge(
+        mailbox, str(artifacts), SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=mailbox),
+        {}, ToolRuntime(mailbox, None, None), allow_unisolated_shell=True,
+    )
+    bridge._environments[1] = environment
+    client = BridgeClient(artifacts, bridge.options())
+    proxy = BridgeEnvironment(client, {"handle": 1, "workspace": environment.workspace,
+                                       "process_isolated": docker})
+    native_read = environment.read_file
+
+    async def snapshot_then_yield(path):
+        value = await native_read(path)
+        await asyncio.sleep(0.05)
+        return value
+
+    monkeypatch.setattr(environment, "read_file", snapshot_then_yield)
+    stop = asyncio.Event()
+
+    async def serve():
+        while not stop.is_set():
+            await bridge.poll()
+            await asyncio.sleep(0.005)
+
+    server = asyncio.create_task(serve())
+    try:
+        await environment.setup()
+        for target in (environment, proxy):
+            await environment.write_file("target.txt", "alpha\nbeta\n")
+            runtime = ToolRuntime(target, None, None)
+            replies = await asyncio.wait_for(asyncio.gather(*(
+                FileWriteTool().execute_with_runtime(
+                    {"mode": "str_replace", "path": "target.txt", "old_str": word, "new_str": word.upper()},
+                    runtime,
+                ) for word in ("alpha", "beta")
+            )), 15)
+            assert all("Replaced" in reply for reply in replies)
+            assert await native_read("target.txt") == "ALPHA\nBETA\n"
+        with pytest.raises(FileNotFoundError):
+            async with proxy.file_write_lock("missing.txt"):
+                await proxy.read_file("missing.txt")
+    finally:
+        stop.set()
+        await server
+        await bridge.aclose()
+        await environment.cleanup()
+        await mailbox.cleanup()
+
+
+async def test_cancelled_bridge_edit_settles_native_write_and_releases_waiters(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    environment = LocalEnvironment(str(tmp_path))
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    bridge = AuthoredWorkflowBridge(
+        environment, str(artifacts),
+        SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=environment),
+        {}, ToolRuntime(environment, None, None), allow_unisolated_shell=True,
+    )
+    client = BridgeClient(artifacts, bridge.options())
+    proxy = BridgeEnvironment(client, {"handle": 0, "workspace": environment.workspace,
+                                       "process_isolated": False})
+    entered, finish, stop = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    native_write = environment.write_file
+
+    async def delayed_write(path, content):
+        if path == "target.txt" and content == "late write":
+            entered.set()
+            await finish.wait()
+        await native_write(path, content)
+
+    monkeypatch.setattr(environment, "write_file", delayed_write)
+
+    async def serve():
+        while not stop.is_set():
+            await bridge.poll()
+            await asyncio.sleep(0.005)
+
+    async def write():
+        async with proxy.file_write_lock("target.txt"):
+            await proxy.write_file("target.txt", "late write")
+
+    async def queued():
+        async with proxy.file_write_lock("target.txt"):
+            pytest.fail("cancelled waiter acquired the edit lock")
+
+    server = asyncio.create_task(serve())
+    writing = asyncio.create_task(write())
+    waiting = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        waiting = asyncio.create_task(queued())
+        await asyncio.sleep(0.05)
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(waiting, 2)
+        writing.cancel()
+        await asyncio.sleep(0.05)
+        assert not writing.done()
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(writing, 2)
+        assert await environment.read_file("target.txt") == "late write"
+        async with proxy.file_write_lock("target.txt"):
+            await proxy.write_file("target.txt", "next edit")
+        assert await environment.read_file("target.txt") == "next edit"
+    finally:
+        finish.set()
+        for task in (writing, waiting):
+            if task is not None and not task.done():
+                task.cancel()
+        await asyncio.gather(*(task for task in (writing, waiting) if task is not None), return_exceptions=True)
+        stop.set()
+        await server
+        await bridge.aclose()
+        await environment.cleanup()
+
+
+async def test_cancelled_bridge_lock_consumes_and_releases_already_published_acquisition(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    environment = LocalEnvironment(str(tmp_path))
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    bridge = AuthoredWorkflowBridge(
+        environment, str(artifacts),
+        SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=environment),
+        {}, ToolRuntime(environment, None, None), allow_unisolated_shell=True,
+    )
+    client = BridgeClient(artifacts, bridge.options())
+    proxy = BridgeEnvironment(client, {"handle": 0, "workspace": environment.workspace,
+                                       "process_isolated": False})
+    native_write = environment.write_file
+    stop = asyncio.Event()
+
+    async def publish_then_cancel(path, content):
+        await native_write(path, content)
+        if path.endswith("/bridge/1.json"):
+            acquiring.cancel()
+
+    monkeypatch.setattr(environment, "write_file", publish_then_cancel)
+
+    async def acquire():
+        async with proxy.file_write_lock("target.txt"):
+            pytest.fail("cancelled acquisition entered its edit")
+
+    async def serve():
+        while not stop.is_set():
+            await bridge.poll()
+            await asyncio.sleep(0.005)
+
+    acquiring = asyncio.create_task(acquire())
+    server = asyncio.create_task(serve())
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(acquiring, 2)
+        async with proxy.file_write_lock("target.txt"):
+            await proxy.write_file("target.txt", "next edit")
+        assert not bridge._edits
+    finally:
+        if not acquiring.done():
+            acquiring.cancel()
+        await asyncio.gather(acquiring, return_exceptions=True)
+        stop.set()
+        await server
+        await bridge.aclose()
+        await environment.cleanup()
 
 
 async def test_bridge_retains_native_budget_protocols_and_thinking_output_floor(tmp_path):
