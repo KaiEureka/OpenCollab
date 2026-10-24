@@ -5,7 +5,7 @@ import copy
 import inspect
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -374,6 +374,17 @@ class Session:
                 raise
             except BaseException as exc:
                 primary_error = exc
+                # Cancellation closes this exchange itself. Any other failure leaves
+                # the assistant tool call in history, so the next request is invalid
+                # unless those ids are answered before the exception propagates.
+                try:
+                    self._close_failed_tool_exchange()
+                except Exception as close_error:
+                    add_exception_note(
+                        exc,
+                        "open tool calls could not be closed: "
+                        f"{type(close_error).__name__}: {close_error}",
+                    )
                 raise
             finally:
                 if self.state.phase.is_terminal() or primary_error is not None:
@@ -818,6 +829,45 @@ class Session:
                     error=error,
                 )
             )
+
+    def _close_failed_tool_exchange(self) -> None:
+        """Answer tool calls left open when a turn fails before it can finish them."""
+        content = (
+            "Tool execution interrupted because the session failed "
+            "before its result was recorded."
+        )
+        completed = self._completed_tool_results()
+        receipt_ids = {
+            item["tool_call_id"]
+            for item in completed
+            if isinstance(item, dict) and isinstance(item.get("tool_call_id"), str)
+        }
+        pending_ids = set(self.state.pending_events.rows)
+        interrupted = {
+            tool_call_id
+            for tool_call_id in self._open_tool_call_ids()
+            if tool_call_id not in receipt_ids and tool_call_id not in pending_ids
+        }
+        self._release_interrupted_loop_owners(interrupted)
+        self._append_restore_results_for_open_tool_calls(
+            content=content,
+            exclude_ids=pending_ids,
+            completed_results=completed,
+        )
+
+    def _release_interrupted_loop_owners(self, tool_call_ids: set[str]) -> None:
+        """Drop reservations for calls that failed before they ran.
+
+        A saved retry checkpoint marks the call in flight. When that save fails,
+        the tool never starts, and a later turn would reject every repeat as
+        unresolved until the process reloads a snapshot.
+        """
+        if not tool_call_ids:
+            return
+        operations = self.state.turn.loop_state.operations
+        for key, operation in list(operations.items()):
+            if operation.inflight_tool_call_id in tool_call_ids:
+                operations[key] = replace(operation, inflight_tool_call_id=None)
 
     def _append_restore_results_for_open_tool_calls(
         self,

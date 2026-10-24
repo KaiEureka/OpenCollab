@@ -156,3 +156,83 @@ async def test_cancellation_keeps_deferred_result_with_a_live_producer(local_env
         producer.release.set()
         if producer.producer is not None:
             await producer.producer
+
+
+@pytest.mark.asyncio
+async def test_cancellation_before_deferred_producer_can_continue(local_environment_factory):
+    started = asyncio.Event()
+
+    async def block_start(event):
+        if event.type == "tool_start" and event.data.get("tool_call_id") == "child":
+            started.set()
+            await asyncio.Event().wait()
+
+    llm = FakeLLMClient([
+        llm_response(tool_calls=[tool_call("child", "spawn_agent", "{}")], finish_reason="tool_calls"),
+        llm_response(content="continued answer"),
+    ])
+    session = build_session(
+        env=local_environment_factory(),
+        agent=FakeAgent(tools=[FakeTool(name="spawn_agent", result="unused")]),
+        llm=llm,
+        event_sink=block_start,
+    )
+    await session.add_user_message("spawn")
+    active = asyncio.create_task(session.run_loop())
+    await asyncio.wait_for(started.wait(), timeout=0.5)
+    active.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(active, timeout=0.5)
+
+    row = session.state.pending_events.rows["child"]
+    assert row.status is RowStatus.FAILED
+    assert row.ref is None
+    await session.add_user_message("continue")
+    assert await session.run_loop() == "continued answer"
+    request = _build_request_kwargs(
+        "fake-model", llm.calls[-1]["messages"], llm.calls[-1]["tools"],
+        0.0, False, None, None, None, None, None,
+    )
+    tool_messages = [message for message in request["messages"] if message["role"] == "tool"]
+    assert [message["tool_call_id"] for message in tool_messages] == ["child"]
+    assert "outcome is unknown" in tool_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_after_deferred_error_keeps_the_error(local_environment_factory):
+    class RejectingSpawn(FakeTool):
+        def __init__(self):
+            super().__init__(name="spawn_agent")
+
+        async def execute_with_runtime(self, _args, _runtime):
+            return "Not spawned: invalid role."
+
+    ended = asyncio.Event()
+
+    async def block_end(event):
+        if event.type == "tool_end" and event.data.get("tool_call_id") == "child":
+            ended.set()
+            await asyncio.Event().wait()
+
+    llm = FakeLLMClient([
+        llm_response(tool_calls=[tool_call("child", "spawn_agent", "{}")], finish_reason="tool_calls"),
+        llm_response(content="continued answer"),
+    ])
+    session = build_session(
+        env=local_environment_factory(),
+        agent=FakeAgent(tools=[RejectingSpawn()]),
+        llm=llm,
+        event_sink=block_end,
+    )
+    await session.add_user_message("spawn")
+    active = asyncio.create_task(session.run_loop())
+    await asyncio.wait_for(ended.wait(), timeout=0.5)
+    active.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(active, timeout=0.5)
+
+    row = session.state.pending_events.rows["child"]
+    assert row.status is RowStatus.FAILED
+    assert row.result == "Not spawned: invalid role."
+    await session.add_user_message("continue")
+    assert await session.run_loop() == "continued answer"

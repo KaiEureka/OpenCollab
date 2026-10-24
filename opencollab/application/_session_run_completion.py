@@ -136,16 +136,48 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
                     status=RowStatus.PENDING,
                 )
             )
-            ref, error = await self.tool_execution.execute_deferred(tool_call)
-            if ref is not None:
-                table.rows[tool_call_id] = replace(table.rows[tool_call_id], ref=ref)
-            else:
-                table.fill(
-                    tool_call_id,
-                    status=RowStatus.FAILED,
-                    result=error or "Deferred tool failed without an error message.",
-                    error=error,
-                )
+            try:
+                ref, error = await self.tool_execution.execute_deferred(tool_call)
+            except asyncio.CancelledError:
+                self._settle_cancelled_deferred_row(table, tool_call_id)
+                raise
+            self._record_deferred_result(table, tool_call_id, ref, error)
+
+    def _record_deferred_result(
+        self,
+        table: PendingEventTable,
+        tool_call_id: str,
+        ref: int | None,
+        error: str | None,
+    ) -> None:
+        row = table.rows[tool_call_id]
+        if ref is not None:
+            table.rows[tool_call_id] = replace(row, ref=ref)
+            return
+        if row.status is not RowStatus.PENDING:
+            return
+        message = error or "Deferred tool failed without an error message."
+        table.fill(tool_call_id, status=RowStatus.FAILED, result=message, error=message)
+
+    def _settle_cancelled_deferred_row(self, table: PendingEventTable, tool_call_id: str) -> None:
+        """Keep a produced child, and fail a row that never acquired one."""
+        row = table.rows.get(tool_call_id)
+        if row is None:
+            return
+        pending = getattr(self.tool_execution, "_pending_deferred_result", None)
+        if isinstance(pending, tuple) and len(pending) == 2 and pending[0] is not None:
+            table.rows[tool_call_id] = replace(row, ref=pending[0])
+            return
+        if row.status is not RowStatus.PENDING or row.ref is not None:
+            return
+        if isinstance(pending, tuple) and len(pending) == 2 and pending[1] is not None:
+            self._record_deferred_result(table, tool_call_id, None, str(pending[1]))
+            return
+        message = (
+            "Tool execution interrupted by session cancellation. "
+            "The execution outcome is unknown."
+        )
+        table.fill(tool_call_id, status=RowStatus.FAILED, result=message, error=message)
 
     def _is_deferred_tool_name(self, name: object) -> bool:
         try:

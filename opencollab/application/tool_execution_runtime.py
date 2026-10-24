@@ -464,6 +464,8 @@ class ToolExecutionRuntimeMixin:
         Deferred tools bypass ``process`` (and thus loop-detection hashing) by
         design — a spawn is never a doom-loop the way a repeated read is.
         """
+        # Cleared before any await so a cancelled call cannot reuse the previous result.
+        self._pending_deferred_result = None
         if self.environment_revoked:
             return None, "Error: Skipped because the execution environment has been revoked."
         func = tc["function"]
@@ -490,9 +492,16 @@ class ToolExecutionRuntimeMixin:
         )
 
         latency = 0.0
+        outcome = None
         try:
             outcome, latency = await self.execute_tool(tool, args, tool_id=tc["id"])
         finally:
+            # Publish the outcome before tool_end. That event can await a sink,
+            # and cancellation there must not lose a child ref or a sync error.
+            if isinstance(outcome, DeferredCall):
+                self._pending_deferred_result = (outcome.ref, None)
+            elif outcome is not None:
+                self._pending_deferred_result = (None, str(outcome))
             await self._emit_observation(
                 lambda: self.event_factory.tool_end(tool.name, latency, tc["id"]),
                 label="tool_end",
