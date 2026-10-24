@@ -696,10 +696,11 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
         ceilings = [self.max_budget_tokens]
         if self._run_control is not None:
             ceilings.append(self.hard_budget_tokens)
+        reserved_by_children = sum(reserve() for reserve in self.budget_reservations)
         for ceiling in ceilings:
             if ceiling is None:
                 continue
-            remaining_budget = int(ceiling) - int(self.state.used_tokens)
+            remaining_budget = int(ceiling) - int(self.state.used_tokens) - reserved_by_children
             output_budget = remaining_budget - reserved_input_tokens
             if output_budget < minimum_output_tokens:
                 raise _TokenBudgetStop(

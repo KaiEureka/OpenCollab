@@ -182,6 +182,27 @@ async def test_attached_name_binds_once_and_executes_by_full_id(monkeypatch) -> 
     await env.cleanup()
     assert all(call[0][1] != "rm" for call in fake.calls)
 
+async def test_command_stdin_is_forwarded_outside_argv(monkeypatch) -> None:
+    payload = b"private-command-input"
+
+    def respond(command, kwargs):
+        if command[1] == "inspect":
+            return _result(stdout=f"{CONTAINER_ID}\t/swe-task\ttrue\n".encode())
+        assert command[1] == "exec"
+        assert "-i" in command
+        assert payload.decode() not in " ".join(command)
+        assert kwargs["input_bytes"] == payload
+        return _result(stdout=b"received")
+
+    fake = FakeDocker(respond)
+    _patch(monkeypatch, fake)
+    env = DockerEnvironment(container_id="swe-task", workspace="/repo")
+    try:
+        result = await env.exec_cmd("consume-input", input_bytes=payload)
+        assert result.stdout == "received"
+    finally:
+        await env.cleanup()
+
 async def test_attached_binding_ignores_nonpositive_dropped_output_metadata(monkeypatch) -> None:
     fake = FakeDocker(
         lambda command, _kwargs: _result(

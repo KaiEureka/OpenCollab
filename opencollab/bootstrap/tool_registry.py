@@ -51,7 +51,7 @@ SCHEDULER_TOOL_FACTORIES: dict[str, Callable[[SchedulerPort], Tool]] = {
 SKILL_TOOL_FACTORIES: dict[str, Callable[[SkillStorePort], Tool]] = {
     "use_skill": UseSkillTool,
 }
-WORKFLOW_TOOL_NAMES = frozenset({"run_workflow"})
+WORKFLOW_TOOL_NAMES = frozenset({"run_workflow", "manage_workflow"})
 KNOWN_TOOL_NAMES: frozenset[str] = (
     frozenset(STATELESS_TOOL_FACTORIES)
     | frozenset(SCHEDULER_TOOL_FACTORIES)
@@ -119,6 +119,7 @@ def build_tools_for_role(
     *,
     scheduler: SchedulerPort | None = None,
     workflow_tool: Tool | None = None,
+    authored_workflow_tool: Tool | None = None,
     skill_store: SkillStorePort | None = None,
     ask_user_available: bool = False,
     allow_unisolated_shell: bool = False,
@@ -143,9 +144,10 @@ def build_tools_for_role(
         if name == "ask_user" and not ask_user_available:
             continue
         if name in WORKFLOW_TOOL_NAMES:
-            if workflow_tool is None:
-                raise ValueError("run_workflow requires a Team session")
-            tools.append(workflow_tool)
+            selected = workflow_tool if name == "run_workflow" else authored_workflow_tool
+            if selected is None:
+                raise ValueError(f"{name} requires a Team session")
+            tools.append(selected)
         elif name in STATELESS_TOOL_FACTORIES:
             tools.append(
                 _instantiate(

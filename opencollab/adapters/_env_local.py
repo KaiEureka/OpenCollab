@@ -94,7 +94,7 @@ class LocalEnvironment(Environment):
             os.close(self._workspace_fd)
             self._workspace_fd = None
 
-    async def exec_cmd(self, cmd: str, timeout: float = 120.0) -> ExecResult:
+    async def exec_cmd(self, cmd: str, timeout: float = 120.0, *, input_bytes: bytes | None = None) -> ExecResult:
         self._ensure_active()
         try:
             result = await run_process(
@@ -104,6 +104,7 @@ class LocalEnvironment(Environment):
                 timeout=timeout,
                 registry=self._processes,
                 output_limit=PROCESS_OUTPUT_CAPTURE_BYTES,
+                input_bytes=input_bytes,
             )
         except asyncio.TimeoutError as exc:
             return timed_out_result(exc, -1, timeout)

@@ -643,6 +643,9 @@ class DefaultSessionFactory:
             role,
             scheduler=scheduler,
             workflow_tool=self._workflow_tool(lambda: session),
+            authored_workflow_tool=self._authored_workflow_tool(
+                lambda: session, seated_at_start=self._prebuilt_roster,
+            ),
             # Spawned agents have no independent human to answer their questions.
             ask_user_available=False,
             allow_unisolated_shell=self._unisolated_shell_allowed(
@@ -684,6 +687,16 @@ class DefaultSessionFactory:
         from opencollab.bootstrap.team_workflow import TeamWorkflowTool
 
         return TeamWorkflowTool(get_session, self._workflows, self._cfg, self._save_dir)
+
+    def _authored_workflow_tool(
+        self, get_session: Callable[[], Session], *, seated_at_start: bool,
+    ) -> Tool:
+        from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
+
+        return AuthoredWorkflowTool(
+            get_session, self._cfg, self._save_dir,
+            allow_unisolated_shell=self._unisolated_shell_allowed(seated_at_start=seated_at_start),
+        )
 
     def _role_profile(self, role_name: str) -> SingleAgentProfile | None:
         """The agent profile this seat runs under, or ``None`` for OpenCollab's.
@@ -731,6 +744,7 @@ class DefaultSessionFactory:
                 self._team.entry,
                 scheduler=scheduler,
                 workflow_tool=self._workflow_tool(lambda: session),
+                authored_workflow_tool=self._authored_workflow_tool(lambda: session, seated_at_start=True),
                 ask_user_available=self._interactive,
                 allow_unisolated_shell=self._unisolated_shell_allowed(
                     seated_at_start=True
