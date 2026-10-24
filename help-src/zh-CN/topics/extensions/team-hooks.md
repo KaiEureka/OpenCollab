@@ -1,0 +1,72 @@
+---
+{
+  "id": "team-hooks",
+  "title": "在工具执行和生命周期中加入 Hook",
+  "category": "extensions",
+  "summary": "在规定的运行事件上执行自定义命令，并理解命令在哪个环境运行。",
+  "aliases": [
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStop",
+    "执行前检查",
+    "执行后处理"
+  ],
+  "keywords": [
+    "Hook",
+    "钩子"
+  ],
+  "questions": [
+    "在规定的运行事件上执行自定义命令，并理解命令在哪个环境运行？"
+  ],
+  "related": [],
+  "verified_ref": "e7946a42"
+}
+---
+
+# 在工具执行和生命周期中加入 Hook
+
+Hook 在运行事件发生时执行配置的命令，适合记录事件或调用辅助脚本。当前命令 Hook 是观察式机制。将命令配置到 `PreToolUse` 后，它会在工具调用前执行，但命令返回非零并不会把该工具调用变成权限拒绝。
+
+## 配置一个观察脚本
+
+在团队 YAML 顶层加入下面的片段。示例假定任务环境里有可执行的 `python3` 和项目脚本。
+
+```yaml
+hooks:
+  PreToolUse:
+    - matcher: file_write
+      command: python3 scripts/observe_tool.py
+      timeout: 20
+```
+
+`matcher` 选择工具名称，命令通过标准输入收到事件 JSON。可以先让脚本只向输出写一行摘要，确认事件与执行目录正确，再接入自己的记录系统。
+
+```python
+import json
+import os
+import sys
+
+payload = json.load(sys.stdin)
+print(os.environ.get("OPENCOLLAB_HOOK_EVENT"))
+print(payload.get("tool"), payload.get("aid"))
+```
+
+## 命令在哪里运行
+
+`PreToolUse` 和 `PostToolUse` 在调用 Agent 的执行环境中运行。Agent 位于工作树或容器时，Hook 也沿用该环境。脚本与解释器因此需要在相应环境可见。
+
+生命周期 Hook 在宿主工作区运行。`SubagentStop` 发生在子任务改动提取之后，适合观察已经生成的交付信息。环境已释放或不可用时，工具 Hook 会留下跳过警告。
+
+## 输入与超时
+
+除标准输入外，命令还可读取 `OPENCOLLAB_HOOK_EVENT`、`OPENCOLLAB_TOOL` 和 `OPENCOLLAB_AID`。根据实际事件读取字段，避免假定每种事件都有同样结构。为命令设置合理的完成时间，长驻后台任务应由应用自己的服务生命周期管理。
+
+普通命令失败和超时会留下警告。取消与进程清理错误仍可能影响资源收尾，应查看运行记录中的原始错误。
+
+## 与权限策略分开配置
+
+需要限制危险操作时，使用工具授权、权限策略与隔离环境。Hook 适合观察和辅助动作，当前的观察式返回语义不能用作可靠的工具阻断机制。把这种差异写清楚，能够避免把“脚本已经检查”误认为“执行已经被拒绝”。
+
+## 源码与进一步阅读
+
+[configs/team.example.yaml](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/team.example.yaml) · [configs/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md) · [opencollab/adapters/hooks.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/hooks.py) · [opencollab/domain/hooks.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/domain/hooks.py)
