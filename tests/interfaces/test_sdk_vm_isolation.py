@@ -207,7 +207,8 @@ async def main(ctx, args):
             else:
                 call = _call("manage_workflow", {"action": "wait", "id": json.loads(replies[-1]["content"])["id"]})
         elif not replies:
-            call = _call("bash", {"command": "echo $$ > command.pid && printf ready > entered && sleep 300"})
+            call = _call("bash", {"command": "echo $$ > command.pid && printf ready > entered && sleep 600",
+                                  "timeout": 600})
         else:
             return {"role": "assistant", "content": "finished"}, {"prompt_tokens": 3, "completion_tokens": 2}
         return {"role": "assistant", "tool_calls": [call]}, {"prompt_tokens": 3, "completion_tokens": 2}
@@ -223,9 +224,13 @@ async def main(ctx, args):
                         break
                 except FileNotFoundError:
                     pass
-                await asyncio.sleep(0.1)
-        return [(environment.connection, int(await environment.read_file("command.pid")))
-                for environment in environments]
+                await asyncio.sleep(1)
+        processes = []
+        for environment in environments:
+            pid = int(await environment.read_file("command.pid"))
+            assert (await environment.exec_cmd(f"kill -0 {pid}")).returncode == 0
+            processes.append((environment.connection, pid))
+        return processes
 
     with _serve_model(respond) as (endpoint, _requests):
         task = asyncio.create_task(OpenCollab(
@@ -233,7 +238,7 @@ async def main(ctx, args):
             config={"vm": vm_profile, "llm_max_retries": 0},
         ).team("write and run your Workflow", config=team, artifacts=tmp_path / "artifacts", trace=False))
         try:
-            processes = await asyncio.wait_for(entered(), 180)
+            processes = await asyncio.wait_for(entered(), 300)
         finally:
             task.cancel()
             try:
