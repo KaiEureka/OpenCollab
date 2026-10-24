@@ -6,6 +6,7 @@ import asyncio
 import json
 import math
 import posixpath
+import re
 import shlex
 import tempfile
 import uuid
@@ -14,10 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.tools._paths import checked_path
 from opencollab.adapters.tools.base import Tool
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.application.tool_execution import ToolRuntime
+from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge
 from opencollab.bootstrap.tool_registry import TOOL_LIMIT_FIELDS
 
 if TYPE_CHECKING:
@@ -37,6 +40,8 @@ class _Child:
     tokens: int = 0
     result: dict[str, Any] | None = None
     cleanup_error: Exception | None = None
+    bridge: AuthoredWorkflowBridge | None = None
+    saved_artifacts: str | None = None
 
 
 class AuthoredWorkflowTool(Tool):
@@ -69,11 +74,13 @@ class AuthoredWorkflowTool(Tool):
     def __init__(
         self, get_session: Callable[[], Session], config: SpawnConfig,
         save_dir: str | None, *, allow_unisolated_shell: bool = False,
+        environment_pool_factory: Callable[..., Any] | None = None,
     ) -> None:
         self._get_session = get_session
         self._config = config
         self._save_dir = save_dir
         self._allow_unisolated_shell = allow_unisolated_shell
+        self._environment_pool_factory = environment_pool_factory
         self._children: dict[str, _Child] = {}
         self._registered = False
         self._launch_lock = asyncio.Lock()
@@ -109,7 +116,7 @@ class AuthoredWorkflowTool(Tool):
 
     def _snapshot(self, child: _Child, *, include_result: bool) -> dict[str, Any]:
         record = {"id": child.id, "status": child.status, "tokens": child.tokens,
-                  "artifacts": child.artifacts}
+                  "artifacts": child.saved_artifacts or child.artifacts}
         if include_result:
             record["result"] = child.result
         return record
@@ -172,6 +179,16 @@ class AuthoredWorkflowTool(Tool):
                             "opencollab.bootstrap.authored_workflow_runner"])
         if runtime.safety_policy is not None:
             await runtime.safety_policy.check_cmd_interactive(command, runtime.confirm_fn())
+        pool = (self._environment_pool_factory(environment, role=parent.agent.name)
+                if self._environment_pool_factory is not None else SessionEnvironmentPool(
+                    environment.workspace, isolation="shared", base_environment=environment,
+                ))
+        child.bridge = AuthoredWorkflowBridge(
+            environment, artifacts, pool, config, runtime,
+            allow_unisolated_shell=self._allow_unisolated_shell
+            and not getattr(shell, "require_process_isolation", False),
+        )
+        request["bridge"] = child.bridge.options()
         request_bytes = json.dumps(request, allow_nan=False).encode("utf-8")
         self._children[child_id] = child
         child.task = asyncio.create_task(self._execute(child, command, request_bytes))
@@ -203,6 +220,8 @@ class AuthoredWorkflowTool(Tool):
         try:
             while not execution.done():
                 await asyncio.wait({execution}, timeout=0.1)
+                assert child.bridge is not None
+                await child.bridge.poll()
                 await self._refresh_usage(child)
                 if self._get_session().runner._run_cancellation_requested():
                     await child.environment.write_file(posixpath.join(child.artifacts, "stop"), "stop")
@@ -229,6 +248,8 @@ class AuthoredWorkflowTool(Tool):
                 child.result = {"status": "failed", "output": None,
                                 "reason": f"child process cleanup failed: {settled[0]}"}
             try:
+                assert child.bridge is not None
+                await await_owned_operation(child.bridge.aclose(), propagate_cancellation=False)
                 await self._refresh_usage(child)
             except Exception as exc:
                 status = "failed"
@@ -241,6 +262,14 @@ class AuthoredWorkflowTool(Tool):
             if self._save_dir is not None:
                 try:
                     directory = Path(tempfile.mkdtemp(prefix=f"{child.id}-", dir=self._save_dir))
+                    for name in (child.result or {}).get("artifact_files", []):
+                        if not isinstance(name, str) or not re.fullmatch(
+                            r"(?:workflow\.json|\d+_[^/\n]+\.json)(?:\.journal(?:\.lock)?)?", name,
+                        ):
+                            raise ValueError("invalid child artifact name")
+                        content = await child.environment.read_file(posixpath.join(child.artifacts, name))
+                        (directory / name).write_text(content, encoding="utf-8")
+                    child.saved_artifacts = str(directory)
                     (directory / "result.json").write_text(json.dumps(self._snapshot(child, include_result=True)),
                                                            encoding="utf-8")
                     (directory / "process.json").write_text(json.dumps(logs), encoding="utf-8")
@@ -275,5 +304,12 @@ class AuthoredWorkflowTool(Tool):
                     failures.append(exc)
                 if child.cleanup_error is not None:
                     failures.append(child.cleanup_error)
+                else:
+                    try:
+                        result = await child.environment.exec_cmd(f"rm -rf -- {shlex.quote(child.artifacts)}")
+                        if result.returncode:
+                            raise OSError("child runtime artifact cleanup failed")
+                    except Exception as exc:
+                        failures.append(exc)
         if failures:
             raise RuntimeError(f"member-authored Workflow cleanup failed: {failures[0]}") from failures[0]

@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import re
 import signal
 import sys
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,7 @@ from opencollab.adapters.env import LocalEnvironment
 from opencollab.application.run_control import RunControl, RunEvent
 from opencollab.application.structured_output import StructuredOutputTool
 from opencollab.application.submit_findings import SubmitFindingsTool
+from opencollab.bootstrap.authored_workflow_bridge import BridgeClient, BridgeLLM
 from opencollab.bootstrap.session_factory import build_session
 from opencollab.bootstrap.workflow_runtime import run_workflow
 
@@ -29,6 +32,7 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
     artifacts = Path(request["artifacts"])
     artifacts.mkdir(parents=True, exist_ok=True)
     tokens = 0
+    bridge = BridgeClient(artifacts, request["bridge"]) if "bridge" in request else None
 
     def build_child(**kwargs: Any) -> Any:
         forbidden = {
@@ -58,6 +62,8 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
                 control.on_event(event)
 
         kwargs["run_control"] = replace(control, on_event=on_event)
+        if bridge is not None:
+            kwargs["llm"] = BridgeLLM(bridge)
         return build_session(**kwargs)
 
     async def execute() -> Any:
@@ -85,6 +91,10 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
                 max_steps=request["max_steps"], max_concurrency=request["concurrency"],
                 save_dir=str(artifacts), trace=False, run_id=request["id"],
                 session_builder=build_child, return_details=True, limit_mode="explicit",
+                **({"isolation": request["bridge"]["isolation"],
+                    "environment_providers": {name: partial(bridge.provider, name)
+                                              for name in request["bridge"]["strategies"]}}
+                   if bridge is not None else {}),
             )
         finally:
             await environment.cleanup()
@@ -122,6 +132,9 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
     result["tokens"] = tokens
+    result["artifact_files"] = [item.name for item in artifacts.iterdir() if item.is_file() and re.fullmatch(
+        r"(?:workflow\.json|\d+_[^/\n]+\.json)(?:\.journal(?:\.lock)?)?", item.name,
+    )]
     try:
         _write_json(artifacts / "result.json", result)
     except (TypeError, ValueError) as exc:

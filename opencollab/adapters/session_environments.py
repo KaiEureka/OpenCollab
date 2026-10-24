@@ -48,6 +48,20 @@ class SessionEnvironmentPool:
         self._source = base_environment or LocalEnvironment(workspace)
         self._owned_source = self._source if base_environment is None else None
 
+    @property
+    def default_isolation(self) -> str:
+        return self._default
+
+    @property
+    def strategy_names(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(("shared", "worktree", *self._providers)))
+
+    def child_pool(self, environment: EnvironmentPort, *, role: str) -> SessionEnvironmentPool:
+        return SessionEnvironmentPool(
+            self._workspace, isolation=self._roles.get(role) or self._default,
+            base_environment=environment, providers=self._providers,
+        )
+
     def _validate(self, name: str) -> None:
         isolation_name(name)
         if name not in {"shared", "worktree"} and name not in self._providers:
