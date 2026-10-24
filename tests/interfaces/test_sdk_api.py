@@ -165,12 +165,13 @@ def test_advanced_capabilities_live_in_small_opt_in_modules() -> None:
         "profile_tool_names",
     ]
     assert environments.__all__ == [
-        "Environment", "EnvironmentPool",
+        "Environment", "EnvironmentPool", "DockerMount", "DockerOptions",
         "attach_container",
         # A workspace an agent reads is not always on this host, so the listing
         # of it is asked of the environment rather than walked here.
         "build_repo_map_via_env",
         "docker_environment",
+        "docker_isolation_provider",
         "local_environment",
         "worktree_environment",
     ]
