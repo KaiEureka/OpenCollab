@@ -102,12 +102,50 @@ def language_switch(destination: Path, language: str) -> str:
     return '<nav class="language-switch" aria-label="Language">' + "".join(links) + '</nav>'
 
 
+def head_assets(destination: Path) -> str:
+    icon = relative(ROOT / "fig" / "mark.svg", destination)
+    css = relative(ROOT / "help" / "assets" / "help.css", destination)
+    script = relative(ROOT / "help" / "assets" / "help.mjs", destination)
+    fonts = "https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&amp;family=Noto+Sans:wght@400;500;600;700&amp;family=Google+Sans+Code:wght@400;500&amp;display=swap"
+    return f'''<link rel="icon" href="{icon}" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{fonts}" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="{css}">
+<script type="module" src="{script}"></script>'''
+
+
+def render_header(destination: Path, language: str) -> str:
+    english = language == "en"
+    home = relative(ROOT / "help" / language / "index.html", destination)
+    project = relative(ROOT / "index.html", destination)
+    mark = relative(ROOT / "fig" / "mark.svg", destination)
+    label = "Search help" if english else "搜索帮助文档"
+    placeholder = "Coming soon" if english else "搜索文档、功能或问题"
+    input_options = ' disabled' if english else ' autocomplete="off" aria-controls="search-results" aria-expanded="false"'
+    results = '' if english else '''<kbd class="search-shortcut" aria-hidden="true">Ctrl K</kbd>
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>'''
+    return f'''<header class="topbar"><div class="topbar-inner">
+<a class="brand" href="{home}"><img src="{mark}" alt="" width="32" height="32"><span>OpenCollab<small>{'Help Center' if english else '帮助中心'}</small></span></a>
+<div class="searchbox">
+<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+<label class="sr-only" for="help-search">{label}</label>
+<input id="help-search" type="search" placeholder="{placeholder}"{input_options}>
+{results}
+</div>
+<div class="header-actions">
+{language_switch(destination, language)}
+<a class="project-link" href="{project}" aria-label="{'Project home' if english else '项目主页'}"><span>{'Project home' if english else '项目主页'}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">{'Menu' if english else '目录'}</button>
+</div>
+</div></header>'''
+
+
 def render_page(page: Page, pages: list[Page], config: dict) -> str:
     title = page.metadata["title"]
     home = relative(OUTPUT / "index.html", page.destination)
     project = relative(ROOT / "index.html", page.destination)
-    css = relative(ROOT / "help" / "assets" / "help.css", page.destination)
-    script = relative(ROOT / "help" / "assets" / "help.mjs", page.destination)
     search_index = relative(OUTPUT / "search-index.json", page.destination)
     paths = relative(OUTPUT / "reading-paths" / "index.html", page.destination)
     questions = relative(OUTPUT / "questions" / "index.html", page.destination)
@@ -120,6 +158,13 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
     canonical = SITE_URL + page.destination.relative_to(ROOT).as_posix()
     description = page.metadata.get("summary", "OpenCollab 中文使用与开发指南")
     entry = ' data-help-entry="true"' if page.destination == ROOT / "help" / "index.html" else ""
+    home_page = page.metadata["id"] == "home"
+    nav_entries = [(home, "home", "帮助首页"), (paths, "reading-paths", "阅读路径"),
+                   (questions, "questions", "问题导航")]
+    primary_nav = "".join(
+        f'<a href="{href}"' + (' aria-current="page"' if page.metadata["id"] == ident else '')
+        + f'>{label}</a>' for href, ident, label in nav_entries
+    )
     return f'''<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -128,30 +173,19 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 <title>{html.escape(title)} · OpenCollab 帮助中心</title>
 <meta name="description" content="{html.escape(description, quote=True)}">
 <link rel="canonical" href="{canonical}">
-<link rel="stylesheet" href="{css}">
-<script type="module" src="{script}"></script>
+{head_assets(page.destination)}
 </head>
-<body data-search-index="{search_index}"{entry}>
+<body class="{'help-home' if home_page else 'help-article'}" data-search-index="{search_index}"{entry}>
 <a class="skip" href="#content">跳到正文</a>
-<header class="topbar">
-<a class="brand" href="{home}">OpenCollab <span>帮助中心</span></a>
-<div class="searchbox">
-<label class="sr-only" for="help-search">搜索帮助文档</label>
-<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
-<div id="search-results" class="results" hidden></div>
-<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
-</div>
-{language_switch(page.destination, 'zh-CN')}
-<a class="project-link" href="{project}">项目主页</a>
-<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
-</header>
+{render_header(page.destination, 'zh-CN')}
 <div class="layout">
 <nav id="help-navigation" aria-label="帮助分类">
-<div class="nav-start"><a href="{home}">帮助首页</a><a href="{paths}">阅读路径</a><a href="{questions}">问题导航</a></div>
+<div class="nav-start">{primary_nav}</div>
+<p class="nav-label">文档目录</p>
 {navigation(page, pages, config["categories"])}
 </nav>
 <main id="content" tabindex="-1">
-<p class="category">{html.escape(category)}</p>
+<p class="category">{'HELP CENTER' if home_page else html.escape(category)}</p>
 {body}
 <footer class="article-footer"><a href="{source_path}">Markdown 源文档</a><a href="{config['source_commit_url']}">OpenCollab {config['documented_version']}</a><a href="{project}">返回项目主页</a></footer>
 </main>
@@ -172,26 +206,17 @@ def render_english_placeholder() -> str:
 <title>Help Center · OpenCollab</title>
 <meta name="description" content="OpenCollab Help Center. English guides are coming soon.">
 <link rel="canonical" href="{SITE_URL}help/en/index.html">
-<link rel="stylesheet" href="../assets/help.css">
-<script type="module" src="../assets/help.mjs"></script>
+{head_assets(destination)}
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
-<header class="topbar">
-<a class="brand" href="index.html">OpenCollab <span>Help Center</span></a>
-<div class="searchbox">
-<label class="sr-only" for="help-search">Search help</label>
-<input id="help-search" type="search" placeholder="Coming soon" disabled>
-</div>
-{language_switch(destination, 'en')}
-<a class="project-link" href="../../index.html">Project home</a>
-<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">Menu</button>
-</header>
+{render_header(destination, 'en')}
 <div class="layout">
 <nav id="help-navigation" aria-label="Help navigation">
 <div class="nav-start"><a href="index.html" aria-current="page">Help home</a></div>
 </nav>
-<main id="content" tabindex="-1">
+<main id="content" class="placeholder" tabindex="-1">
+<img class="placeholder-mark" src="../../fig/mark.svg" alt="" width="52" height="52">
 <h1>Help Center</h1>
 <p>Coming soon.</p>
 </main>
