@@ -1,6 +1,6 @@
 # 阅读路径
 
-[帮助中心](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
+[Wiki](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
 
 下面每条路径是一组按顺序排好的指南，适合想系统学习某个主题的人。从左往右读，已经会的可以跳过。
 

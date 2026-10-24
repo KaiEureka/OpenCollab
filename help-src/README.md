@@ -1,7 +1,7 @@
-# Help center
+# Wiki
 
-The project site links to the help center at `help/`, which opens the Chinese
-guides on first visit. A global Chinese and English switch selects the help center
+The project site links to the wiki at `help/`, which opens the Chinese
+guides on first visit. A global Chinese and English switch selects the wiki
 edition. The browser remembers the selected edition when entering through `help/`
 again. Explicit article URLs open their specified edition. The English
 page at `help/en/` uses the same reader layout and displays "Coming soon."
@@ -37,7 +37,9 @@ python -m http.server 8000 --bind 127.0.0.1
 
 Preview `/help/` through the local server. Generated HTML and the search
 index are committed because GitHub Pages publishes this branch directly. CSS
-and JavaScript are maintained in `help/assets/`. The `.nojekyll` file preserves
+and JavaScript are maintained in `help/assets/`. Increment `HELP_ASSET_VERSION`
+in `tools/build_help.py` when changing shared styles, scripts, or search content,
+then rebuild the pages so browsers request the matching asset version. The `.nojekyll` file preserves
 the site's existing static publishing behavior.
 
 ## Validation and publication

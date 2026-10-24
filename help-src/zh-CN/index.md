@@ -1,4 +1,4 @@
-# OC 中文帮助中心
+# OpenCollab Wiki
 
 OpenCollab（OC）是一个多 Agent 编码框架：同一套 Session 与工具运行时之上，支持三种组织方式，单 Agent、由模型自主派发的 Team，以及用 Python 显式编排的 Workflow。隔离（工作树、Docker）、预算和运行记录可以分别配置。
 

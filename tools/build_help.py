@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "help-src" / "zh-CN"
 OUTPUT = ROOT / "help" / "zh-CN"
 SITE_URL = "https://rise-x-lab.github.io/OpenCollab/"
+HELP_ASSET_VERSION = "3"
 MD = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 
@@ -111,8 +112,8 @@ def head_assets(destination: Path) -> str:
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="{fonts}" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="{css}">
-<script type="module" src="{script}"></script>'''
+<link rel="stylesheet" href="{css}?v={HELP_ASSET_VERSION}">
+<script type="module" src="{script}?v={HELP_ASSET_VERSION}"></script>'''
 
 
 def render_header(destination: Path, language: str) -> str:
@@ -127,16 +128,16 @@ def render_header(destination: Path, language: str) -> str:
 <div id="search-results" class="results" hidden></div>
 <div id="search-status" class="sr-only" role="status" aria-live="polite"></div>'''
     return f'''<header class="topbar"><div class="topbar-inner">
-<a class="brand" href="{home}"><img src="{mark}" alt="" width="32" height="32"><span>OpenCollab<small>{'Help Center' if english else '帮助中心'}</small></span></a>
+<a class="brand" href="{home}"><img src="{mark}" alt="" width="32" height="32"><span>OpenCollab<small>{'Wiki' if english else 'Wiki'}</small></span></a>
 <div class="searchbox">
-<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+<svg class="search-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
 <label class="sr-only" for="help-search">{label}</label>
 <input id="help-search" type="search" placeholder="{placeholder}"{input_options}>
 {results}
 </div>
 <div class="header-actions">
 {language_switch(destination, language)}
-<a class="project-link" href="{project}" aria-label="{'Project home' if english else '项目主页'}"><span>{'Project home' if english else '项目主页'}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+<a class="project-link" href="{project}" aria-label="{'Project home' if english else '项目主页'}"><span>{'Project home' if english else '项目主页'}</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
 <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">{'Menu' if english else '目录'}</button>
 </div>
 </div></header>'''
@@ -146,7 +147,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
     title = page.metadata["title"]
     home = relative(OUTPUT / "index.html", page.destination)
     project = relative(ROOT / "index.html", page.destination)
-    search_index = relative(OUTPUT / "search-index.json", page.destination)
+    search_index = relative(OUTPUT / "search-index.json", page.destination) + f"?v={HELP_ASSET_VERSION}"
     paths = relative(OUTPUT / "reading-paths" / "index.html", page.destination)
     questions = relative(OUTPUT / "questions" / "index.html", page.destination)
     source_path = relative(page.source, page.destination)
@@ -159,7 +160,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
     description = page.metadata.get("summary", "OpenCollab 中文使用与开发指南")
     entry = ' data-help-entry="true"' if page.destination == ROOT / "help" / "index.html" else ""
     home_page = page.metadata["id"] == "home"
-    nav_entries = [(home, "home", "帮助首页"), (paths, "reading-paths", "阅读路径"),
+    nav_entries = [(home, "home", "Wiki 首页"), (paths, "reading-paths", "阅读路径"),
                    (questions, "questions", "问题导航")]
     primary_nav = "".join(
         f'<a href="{href}"' + (' aria-current="page"' if page.metadata["id"] == ident else '')
@@ -170,7 +171,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)} · OpenCollab 帮助中心</title>
+<title>{html.escape(title)} · OpenCollab Wiki</title>
 <meta name="description" content="{html.escape(description, quote=True)}">
 <link rel="canonical" href="{canonical}">
 {head_assets(page.destination)}
@@ -185,7 +186,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 {navigation(page, pages, config["categories"])}
 </nav>
 <main id="content" tabindex="-1">
-<p class="category">{'HELP CENTER' if home_page else html.escape(category)}</p>
+<p class="category">{'WIKI' if home_page else html.escape(category)}</p>
 {body}
 <footer class="article-footer"><a href="{source_path}">Markdown 源文档</a><a href="{config['source_commit_url']}">OpenCollab {config['documented_version']}</a><a href="{project}">返回项目主页</a></footer>
 </main>
@@ -203,8 +204,8 @@ def render_english_placeholder() -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Help Center · OpenCollab</title>
-<meta name="description" content="OpenCollab Help Center. English guides are coming soon.">
+<title>Wiki · OpenCollab</title>
+<meta name="description" content="OpenCollab Wiki. English guides are coming soon.">
 <link rel="canonical" href="{SITE_URL}help/en/index.html">
 {head_assets(destination)}
 </head>
@@ -213,11 +214,11 @@ def render_english_placeholder() -> str:
 {render_header(destination, 'en')}
 <div class="layout">
 <nav id="help-navigation" aria-label="Help navigation">
-<div class="nav-start"><a href="index.html" aria-current="page">Help home</a></div>
+<div class="nav-start"><a href="index.html" aria-current="page">Wiki home</a></div>
 </nav>
 <main id="content" class="placeholder" tabindex="-1">
 <img class="placeholder-mark" src="../../fig/mark.svg" alt="" width="52" height="52">
-<h1>Help Center</h1>
+<h1>Wiki</h1>
 <p>Coming soon.</p>
 </main>
 </div>
@@ -232,7 +233,7 @@ def main() -> None:
     for source in sorted(SOURCE.rglob("*.md")):
         metadata, body = read_markdown(source)
         if source.relative_to(SOURCE).as_posix() == "index.md":
-            metadata.update(id="home", title="OC 中文帮助中心", category="navigation")
+            metadata.update(id="home", title="OpenCollab Wiki", category="navigation")
             destination = OUTPUT / "index.html"
         else:
             metadata.setdefault("id", source.stem)
