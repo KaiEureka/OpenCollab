@@ -14,7 +14,10 @@
     "Retry-After",
     "llm_timeout",
     "llm_max_retries",
-    "provider_error_time_budget"
+    "provider_error_time_budget",
+    "工具超时",
+    "OPENCOLLAB_TOOL_EXECUTION_TIMEOUT",
+    "OPENCOLLAB_TOOL_EXECUTION_MAX_TIMEOUT"
   ],
   "keywords": [
     "OPENCOLLAB_LLM_TIMEOUT",
@@ -91,6 +94,21 @@ asyncio.run(main())
 ```
 
 工作流角色的 `timeout=` 限制该角色，SDK `workflow(timeout=...)` 限制整次工作流。`cleanup_timeout` 应为有限正数，描述执行结束后框架等待自己拥有的资源停止的时段。没有 token 或步数上限的运行也保留这些时间限制。
+
+## 工具执行卡住时调整哪一层
+
+Bash 的 `timeout` 工具参数决定命令执行期限，默认为 120 秒。工具调度器还给普通工具一次外层期限，依次采用调用参数 `timeout`、工具自己的 `default_timeout`，最后采用 `OPENCOLLAB_TOOL_EXECUTION_TIMEOUT` 的 180 秒默认值。在这项基础上增加 10 秒清理余量，再由 `OPENCOLLAB_TOOL_EXECUTION_MAX_TIMEOUT` 截断，默认最多 900 秒。派发等待等声明了专用等待规则的工具沿用各自的控制方式。
+
+例如项目测试需要 20 分钟，可以在启动进程前提高外层最大期限，并让 Agent 的 Bash 调用明确使用 `timeout=1200`。同时给整个任务留下模型分析、命令执行与交付所需时间。下面选择可信宿主项目，并明确允许动态子成员在宿主执行命令。
+
+```bash
+export OPENCOLLAB_TOOL_EXECUTION_MAX_TIMEOUT=1800
+opencollab --workspace /path/to/application \
+  --allow-local-child-shell \
+  --prompt '运行项目指定测试，Bash timeout 使用 1200 秒，报告实际执行结果。'
+```
+
+这些工具期限变量在模块导入时读取，适合在启动 shell 中导出后重新运行 Python 或 CLI。有限正数会被采用，空值、非法数字、零与负数回到默认值。工具超时后进入取消清理，环境仍有未停止操作时会被撤销，后续处理见 [中断任务与检查资源清理](cancellation-cleanup.md)。期限计算和撤销行为见[工具执行运行时](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution_runtime.py)。
 
 ## 重试次数和失败时间额度
 

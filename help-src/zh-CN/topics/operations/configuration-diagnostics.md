@@ -33,7 +33,8 @@
     "thinking-reasoning-sampling",
     "timeouts-retries",
     "trace-and-events",
-    "run-results"
+    "run-results",
+    "collaboration-adherence"
   ],
   "verified_ref": "e7946a42"
 }
@@ -98,6 +99,8 @@ opencollab team show --team-config team.yaml
 opencollab workflow list --workspace /path/to/application
 opencollab workflow run duo --help
 ```
+
+需要在自己的 Python 程序里读取团队声明时，使用 `opencollab.teams`。公开查询函数按实际团队加载规则返回入口优先的角色名、声明工具、profile、角色额度和上下文策略，适合给配置编辑器或运行前展示提供数据。实际运行后再从成员记录确认工具过滤与交接行为，完整示例见 [检查团队是否真的按分工协作](../observability/collaboration-adherence.md)。
 
 ## 处理常见格式与入口错误
 

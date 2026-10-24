@@ -12,7 +12,10 @@
     "清理没结束",
     "延迟用量",
     "工作区恢复",
-    "保留 worktree"
+    "保留 worktree",
+    "OPENCOLLAB_TOOL_CANCELLATION_CLEANUP_TIMEOUT",
+    "OPENCOLLAB_TOOL_CANCELLATION_FORCE_TIMEOUT",
+    "OPENCOLLAB_TOOL_ENVIRONMENT_ABORT_TIMEOUT"
   ],
   "keywords": [
     "Ctrl+C",
@@ -82,6 +85,12 @@ asyncio.run(main())
 ```
 
 `cleanup_timeout` 为有限正数，约束执行结束后的已拥有资源清理。单独的 `RunControl.tool_cancellation_cleanup_timeout` 可以调整工具取消清理等待。事件接收器需要同步返回，记录事件时宜快速保存，再由应用其它部分处理。
+
+## 工具取消怎样等待
+
+工具超时或调用方取消后，运行时先请求工具协程取消，并等待 `OPENCOLLAB_TOOL_CANCELLATION_CLEANUP_TIMEOUT`，默认 1 秒。工具仍未停止或清理返回错误时，环境会被撤销，再执行环境中止。`OPENCOLLAB_TOOL_ENVIRONMENT_ABORT_TIMEOUT` 默认给中止操作 1 秒，之后取消中止协程，再由 `OPENCOLLAB_TOOL_CANCELLATION_FORCE_TIMEOUT` 默认等待 0.5 秒。仍在结束的任务继续归该运行追踪，工具结果会带出清理失败信息。
+
+这些进程变量在模块导入时读取，调整时在启动 Python 或 CLI 前导出有限正数。单 Agent 或 `ctx.agent_run` 中的 `RunControl.tool_cancellation_cleanup_timeout` 可单独覆盖本次会话第一段工具取消等待。SDK 的 `cleanup_timeout` 管理运行结束后的资源清理范围，调用方应结合返回的静止状态安排下一次操作。具体顺序见[工具取消与环境中止实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution_runtime.py)。
 
 ## 核对停止后的状态
 

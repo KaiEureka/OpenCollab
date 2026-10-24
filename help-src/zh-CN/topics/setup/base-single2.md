@@ -8,7 +8,9 @@
     "单智能体",
     "single agent",
     "agent2",
-    "一个人做任务"
+    "一个人做任务",
+    "BASE_PROFILE",
+    "resolve_profile_name"
   ],
   "keywords": [
     "Base",
@@ -31,6 +33,18 @@
 # 使用 Base 单 Agent 与 Single2 配置
 
 `OpenCollab.agent()` 可以直接运行一个 Agent。当前 Base 默认配置映射到 Single2，`agent2()` 则明确选择 Single2。选择 Base 适合跟随框架默认实现，指定 `profile="single2"` 适合需要在运行记录中固定实现名称的程序。这个映射自 OpenCollab 0.8 起采用，查看旧版本时应结合对应标签的文档。
+
+可以通过公开的 `opencollab.profiles` 在本地读取安装版本的映射，以下程序打印 `single2`、`single2` 和 `single2`。
+
+```python
+from opencollab.profiles import BASE_PROFILE, resolve_profile_name
+
+print(BASE_PROFILE)
+print(resolve_profile_name("base"))
+print(resolve_profile_name("single2"))
+```
+
+`None`、`"base"`、`"default"` 与 `"single"` 都解析为当前 Base 选择的具体 profile。需要随默认实现更新的程序可使用这些别名，需要明确选择 Single2 的集成可传 `profile="single2"`，并在运行记录里保存所用 OpenCollab 版本。
 
 ## 先完成一次只读任务
 
@@ -90,7 +104,7 @@ result = await client.agent2(
 
 ## 来源
 
-[docs/single2.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/single2.md)　[opencollab/bootstrap/agent_profiles.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/agent_profiles.py)　[opencollab/sdk/client.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py)
+[docs/single2.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/single2.md)　[opencollab/profiles.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/profiles.py)　[opencollab/bootstrap/agent_profiles.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/agent_profiles.py)　[opencollab/sdk/client.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py)
 
 ## 相关指南
 

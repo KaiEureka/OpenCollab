@@ -42,10 +42,13 @@ SDK 的 `agent`、`team` 和 `workflow` 都返回 `RunResult`。先读取 `statu
 | `reason` | 停止或失败原因 |
 | `tokens` | 已记录的 token 用量，可缺省 |
 | `artifacts` | 已保存产物的目录 |
+| `error` | 已保留的异常对象，适合本进程中的异常诊断 |
 | `metrics` | 运行指标及补充恢复、清理信息 |
 | `agent_failures` | 工作流中记录的子 Agent 失败 |
 
 `ok` 在 `status == "completed"` 时为真。完成状态表示运行入口正常完成，项目功能是否正确仍需根据测试或任务验证判断。工作流可以在处理了某个 Agent 失败后返回，因此也应查看 `agent_failures`。
+
+`RunResult` 是 Python 返回值，`error`、`Path` 以及自定义 Workflow 输出可能需要在写入业务 JSON 前转换。服务可以显式保存 `status`、`reason`、`tokens`、`str(artifacts)`、`metrics["run_id"]` 和必要的输出字段，示例见 [从示例接入自己的服务](../architecture/service-integration-lifecycle.md)。失败诊断应保留异常类型和关联记录，并按服务的访问权限保存。
 
 ## 在应用中处理结果
 

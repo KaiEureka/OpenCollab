@@ -68,6 +68,36 @@ asyncio.run(main())
 
 `allow_file_creation=False` 控制原生文件创建能力。它与整个运行的命令权限是不同设置，Bash 能执行的内容需要通过独立的权限与环境策略管理。
 
+## 调整工具输出大小
+
+`limits` 在构造工具时设置输出上限，适用于大文件、长测试日志和大范围差异。下面的示例保留较大的读取窗口，同时限制搜索结果和差异占用的上下文。
+
+```python
+from opencollab.tools import builtin_tools, profile_tool_limits, profile_tool_names
+
+tools = builtin_tools(
+    'file_read', 'grep', 'git_diff',
+    limits={
+        'file_read': {'max_read_chars': 32000},
+        'grep': {'max_grep_chars': 12000},
+        'git_diff': {'max_diff_chars': 24000, 'max_status_chars': 4000},
+    },
+)
+print(profile_tool_names('single2'))
+print(profile_tool_limits('single2'))
+```
+
+| 工具 | 可配置字段 | 含义 |
+| --- | --- | --- |
+| `bash` | `max_output_chars` | 单项命令输出的字符上限 |
+| `file_read` | `max_read_chars` | 文件读取内容的字符上限 |
+| `grep` | `max_grep_chars` | 搜索结果的字符上限 |
+| `git_diff` | `max_diff_chars`、`max_status_chars` | 差异和状态各自的字符上限 |
+
+各值采用 1 到 10,000,000 的整数。工作流启用 profile 后，`builtin_tools` 继承该 profile 的默认工具上限，再应用显式 `limits`。`profile_tool_names` 和 `profile_tool_limits` 分别用于查询默认工具顺序及上限，后者返回独立字典，适合用于配置展示。`evidence_tools` 采用同样的参数，再增加真实测试记录。
+
+字符上限决定本次工具结果能展示多少内容。大文件仍可通过 `offset` 和 `limit` 分页读取，搜索可以缩小 `path` 和 `glob`，差异可以按文件或 `stat_only` 查看。按实际问题缩小范围，通常能让后续角色取得更完整的相关内容。
+
 ## 常见配置错误
 
 工具名称重复会被拒绝。`limits` 中出现未选中的工具也会报错。把 `spawn_agent` 交给 `builtin_tools` 构造会失败，因为该 helper 支持的名称由普通工具集合定义。Team 中需要使用注册名，并确保通信拓扑允许相关操作。

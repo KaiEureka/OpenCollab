@@ -64,6 +64,24 @@ class ProjectPolicy:
 
 内存中的查询可以完全忽略 runtime。操作文件或命令的工具应使用 runtime 提供的执行环境，让路径与资源跟随当前 Agent。直接使用宿主 `open()` 或 `subprocess` 会把操作放在 Python 进程所在机器上，与任务容器中的目录不同。
 
+下面的工具复用前一个类的 schema 转换方法，从绑定环境读取固定项目文件。把两个类放进同一个模块后，可将 `ReadProjectPolicy()` 直接放入工具列表。
+
+```python
+class ReadProjectPolicy(ProjectPolicy):
+    name = 'read_project_policy'
+    description = '读取当前任务工作区的 PROJECT_POLICY.md。'
+    parameters = {'type': 'object', 'properties': {}, 'additionalProperties': False}
+
+    async def execute_with_runtime(self, params, runtime):
+        if runtime.environment is None:
+            return 'Error: no execution environment available.'
+        return await runtime.environment.read_file('PROJECT_POLICY.md')
+```
+
+`runtime.environment` 提供 `read_file`、`write_file` 和 `exec_cmd` 等执行入口，`runtime.aid` 与 `runtime.tool_call_id` 可关联当前调用。工具的普通返回值采用字符串，业务对象可先用 `json.dumps` 序列化。模型参数在 OC 工具分派时按 schema 检查，应用直接调用 `execute_with_runtime` 时，应自行提供已校验的参数。
+
+`default_timeout` 为工具设置默认执行秒数，`disable_outer_timeout` 决定是否交由工具自己管理外层期限。普通短工具可沿用示例的有限时限和 `False`，让运行时处理取消及清理。状态型工具在多个会话或候选中复用时，应由实现者管理状态归属。需要候选测试记录的工具还应按公开 `VerificationTool` 提供 `verified_targets`，通过真实验证填充记录。
+
 自定义工具的权限、外部请求和副作用由实现者设计。把函数注册成工具，并不会自动让任意业务副作用获得隔离与回滚能力。准备写入能力时，应明确作用范围、失败后保留内容以及重复执行的行为。
 
 ## 如何说明工具

@@ -45,6 +45,33 @@ export OPENCOLLAB_API_USAGE_LOG=/absolute/path/to/usage.jsonl
 
 该文件按提供方调用追加记录，包含模型、协议、用量、`estimated` 以及可用的 `raw_usage`。账本与会话指标分别保存不同层面的信息，汇总前先确定选用哪一层，避免把一次请求同时从两处累计。
 
+账本每行的 `usage` 保存 `input_tokens`、`output_tokens`、`total_tokens`、`cached_input_tokens`、`cache_creation_tokens`、`reasoning_tokens`、`cost_usd` 和 `pricing`。trace 的对应缓存读取字段名为 `cache_read_tokens`，解析时按各自结构读取。`None` 表示该项信息缺失，`estimated=True` 表示记录包含估算。
+
+命令行批次可以通过 `OPENCOLLAB_RUN_ID` 或 `OPENCOLLAB_USAGE_RUN_ID` 标记账本运行，通过 `OPENCOLLAB_USAGE_LABEL` 追加实验标签。这些字段来自进程环境。并发服务可使用每次 SDK 调用的 `run_id` 和 `RunControl.on_event` 关联业务请求，回调会在原运行的迟到用量结算期间继续接收事件，使用方式见 [查看 Agent 做了什么](trace-and-events.md)。
+
+## 离线汇总一份账本
+
+下面脚本读取指定文件的全部记录，报告记录数、累计 token 和缺失标志。分析某个模型或时间段时，可以先按每行的 `model`、`timestamp`、`run_id` 或 `label` 筛选。
+
+```python
+import json
+from pathlib import Path
+
+usage_path = Path("artifacts/usage.jsonl")
+with usage_path.open(encoding="utf-8") as stream:
+    records = [json.loads(line) for line in stream if line.strip()]
+usages = [record["usage"] for record in records]
+print("records", len(usages))
+print("input_tokens", sum(usage["input_tokens"] for usage in usages))
+print("output_tokens", sum(usage["output_tokens"] for usage in usages))
+print("total_tokens", sum(usage["total_tokens"] for usage in usages))
+print("estimated_records", sum(usage["estimated"] for usage in usages))
+print("missing_cache_records", sum(usage["cached_input_tokens"] is None for usage in usages))
+print("missing_cost_records", sum(usage["cost_usd"] is None for usage in usages))
+```
+
+检查每条记录的 `pricing` 后，再汇总具有完整价格和用量的费用。通用价格默认值为零，零费用需要结合实际配置解释。缓存读取或写入字段缺失时，费用可能为 `None`。保留缺失记录数，便于判断汇总覆盖了多少调用。
+
 ## 重试与摘要
 
 内部传输重试可能合并为外层调用的累计用量。上下文压力关注最终请求的输入大小，累计花费关注全部已返回尝试。摘要也会调用模型，因此需要计入真实开销。

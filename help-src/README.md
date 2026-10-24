@@ -5,7 +5,7 @@ guides on first visit. A global Chinese and English switch selects the help cent
 edition. The browser remembers the selected edition when entering through `help/`
 again. Explicit article URLs open their specified edition. The English
 page at `help/en/` uses the same reader layout and displays "Coming soon."
-Chinese article URLs remain under `help/zh-CN/`. The 68 guides are
+Chinese article URLs remain under `help/zh-CN/`. The 69 guides are
 maintained in `zh-CN/topics/`. Navigation pages and the explicitly planned VM
 extension page live alongside them. Each Markdown document is rendered to an
 independent HTML page, so article links work with JavaScript disabled. Browser
@@ -49,6 +49,10 @@ metadata, code-block syntax, search routes, subpath URL resolution and homepage
 entry points. Model, Docker and external-service examples have environment
 requirements; their execution coverage is recorded separately in PR validation.
 Source code examples should be checked against the documented framework revision.
+
+Keep existing guides aligned when parameters, defaults, or behavior change. Add a
+new topic when a feature introduces an independent user task. Include its reader
+questions and synonyms in the search metadata and connect it to a reading path.
 
 Review the Markdown sources and generated pages together. Publish by merging the
 reviewed change into `gh-pages`. The project homepage navigation, hero action and

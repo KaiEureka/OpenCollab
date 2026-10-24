@@ -9,6 +9,10 @@
     "Tracer",
     "on_event",
     "RunEvent",
+    "llm_call",
+    "tool_exec",
+    "response_session_id",
+    "observation_errors",
     "执行过程",
     "日志怎么看"
   ],
@@ -35,6 +39,30 @@
 
 轨迹中常见信息包括运行标识、成员标识、角色、事件类型、模型用量和工具结果。按时间与会话串联事件，能看到请求开始、工具调用、通信和任务停止的关系。
 
+## 离线读取 JSONL
+
+每条 trace 记录的顶层包含 `timestamp`、`run_id`、`step`、`aid`、`role`、`type`、`payload` 和 `metrics`。`step` 表示这份轨迹里的记录次序，`metrics.tokens` 和 `metrics.latency_s` 对应当前记录。Session 事件带实际成员身份，调度器自身的记录可以将 `aid` 和 `role` 留空。
+
+下面脚本统计一份已完成轨迹中的成员事件数量。把路径替换为该运行的 `trajectory.jsonl` 或 `orchestration.jsonl`。
+
+```python
+import json
+from collections import Counter
+from pathlib import Path
+
+trace_path = Path("artifacts/example/trajectory.jsonl")
+counts = Counter()
+with trace_path.open(encoding="utf-8") as stream:
+    for line in stream:
+        if line.strip():
+            row = json.loads(line)
+            counts[(row["run_id"], row.get("aid"), row.get("role"), row["type"])] += 1
+for identity, count in counts.items():
+    print(identity, count)
+```
+
+定位一次模型请求时，将 `llm_call_started`、`llm_call` 与 `llm_call_cancelled` 的 payload 按 `response_session_id` 和 `session_step` 对应起来。完成记录里的 `request_tool_names` 与 `request_tool_choice` 表示应用准备交给模型的工具视图，`tool_exec` 则记录实际工具操作。`context_shaping` 展示上下文处理，`message_sent` 与 `message_refused` 展示通信决策。针对具体问题继续读取 payload，能从事件数量追到实际输入和结果。
+
 ## 订阅运行事件
 
 `RunControl` 可用于单 Agent 和 `ctx.agent_run`。以下代码在已有异步函数中执行，`on_event` 是同步回调。
@@ -51,7 +79,9 @@ for event in events:
     print(event.type, event.aid, event.used_tokens)
 ```
 
-回调应尽快返回。要写数据库或网络服务，可以在应用中把事件转交队列。回调错误会进入运行指标里的观察错误记录，读取输出后也应检查相关诊断。
+`on_event` 与持久化 trace 独立，设置 `trace=False` 仍可以接收回调。`RunEvent` 包含 `type`、`run_id`、`session_id`、`aid`、`used_tokens`、`steps` 和独立复制的 `data`。其中 `used_tokens` 是会话累计值，`usage` 事件的 `data["total_tokens"]` 是该次已记账用量。事件适合观察用量、预算决策、上下文处理、错误、停止和清理过程，工具执行细节从 trace 或完整会话读取。
+
+回调应尽快同步返回。要写数据库或网络服务，可以在应用中把事件转交队列。回调错误会保留在 `result.metrics["observation_errors"]`，`ctx.agent_run` 则通过返回值的 `observation_errors` 提供。回调会继续属于原运行，直到迟到用量结算和清理结束时收到 `cleanup_completed`。
 
 ## 从停止原因回查
 

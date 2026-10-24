@@ -53,6 +53,17 @@ print(payload.get("tool"), payload.get("aid"))
 
 ## 命令在哪里运行
 
+| 事件 | 发生时机 | 常用数据 |
+| --- | --- | --- |
+| `PreToolUse` | 工具开始执行 | `aid`、`tool`、`args` |
+| `PostToolUse` | 工具执行结束 | Agent 与工具信息及执行结果 |
+| `SessionStart` | Team 成员创建 | 新成员信息 |
+| `Stop` | 入口成员完成、失败或取消 | `disposition` 记录 `completed`、`failed` 或 `cancelled` |
+| `SubagentStop` | 子成员完成、失败或取消 | 成员信息与终止状态 |
+| `Notification` | Team 发出错误事件 | 对应错误信息 |
+
+Hook 动作的 `type` 默认为 `command`，当前配置接受这种执行方式。`matcher` 使用工具名 glob，例如 `file_*` 同时匹配 `file_read` 和 `file_write`，省略时匹配该事件的所有调用。生命周期事件应省略 `matcher`，其 payload 没有工具名。匹配的命令按配置顺序等待完成后，再推进事件处理。
+
 `PreToolUse` 和 `PostToolUse` 在调用 Agent 的执行环境中运行。Agent 位于工作树或容器时，Hook 也沿用该环境。脚本与解释器因此需要在相应环境可见。
 
 生命周期 Hook 在宿主工作区运行。`SubagentStop` 发生在子任务改动提取之后，适合观察已经生成的交付信息。环境已释放或不可用时，工具 Hook 会留下跳过警告。
@@ -60,6 +71,8 @@ print(payload.get("tool"), payload.get("aid"))
 ## 输入与超时
 
 除标准输入外，命令还可读取 `OPENCOLLAB_HOOK_EVENT`、`OPENCOLLAB_TOOL` 和 `OPENCOLLAB_AID`。根据实际事件读取字段，避免假定每种事件都有同样结构。为命令设置合理的完成时间，长驻后台任务应由应用自己的服务生命周期管理。
+
+`timeout` 默认为 30 秒，采用有限正数。命令末尾的后台符号 `&` 会使该动作跳过并留下警告。可先用一个真实事件验证脚本读取了标准输入、进入了预期目录并写出了需要的记录，再增加其他辅助操作。
 
 普通命令失败和超时会留下警告。取消与进程清理错误仍可能影响资源收尾，应查看运行记录中的原始错误。
 

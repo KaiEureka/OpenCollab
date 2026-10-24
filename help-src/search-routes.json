@@ -693,6 +693,22 @@
       "target_id": "report-problem-and-request-help",
       "mode": "direct",
       "also_show": []
+    },
+    {
+      "queries": [
+        "配置参数速查",
+        "参数表",
+        "配置项大全",
+        "环境变量大全",
+        "有哪些配置项以及默认值是什么",
+        "环境变量和 SDK 参数怎样对应"
+      ],
+      "target_id": "configuration-reference",
+      "mode": "direct",
+      "also_show": [
+        "configuration-precedence",
+        "configuration-diagnostics"
+      ]
     }
   ]
 }

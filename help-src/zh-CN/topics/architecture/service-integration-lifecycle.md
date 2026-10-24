@@ -106,11 +106,32 @@ OpenCollab 客户端在构造时读取有效配置。服务更新模型路由或
 
 统计成本时，运行 tokens 是累计输入与输出，缓存读取已经计入输入，推理 token 按提供方的输出统计处理。需要费用时使用有效价格与提供方原始用量计算，区分带 estimated 标记的估算记录。一次失败或超时也可能已经产生用量，最终记录有助于把资源消耗对应到真实请求。
 
+## 接入已有模型客户端
+
+应用需要在原生 transport 外增加观察或适配时，可以先调用 `create_model_client()`，再把满足模型调用协议的客户端通过 `agent(llm=...)` 传入。下面片段放在已构造 `client` 的异步函数中。
+
+```python
+model = client.create_model_client()
+try:
+    result = await client.agent(
+        "说明项目的公开入口",
+        tools=builtin_tools("file_read", "grep"),
+        llm=model,
+        budget=50_000,
+        max_steps=40,
+        timeout=900,
+    )
+finally:
+    await model.close()
+```
+
+`create_model_client()` 沿用该 OpenCollab 对象解析后的配置，创建者负责在所有使用结束后关闭它。应用注入的 environment 同样由应用安排 setup、cleanup 和最终资源检查。按需创建并关闭 transport、按请求分配运行身份和产物目录，可以把连接生命周期与业务请求对应起来。
+
 ## 取消、结算与资源结束
 
 调用方取消会在运行拥有的清理结束后继续传播 `asyncio.CancelledError`，运行 deadline 则产生 `reason="timeout"` 的停止结果。已经发出的模型请求可能稍后返回用量，框架在自己的 draining 阶段只结算一次。费用解释应读取最终保存的 usage 和清理记录。
 
-`session_quiesced` 描述会话与持久化是否结束。调用方注入 environment 时，`environment_quiesced`、`cleanup_quiesced` 和 `execution_quiesced` 保留为 `None`，环境是否静止由调用方清理后验证。若调用 `create_model_client()` 创建 transport，也要在使用结束后执行 `await model.close()`。
+`session_quiesced` 描述会话与持久化是否结束。调用方注入 environment 时，`environment_quiesced`、`cleanup_quiesced` 和 `execution_quiesced` 保留为 `None`，环境是否静止由调用方清理后验证。由 SDK 自己创建的运行资源按运行生命周期清理，应用拥有的 transport 和 environment 按前面的所有权安排结束。
 
 本机文件适配器支持 Linux 和 macOS，并依赖平台的描述符相对操作、无跟随读取、文件锁和原子重命名能力。部署目标需要满足这些文件操作条件，处理未知代码应放在可丢弃的隔离环境中。调用方已有容器的资源归属见 [让任务在指定目录或现有容器里执行](../isolation/execution-environments.md)，异常材料恢复见 [找回隔离任务的改动并清理资源](../isolation/workspace-recovery.md)。
 

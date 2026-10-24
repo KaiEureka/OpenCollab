@@ -12,7 +12,10 @@
     "组织结构",
     "通信拓扑",
     "谁能给谁派活",
-    "prebuild_team"
+    "prebuild_team",
+    "run_collab_team.py",
+    "固定名册启动",
+    "--concurrent"
   ],
   "keywords": [
     "team.yaml",
@@ -114,7 +117,28 @@ async def main():
 asyncio.run(main())
 ```
 
-示例使用独立容器执行各成员任务，Docker daemon 与任务镜像应提前就绪。`artifacts` 使用新目录，隔离细节见 [默认隔离与单次覆盖怎么配](../isolation/isolation-configuration.md)。项目自带的 `configs/team.collab.yaml` 采用固定名册协作，可使用其启动脚本或 SDK 的 `prebuild_team=True`。`serialize_turns=True` 会让成员轮流执行，消息发送方结束当前回合后，队友才有机会继续。
+示例使用独立容器执行各成员任务，Docker daemon 与任务镜像应提前就绪。`artifacts` 使用新目录，隔离细节见 [默认隔离与单次覆盖怎么配](../isolation/isolation-configuration.md)。`serialize_turns=True` 会让成员轮流执行，消息发送方结束当前回合后，队友才有机会继续。
+
+## 运行自带的固定名册团队
+
+源码中的 `configs/team.collab.yaml` 提供 Analyst、Coder、Tester 三个固定成员，通过双向消息交接任务。在源码根目录执行以下命令，启动脚本会为三个角色建立会话，并默认按串行回合运行。示例明确允许这些成员在可信宿主项目中执行 Git 和测试命令。
+
+```bash
+uv run python scripts/run_collab_team.py \
+  --workspace /path/to/application \
+  --prompt '修复指定问题，由 Coder 实现、Tester 验证，再交付结果。' \
+  --budget 300000 --max-steps 100 --timeout 900 \
+  --artifacts /absolute/path/artifacts/collab-001 \
+  --allow-unisolated-shell
+```
+
+将较长任务保存在 UTF-8 文件后，可用 `--prompt-file task.md` 替换 `--prompt`。`--config` 选择另一份固定名册文件，`--concurrent` 允许已唤醒成员与当前成员同时运行。每个角色的步数上限默认为 100。共享 token 池默认为 1,000,000，团队文件声明全部角色额度时由文件决定额度，调用时省略 `--budget`。
+
+这份团队的交付方式写在角色提示中。Coder 在自己的工作树提交改动后，通过消息发送 commit SHA。Tester 和 Analyst 使用该提交取得相同文件，最终交付目录是 Analyst 的工作目录。使用独立工作树时，源仓库应满足工作树准备要求，交接的提交还需要实际进入入口目录。按需派发团队的 `adopt_agent` 用法见 [采用队友改动并验证交付](adopt-team-changes.md)。
+
+SDK 使用这份文件时传入 `config="configs/team.collab.yaml"` 与 `prebuild_team=True`，串行交接再加 `serialize_turns=True`。宿主 shell 权限由 `allow_unisolated_shell=True` 选择。根命令的 `--team-config` 负责选择文件，固定名册创建由 SDK 或这个专用脚本完成。脚本为成员 shell 设置关闭 pytest 缓存和 Python 字节码的默认环境值，并保留调用方已有设置，便于导出工作树改动。
+
+启动参数与结果摘要见[固定名册启动脚本](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/scripts/run_collab_team.py)，角色交接职责见[自带团队文件](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/team.collab.yaml)。
 
 ## 自定义程度与结果确认
 

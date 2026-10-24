@@ -20,6 +20,10 @@
 
 [隔离怎么选](topics/isolation/isolation-overview.md) → [默认隔离与单次覆盖怎么配](topics/isolation/isolation-configuration.md) → [多个任务怎样在独立工作区改代码](topics/isolation/worktree-workspaces.md) → [在容器中运行任务](topics/isolation/docker-isolation.md) → [让任务在指定目录或现有容器里执行](topics/isolation/execution-environments.md) → [把候选结果采纳到交付目录](topics/isolation/candidate-delivery.md) → [找回隔离任务的改动并清理资源](topics/isolation/workspace-recovery.md)
 
+## 配置模型与运行参数
+
+[配置从哪里读取以及哪一项生效](topics/models/configuration-precedence.md) → [配置参数与环境变量速查](topics/models/configuration-reference.md) → [接入模型端点与认证凭据](topics/models/provider-endpoint-credentials.md) → [选择调用协议与流式响应](topics/models/wire-protocol-streaming.md) → [配置深度思考与采样参数](topics/models/thinking-reasoning-sampling.md) → [检查有效配置与定位常见启动故障](topics/operations/configuration-diagnostics.md)
+
 ## 接入自己的应用服务
 
 [从 Python 调用 OpenCollab](topics/setup/python-sdk-entrypoints.md) → [接入模型端点与认证凭据](topics/models/provider-endpoint-credentials.md) → [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) → [从示例接入自己的服务](topics/architecture/service-integration-lifecycle.md) → [中断任务与检查资源清理](topics/operations/cancellation-cleanup.md) → [查看 Agent 做了什么](topics/observability/trace-and-events.md) → [找到运行记录、会话和交付文件](topics/observability/artifacts-and-history.md)

@@ -26,6 +26,7 @@
     "解释某项配置为什么生效，并稳定地让 CLI 或 SDK 读取选定配置？"
   ],
   "related": [
+    "configuration-reference",
     "provider-endpoint-credentials",
     "model-routing-request-capacity",
     "configuration-diagnostics"
@@ -79,6 +80,10 @@ print(dict(client.configuration))
 空白凭据和空白 base URL 被视为未设置，文件中的空白变量也会跳过。`budget` 必须为正整数，模型请求超时为有限正数，`temperature` 范围为 0 到 2。SDK 配置和团队 YAML 拒绝未知字段，env 文件可以包含其它应用的变量，这些变量会被忽略。
 
 认证有额外的 provider 专用顺序。普通 OpenAI 兼容端点依次选择通用 key 和 `OPENAI_API_KEY`，DashScope 优先 `DASHSCOPE_API_KEY`，原生 Anthropic 优先自己的 key 或 bearer token。专用凭据的变量顺序跨进程和文件来源生效，例如文件中的 `DASHSCOPE_API_KEY` 优先于 shell 中导出的通用 key。显式 `api_key` 的优先级最高，完整选择规则见端点认证指南。
+
+## 查找参数名与默认值
+
+[配置参数与环境变量速查](configuration-reference.md) 对照列出环境变量、SDK 字段和内置默认值，并指向对应运行入口的详细指南。设置角色工具、Team 上下文或一次任务期限时，从表中的具体入口继续配置。
 
 ## 查看最终结果
 

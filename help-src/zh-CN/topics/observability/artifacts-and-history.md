@@ -52,7 +52,17 @@ Workflow 默认保存会话并记录编排过程。CLI 的 `--no-trace` 保留�
 
 ## 文件之间怎样对应
 
-先找到运行的 `run_id`，再按 Agent 或 Session 标识关联模型调用和工具回执。Team 清单描述角色和拓扑，Workflow 清单描述工作流及其执行记录。动态子 Workflow 的产物归入父运行，并保留子运行身份。
+| 入口 | 常见保存文件 | 读取用途 |
+| --- | --- | --- |
+| SDK Agent | `agent.json`，启用轨迹时的 `trajectory.jsonl` | 单次会话快照与执行事件 |
+| Team | `team.json`、`agent_<aid>_<role>.json`，SDK 启用轨迹时的 `trajectory.jsonl` | 实际成员名册、逐成员会话与协作事件 |
+| Workflow | `workflow.json`、`<seq>_<role>.json`，启用轨迹时的 `orchestration.jsonl` | 入口与参数、逐步骤会话与编排事件 |
+
+角色或步骤标签会转换为适合文件名的形式。完整会话可能另有持久化日志，读取时可用公开的 `OpenCollab.read_session_snapshot(path)` 合并快照和已完成日志条目，示例见 [Session 如何保存进度并继续执行](../architecture/session-state-lifecycle.md)。
+
+先找到运行的 `run_id`，再按 Agent 或 Session 标识关联模型调用和工具回执。Team 清单保留所选文件与实际成员，完整通信拓扑从对应 YAML 读取。Workflow 清单描述工作流及其执行记录。动态子 Workflow 的产物归入父运行，并保留子运行身份。
+
+`workflow.json` 还保存运行状态、原因、已用 token、预算和 `evidence_complete`，并通过 `trace_enabled`、`tracer_write_error`、`tracer_dropped_steps` 与 `tracer_failure` 描述轨迹保存情况。遇到记录缺失时，先读取这些字段，再检查对应会话与原始工具结果。`evidence_complete` 描述运行记录与清理完成情况，项目验收继续读取实际测试或验证器结果。
 
 查看同一角色多次运行时，角色名称只能描述职责，具体会话标识才能区分每次实际执行。汇总费用时同样应避免重复累计一份记录的不同展示形式。
 
@@ -60,7 +70,7 @@ Workflow 默认保存会话并记录编排过程。CLI 的 `--no-trace` 保留�
 
 源码、候选补丁、正式测试结果与解释结论所依赖的原始记录具有恢复和复核价值。`.pytest_cache`、`.ruff_cache`、有对应源码的字节码，以及能够从锁文件重建的旧依赖环境通常属于可再生文件。
 
-清理时先确认运行已经结束、目录没有使用句柄，并限定到明确的路径。隔离资源仍在保留状态时，先导出恢复补丁或完成必要核对，再执行清理。当前文章只负责解释文件用途，具体生命周期步骤见恢复与清理指南。
+清理时先确认运行已经结束、目录没有使用句柄，并限定到明确的路径。隔离资源仍在保留状态时，先导出恢复补丁或完成必要核对，再执行清理。具体生命周期步骤见恢复与清理指南。
 
 ## 源码与进一步阅读
 

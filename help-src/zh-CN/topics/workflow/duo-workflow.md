@@ -97,16 +97,44 @@ Git 候选从源工作区当时的已跟踪文件与未忽略的未跟踪文件�
 | `winner` | 选择过程推荐的候选 |
 | `adopted` | 实际采用的候选，可能因首次采用失败而变化 |
 | `status` | `done` 表示采用完成，`incomplete` 表示尚无候选交付，`error` 可表示任务缺失 |
-| 选择原因与采用尝试 | 记录为何选择、采用是否遇到问题 |
-| 测试和候选证据 | 支持继续检查最终交付 |
+| `selection_reason`、`judge_used`、`judge_result` | 选择依据、是否仲裁及仲裁对象 |
+| `adoption_attempts` | 记录每次采用结果 |
+| `candidates`、`shared_public_command` | 两份候选的路径、测试记录与共享公开命令 |
+| `tokens_spent`、`prompt_revision` | 流程消耗与内置提示文本修订号 |
 
 SDK 的 `RunResult.status` 描述整个流程执行，Duo 的 `output.status` 描述候选交付进度，两者还要与应用检查一起阅读。任务最终正确性由真实入口、原生测试或评测器确认。
 
 源在候选执行期间变化、采用前源版本变化和补丁冲突均可能影响交付。捕获失败会保留候选工作区及恢复位置，遇到这些情况先保留已有材料，再对照源版本和候选 diff 处理。`injected_test_paths` 可由评测集成指定在采用时保留的保护测试路径，全环境产物则由调用方注入的候选后端交付。
 
+## 定制两位编码角色
+
+应用需要更换编码角色的专业分工时，可以在包装 Workflow 中使用公开的 `run_dual_coder`。下面的函数保留 helper 的共享规则和默认选择提示，只调整两个角色的任务说明。
+
+```python
+from opencollab.builtin_workflows import run_dual_coder
+
+async def compatibility_duo(ctx, args):
+    return await run_dual_coder(
+        ctx, args,
+        coder_prompts=(
+            '{rules}\n\nTask\n{goal}\n\n'
+            'Implement the smallest complete fix and run relevant public checks.',
+            '{rules}\n\nTask\n{goal}\n\n'
+            'Inspect callers and compatibility, then implement and verify the fix.\n'
+            'Previously observed public command\n{public_command}',
+        ),
+    )
+```
+
+`coder_prompts` 是两个格式字符串，支持 `rules`、`goal` 和 `public_command`。后者把 A 观察到的命令交给 B。`selector_prompt` 默认为公开的 `CONTRACT_PROMPT`，它接受 `rules`、`goal` 与 `candidates`。更换 `role_rules` 会替换共享角色规则，应用应保留任务需要的执行、安全和证据要求。
+
+需要自己的仲裁器时，`adjudicator` 接收 `ctx` 及关键字 `goal`、`candidate_a`、`candidate_b`、`selector_prompt`、`rules`，异步返回 `(winner, judge_result, reason)`，候选标签使用 `A` 或 `B`。运行仍先执行机械选择，产生待判断分歧时才调用仲裁器。`source_reader`、`physical_source_reader` 和 `source_tracker` 是后端集成的源观察回调。内置 `duo` 已接入完整证据文件、分页读取和对应源追踪，直接使用 helper 的应用需为自己的仲裁材料与后端选择相应连接。
+
 ## 源码依据
 
 [docs/duo.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/duo.md#L5)。
+
+[opencollab/builtin_workflows/_dual_coder.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/builtin_workflows/_dual_coder.py#L128) 提供公开 helper 的实际签名和选择顺序。
 
 ## 相关章节
 

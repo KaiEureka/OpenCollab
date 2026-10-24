@@ -51,6 +51,7 @@
     "python-sdk-entrypoints",
     "base-single2",
     "configuration-precedence",
+    "configuration-reference",
     "provider-endpoint-credentials",
     "model-routing-request-capacity",
     "wire-protocol-streaming",

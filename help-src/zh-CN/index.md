@@ -1,6 +1,6 @@
 # OC 中文帮助中心
 
-OpenCollab 中文帮助中心包含 68 篇指南，按使用目标组织安装、模型配置、团队协作、Workflow、执行环境与结果检查。文档依据 OC main 提交 [`e7946a42`](https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41)，说明该版本的公开接口及运行行为。
+OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装、模型配置、团队协作、Workflow、执行环境与结果检查。文档依据 OC main 提交 [`e7946a42`](https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41)，说明该版本的公开接口及运行行为。
 
 [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab) · [阅读路径](reading-paths.md) · [新用户与技术问题](questions.md)
 
@@ -36,6 +36,7 @@ OpenCollab 中文帮助中心包含 68 篇指南，按使用目标组织安装�
 | 指南 | 解决的问题 |
 | --- | --- |
 | [配置从哪里读取以及哪一项生效](topics/models/configuration-precedence.md) | 解释某项配置为什么生效，并稳定地让 CLI 或 SDK 读取选定配置。 |
+| [配置参数与环境变量速查](topics/models/configuration-reference.md) | 按环境变量、SDK 字段和运行入口查找默认值与详细用法。 |
 | [接入模型端点与认证凭据](topics/models/provider-endpoint-credentials.md) | 将 OpenAI 兼容或原生 Anthropic 端点接入 OpenCollab，并选对模型和认证方式。 |
 | [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) | 让不同角色或进程选择明确后端，并协调同一台机器上的模型请求容量。 |
 | [选择调用协议与流式响应](topics/models/wire-protocol-streaming.md) | 为端点选择正确的 Chat Completions、Responses 或 Anthropic Messages 路径，并配置流式接收。 |

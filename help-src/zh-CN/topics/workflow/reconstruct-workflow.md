@@ -97,6 +97,7 @@ opencollab workflow run reconstruct \
 | `max_iterations` | 50 | 编码迭代上限 |
 | `early_stop` | 5 | 连续晋级达到该值后结束 |
 | `propose_attempts` | 3 | 一批输入提议的尝试上限 |
+| `examples_shown` | 12 | 输入提议角色看到的最近样例数 |
 | `random_share` | 0.0 | 从独立随机源取得的样例比例 |
 | `coverage_gate` | false | 让覆盖类别参与晋级判断 |
 | `memorisation_gate` | false | 识别对已知输入的直接嵌入 |
@@ -104,6 +105,26 @@ opencollab workflow run reconstruct \
 | `domain_check` | false | 检查提议数字范围 |
 
 这些是已有探索策略选项，可按任务选择。启用随机比例时还要提供 `random_inputs(k, exclude)`，返回独立生成且新鲜的输入。`kind` 可为 `list`、`two_lists`、`int`、`pair`、`string`、`points` 或 `other`，配合 `lo`、`hi` 与 `is_float` 描述输入域。
+
+前六个计数参数采用正整数，`random_share` 在 0 到 1 之间，策略开关在 JSON 中使用布尔值。`examples_shown` 缩小提议角色的样例展示窗口，编码角色和候选验证仍使用全部已知样例。
+
+`coverage_gate` 按输入种类检查空值、长度、正负数和重复值等结构类别。相同缺失类别连续阻挡三批后允许继续。`memorisation_gate` 在候选嵌入至少三个已知输入时，先用同一批证据要求重写，最多等待两轮再取得新样例。`complexity_gate` 对复杂度惩罚至少 0.8 的候选继续补样例，前三次暂缓计入晋级。`domain_check` 根据 `lo` 与 `hi` 检查提议中的数值，`kind='other'` 跳过结构覆盖与数值域检查。这些选项影响探索和提前停止，最终评分继续采用应用自己的独立样例。
+
+## 定制绑定与样例记录
+
+`ReconstructionTask.candidate_file` 可把默认 `candidate.py` 改成任务需要的相对路径。`outputs_match(actual, expected)` 定义输出相等规则，适合业务确实允许浮点误差或等价结构的任务。`on_example(input, output, source)` 收到每条实际接纳的样例及其来源，可以接入应用日志。
+
+```python
+observed = []
+
+def record_example(input_value, output_value, source):
+    observed.append({'input': input_value, 'output': output_value, 'source': source})
+
+def numeric_match(actual, expected):
+    return abs(actual - expected) <= 1e-8
+```
+
+数值标量任务可在构造绑定时传入 `outputs_match=numeric_match, on_example=record_example`。列表或嵌套结构应采用匹配自身数据形状的比较函数。随机源收到的 `exclude` 使用输入的字符串表示，生成器可以先过滤已有值，工作流还会校验新输入与等价重复输入。
 
 预算判断在当前候选执行和归档之后进行，便于保留最后一轮工作。`stop_reason` 可为 `early_stop`、`max_iterations`、`proposer_failed` 或 `budget_exhausted`。输出还包含迭代次数、晋级次数、已知样例、逐轮事件，以及 `final_program` 和 `final_score`。阶段得分根据已知样例和协议惩罚计算，独立隐藏测试的评分由调用方在运行结束后执行。
 

@@ -6,6 +6,8 @@
 
 | 问题 | 对应指南 |
 | --- | --- |
+| 哪些环境变量和 SDK 字段控制模型与运行参数 | [配置参数与环境变量速查](topics/models/configuration-reference.md) |
+| 如何查看各项配置的内置默认值 | [配置参数与环境变量速查](topics/models/configuration-reference.md) |
 | OC 本身提供什么，为何还需要模型服务 | [先认识 Agent、Session、Team 和 Workflow](topics/orientation/concepts-and-modes.md) |
 | 默认终端启动的是一个 Agent 还是一个团队 | [默认终端交互与命令参数位置](topics/setup/interactive-cli-controls.md) |
 | Base、Single2、Team 和 Workflow 怎么选 | [按任务选择默认 CLI、Base、Team 或 Workflow](topics/orientation/choose-working-mode.md) |

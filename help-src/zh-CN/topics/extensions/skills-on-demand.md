@@ -54,6 +54,22 @@ description: 在用户要求审查代码变更时，核对正常使用影响与�
 
 在 Team 角色的 `tools` 中加入 `use_skill`，同时提供该角色实际需要的读取、编辑或命令工具。启动时，接受的技能目录进入系统提示。模型选择技能后，以名称调用 `use_skill`，获得正文。
 
+```yaml
+entry: reviewer
+roles:
+  reviewer:
+    prompt: 审阅给定变更，任务符合 review-change 时加载对应技能。
+    tools: [file_read, grep, git_diff, use_skill]
+```
+
+角色请求技能时提交下面的参数。名称来自已加载的目录摘要，查询失败会返回当前可用名称，便于检查拼写和加载结果。
+
+```json
+{"name":"review-change"}
+```
+
+辅助文件按普通工作区文件读取，例如让角色用 `file_read` 打开 `skills/review-change/templates/report.md`。脚本由角色已授权的命令工具执行，`use_skill` 的直接结果是 `SKILL.md` 正文。
+
 技能正文会作为工具结果进入当前会话，遵循普通上下文整形规则。它不会永久固定在每一轮请求里。新增或修改技能目录后重新启动运行，可以获得新的目录信息。
 
 ## 技能与程序接口的关系

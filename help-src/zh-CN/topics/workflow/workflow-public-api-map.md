@@ -126,9 +126,17 @@ async def run_example(workspace):
 
 `opencollab.tools` 导出 `Tool`、`VerificationTool`、`builtin_tools`、`evidence_tools` 及证据辅助函数。内置工具名称为 `bash`、`file_read`、`file_write`、`apply_patch`、`git_diff`、`grep` 和 `submit`，可按角色组合。`VerificationTool` 额外提供 `verified_targets`，验证应通过真实工具执行获得。
 
+查询默认配置时，`profile_tool_names(profile)` 返回工具名元组，`profile_tool_limits(profile)` 返回独立的上限字典。`BuiltinToolName` 是公开工具名类型。`BashEvidence` 包装 Bash 并保留真实测试记录，`has_pass_evidence(returncode, output, runner=..., target=...)` 解析相应 runner 的通过证据。可配置输出字段与完整构造例子见[选择 Agent 能使用的工具](../extensions/tool-selection.md)。自定义业务操作见[把自己的函数接成工具](../extensions/custom-tools.md)。
+
 `opencollab.environments` 导出环境协议与 Docker 配置。自定义 `EnvironmentPool` 提供 `acquire`、`release_env`、`release` 和 `adopt`，其工厂按运行及策略创建资源。`opencollab.builtin_workflows` 导出 Duo、Weave、Reconstruct，以及 Weave 适配器、状态和 Reconstruct 绑定类型。
 
+`get_builtin_workflows()` 返回包含 `duo`、`weave`、`reconstruct` 的新注册表，可用 `list_specs()` 读取名称、说明和阶段。Duo 的 `run_dual_coder` 与 `CONTRACT_PROMPT` 供应用定制角色及仲裁，示例见[Duo 双候选方案](duo-workflow.md)。Weave 的 `WeaveGroup`、`WeaveCheck`、`WeaveConfig`、`WeaveState`、`WeaveAdapter`、`plan_weave_groups` 和 `run_weave` 用于自定义分组、验证及状态继续。Reconstruct 的 `ReconstructionTask` 与 `register_task` 连接隐藏程序和候选执行器。
+
 最终 `RunResult` 的字段为 `output`、`status`、`reason`、`tokens`、`artifacts`、`error`、`metrics`、`agent_failures`。`ok` 对应 completed，`raise_for_status()` 可转成带结果的 `RunError`。`RunControl`、`BudgetSnapshot`、`BudgetDecision` 和 `RunEvent` 从 `opencollab` 导入，用于单次会话预算策略和观察。
+
+`opencollab.sdk` 与顶层 `opencollab` 提供同一组八个公开入口，即 `OpenCollab`、`workflow`、`RunResult`、`RunError`、`RunControl`、`BudgetSnapshot`、`BudgetDecision` 和 `RunEvent`。`opencollab.workflows` 的公开导出是 `workflow`、`WorkflowContext`、`WorkflowAgentResult` 与 `CandidateRun`。普通函数可以直接交给 SDK，按名称发现的工作流则通过 `@workflow` 注册。
+
+评测集成采用上述 SDK、环境和验证工具入口。[配置评测运行时](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md) 是这些入口的使用文档。数据集加载、隐藏测试和正式评分由外部评测包负责，完整说明见[区分任务交付检查与正式评测](../observability/evaluation-boundary.md)。
 
 ## 源码依据
 
