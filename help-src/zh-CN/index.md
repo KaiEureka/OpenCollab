@@ -4,7 +4,7 @@ OpenCollab（OC）是一个多 Agent 编码框架：同一套 Session 与工具�
 
 这里的指南按"你想做什么"来组织。第一次接触 OC，建议先读[先认识 Agent、Session、Team 和 Workflow](topics/orientation/concepts-and-modes.md)，再照着[在自己的项目中完成第一次运行](topics/setup/first-run-workspace.md)动手试一遍，大约十几分钟。遇到具体问题，可以直接用页面上方的搜索，或者翻[问题导航](questions.md)。
 
-本 Wiki 依据 [main 提交 0c47f74a](https://github.com/RISE-X-Lab/OpenCollab/tree/0c47f74a27441888286a22012b23b658185f8b8f) 核对，该源码的包版本为 0.9.5。使用 VM 和运行时能力查询时，按 [源码安装指南](topics/setup/install-source-checkout.md) 安装这一提交。
+本 Wiki 按 [main 分支提交 0c47f74a](https://github.com/RISE-X-Lab/OpenCollab/tree/0c47f74a27441888286a22012b23b658185f8b8f) 的源码核对。这份源码的包版本号仍是 0.9.5。如果你要用 VM 隔离，或让成员用 `manage_workflow describe` 查询可用能力，请按 [源码安装指南](topics/setup/install-source-checkout.md) 安装这个提交。
 
 [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab) · [阅读路径](reading-paths.md) · [问题导航](questions.md)
 
@@ -74,7 +74,7 @@ OC 是什么，几种用法有什么区别。
 | [默认隔离与单次覆盖怎么配](topics/isolation/isolation-configuration.md) | 设置整次运行的默认隔离方式，并在某个角色或某次调用上单独改掉它。 |
 | [让多个任务在独立工作区改代码](topics/isolation/worktree-workspaces.md) | 让几个任务同时改同一个项目而不互相踩到，并知道改动最后去了哪里。 |
 | [在容器中运行任务](topics/isolation/docker-isolation.md) | 让 Agent 在 Docker 容器里执行命令，并设置共用范围、网络和资源上限。 |
-| [在现有 Linux VM 中运行任务](topics/isolation/vm-environment-extension.md) | 配好已有虚拟机，让一组会话共用一台机器或每个会话独占一台，并在结束后收回结果。 |
+| [在现有 Linux VM 中运行任务](topics/isolation/vm-environment-extension.md) | 把你已有的 Linux 虚拟机交给 Agent 用。可以一次运行共用一台，也可以每个会话各占一台。运行结束后导出改动并重置机器。 |
 | [让任务在指定目录或现有容器里执行](topics/isolation/execution-environments.md) | 把 Agent 的读写文件和执行命令接到你指定的目录或容器，并弄清谁负责清理。 |
 | [接入自己的执行环境](topics/isolation/custom-environment-providers.md) | 注册一个自己的隔离策略名，让 Agent 跑在你提供的环境里，并负责好分配和清理。 |
 | [把候选结果采纳到交付目录](topics/isolation/candidate-delivery.md) | Agent 在隔离环境里改的代码不会自动回到项目，本文教你挑一个结果并采纳回来。 |

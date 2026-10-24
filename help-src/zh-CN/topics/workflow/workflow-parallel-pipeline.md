@@ -117,9 +117,11 @@ async def prepare_then_explain(ctx, args):
 
 建议把大量输入交给集合方法，运行时会按 `task_concurrency` 维持有限数量的 worker。如果你自己对大量调用用 `asyncio.gather`，创建多少宿主任务由你负责；不过 `ctx` 的会话上限仍然生效。
 
-成员自编 DW 使用 `manage_workflow launch` 的 `concurrency` 设置子运行的活跃会话容量，集合容量默认沿用它。成员可以现场写出任务列表再交给 `ctx.parallel`，完整的三任务例子见[成员自编 DW 教程](member-authored-workflow.md)。
+如果是成员自编的 DW（用 `manage_workflow` 启动的子 Workflow），并发上限由 `launch` 的 `concurrency` 参数决定。它限制子运行里同时活跃的 Agent 会话，集合方法的任务容量默认也用这个值。成员可以现场写出任务列表，再交给 `ctx.parallel`。完整的三任务例子见[成员自编 DW 教程](member-authored-workflow.md)。
 
-宿主 `request_capacity` 限制模型客户端同时执行的原生请求，通过共享 `request_pool` 配置。多个 Team 与 DW 可以共享这项服务容量，各工作流的局部容量继续分别生效。扩大输入前，可以测量小任务的实际耗时和用量，再按服务能力选择并发。
+另一层限制在模型服务这边。宿主用 `request_capacity` 限制模型客户端同时发出的原生请求，配合共享的 `request_pool` 目录使用。多个 Team 和 DW 可以共用这份容量，同时各工作流自己的并发上限照样生效。
+
+扩大输入规模前，建议先跑一个小任务，量一下实际耗时和用量，再按服务能力选并发数。
 
 ## 预算分配
 

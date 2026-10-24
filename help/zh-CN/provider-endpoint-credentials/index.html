@@ -165,7 +165,13 @@ print(client.configuration[&quot;model&quot;])
 </ul>
 <p>报告问题时，记下状态码、出错阶段，以及去掉凭据后的有效配置。</p>
 <h2 id="成员自编-workflow-与远端环境">成员自编 Workflow 与远端环境</h2>
-<p>通过 <code>manage_workflow</code> 启动源码时，桥接层的模型端点、认证凭据和请求槽位保留在控制端，子进程接收模型名称和非敏感生成设置。工作区文件会按快照规则复制，把认证 env 文件放在项目之外，并通过 <code>OPENCOLLAB_CONFIG_FILE</code> 指定控制端的绝对路径。SSH 私钥由控制端 OpenSSH 使用，<code>identity_file</code> 引用该本地文件。操作步骤见 <a href="../vm-environment-extension/index.html">VM 指南</a>。</p>
+<p>成员用 <code>manage_workflow</code> 启动自己写的子 Workflow 时，子 Workflow 跑在一个单独的 Python 子进程里。模型请求由控制端（运行 OC 主进程的机器）转发，所以端点地址、API 密钥和请求槽位都只留在控制端。子进程只拿到模型名称和温度、思考设置这类不敏感的生成参数。</p>
+<p>注意下面两点：</p>
+<ol>
+<li>OC 会按快照规则把工作区文件复制给子运行。所以不要把含密钥的 env 文件放进项目目录。把它放在项目外面，再用 <code>OPENCOLLAB_CONFIG_FILE</code> 指向它在控制端的绝对路径。</li>
+<li>连接 VM 的 SSH 私钥只由控制端的 OpenSSH 使用。<code>identity_file</code> 填控制端本地的私钥路径，私钥不会复制到来宾机。</li>
+</ol>
+<p>操作步骤见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L31">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/cli/main.py#L61">opencollab/adapters/cli/main.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/config.py#L124">opencollab/bootstrap/config.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/model-routing.md#L47">docs/model-routing.md</a></p>
 <h2 id="相关指南">相关指南</h2>

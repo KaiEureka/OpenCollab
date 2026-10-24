@@ -123,16 +123,60 @@ topology:
 <li><code>--no-worktrees</code> 对应原来那种子成员目录选择方式。团队文件里显式写的策略，仍按上面的优先级生效。</li>
 </ul>
 <h2 id="vm-配置与子运行继承">VM 配置与子运行继承</h2>
-<p>SDK 构造参数 <code>config={&quot;vm&quot;: profile}</code> 注册 <code>vm-group</code> 和 <code>vm-session</code>，其中 <code>profile</code> 包含来宾资源、控制端共享 SQLite 路径、容量等待和清理时间。可直接修改的 JSON 与完整调用见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。显式传入的 <code>environment_providers</code> 同名工厂优先。</p>
-<p><code>group</code> 是每次运行中对应环境池的范围。成员启动自己编写的子 Workflow 后，子运行拥有自己的环境池。需要让子 Agent 留在成员当前 VM 中时，在 <code>manage_workflow</code> 的 <code>launch</code> 中设置 <code>isolation=&quot;worktree&quot;</code>。省略 <code>launch.isolation</code> 时继承成员策略，单次子调用仍可覆盖。使用 <code>vm-session</code> 申请其他来宾时，需要父 VM 之外的空闲机器。示例见 <a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>。</p>
-<p>VM profile 的 <code>cleanup_timeout</code> 默认为 <code>60</code> 秒，显式 SDK 运行参数与子运行 <code>launch.cleanup_timeout</code> 优先。它控制清理等待时间，机器容量等待由 <code>wait_timeout</code> 单独配置。</p>
+<p>在 SDK 里写 <code>OpenCollab(&quot;.&quot;, config={&quot;vm&quot;: profile})</code>，OC 就会注册 <code>vm-group</code> 和 <code>vm-session</code> 两个策略名。<code>profile</code> 是一个字典，写明：</p>
+<ul>
+<li>有哪些来宾 VM 可用；</li>
+<li>控制端用哪个 SQLite 文件记录机器占用；</li>
+<li>没有空闲机器时等多久（<code>wait_timeout</code>）；</li>
+<li>运行结束后等清理多久（<code>cleanup_timeout</code>）。</li>
+</ul>
+<p>可以直接改的 JSON 和完整调用见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。如果 <code>environment_providers</code> 里也注册了同名工厂，以 <code>environment_providers</code> 为准。</p>
+<p>子 Workflow 怎么继承策略：</p>
+<ol>
+<li><code>group</code> 的范围是一次运行里的一个环境池。成员用 <code>manage_workflow</code> 启动自己写的子 Workflow 时，子运行有自己的环境池。</li>
+<li>想让子 Agent 留在成员当前的 VM 里，在 <code>manage_workflow</code> 的 <code>launch</code> 里写 <code>isolation=&quot;worktree&quot;</code>。</li>
+<li>不写 <code>launch.isolation</code> 时，子运行继承成员的策略。子 Workflow 里单次调用仍可以再覆盖。</li>
+<li>单次调用用 <code>vm-session</code> 申请另一台来宾时，池里要有父 VM 之外的空闲机器。</li>
+</ol>
+<p>示例见 <a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>。</p>
+<p>两个超时别混：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>管什么</th>
+<th>默认值</th>
+<th>谁能覆盖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cleanup_timeout</code></td>
+<td>运行结束后等清理多久</td>
+<td><code>60</code> 秒</td>
+<td>SDK 运行参数、子运行 <code>launch.cleanup_timeout</code></td>
+</tr>
+<tr>
+<td><code>wait_timeout</code></td>
+<td>没有空闲机器时等多久</td>
+<td><code>0</code>，立刻报错</td>
+<td>在 VM profile 或 <code>vm_isolation_provider</code> 参数里设置</td>
+</tr>
+</tbody>
+</table>
 <h2 id="命令行">命令行</h2>
 <ul>
 <li>Workflow：<code>workflow run NAME</code> 后面用 <code>--isolation</code> 指定策略名，例如 <code>shared</code>、<code>worktree</code>、<code>vm-group</code> 或 <code>vm-session</code>。</li>
 <li>Team：根命令从 <code>--team-config team.yaml</code> 读取隔离配置。</li>
 <li>需要 DockerOptions 或自定义环境提供器时，用 SDK 组合。见 <a href="../docker-isolation/index.html">在容器中运行任务</a>。</li>
 </ul>
-<p>VM CLI 从 <code>OPENCOLLAB_VM</code> 读取完整 JSON，Workflow 可用 <code>--cleanup-timeout</code> 覆盖清理时间。Team 文件中的策略使用同一份 VM 配置。来宾准备和 JSON 示例见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。</p>
+<p>用 VM 策略时：</p>
+<ul>
+<li>CLI 从环境变量 <code>OPENCOLLAB_VM</code> 读完整的 VM 配置 JSON。</li>
+<li>Workflow 命令可以用 <code>--cleanup-timeout</code> 覆盖清理等待时间。</li>
+<li>Team 文件里写的 VM 策略，用的也是这份配置。</li>
+</ul>
+<p>来宾怎么准备、JSON 怎么写，见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。</p>
 <h2 id="设置后怎样确认生效">设置后怎样确认生效</h2>
 <ol>
 <li>派一个很小的读取任务，让它报告实际工作目录和目标文件路径。</li>
@@ -146,8 +190,8 @@ topology:
 <li>如果策略名报错：名字只能用字母、数字、连字符和下划线，首尾带空格也会报错。</li>
 <li>如果提示该策略需要 environment provider：名字格式没问题，但还没注册对应的提供器。见 <a href="../custom-environment-providers/index.html">接入自己的执行环境</a>。</li>
 <li>如果环境申请成功了，却在准备工作区时失败：比如普通工作树的源目录有未提交改动。检查工作区内容和走的是哪种创建方式，处理方法见 <a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a>。</li>
+<li>如果选了 <code>vm-group</code> 或 <code>vm-session</code>，却报错要求提供 <code>config.vm</code> 或 environment provider：说明还没配 VM 资源。在 SDK 里传 <code>config={&quot;vm&quot;: ...}</code>，或在命令行设置 <code>OPENCOLLAB_VM</code>。</li>
 </ul>
-<p>选择 VM 策略却缺少资源时，错误会要求提供 <code>config.vm</code> 或对应环境提供器。</p>
 <h2 id="参考">参考</h2>
 <p>这些规则分别来自<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/bootstrap/isolation.py">入口策略解析</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/application/isolation.py">策略名解析</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/docs/session-isolation.zh-CN.md">隔离指南</a>。</p>
 

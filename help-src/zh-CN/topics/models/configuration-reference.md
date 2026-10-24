@@ -136,7 +136,16 @@ for name in ("model", "budget", "max_output_tokens", "llm_timeout"):
 
 ## VM 资源配置
 
-`OPENCOLLAB_VM` 对应 SDK `config["vm"]`，默认未设置，传入 JSON 后注册 `vm-group` 和 `vm-session`。字段包含 `resources`、本地绝对路径 `lease_database`、默认 `0` 秒的 `wait_timeout` 和默认 `60` 秒的 `cleanup_timeout`。JSON 中的 `null` 等待时限表示等待空闲资源或取消。完整字段与重置要求见 [VM 指南](../isolation/vm-environment-extension.md)。
+环境变量 `OPENCOLLAB_VM` 对应 SDK 的 `config["vm"]`，默认不设置。你给它一段 JSON 后，OC 会注册 `vm-group` 和 `vm-session` 两种隔离策略。
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `resources` | 必填 | 可用的 VM 列表，至少一台。 |
+| `lease_database` | 必填 | 记录 VM 租用情况的本地文件，必须是绝对路径。 |
+| `wait_timeout` | `0` 秒 | 没有空闲 VM 时等多久。`0` 表示不等，直接抛出 `VMCapacityError`。正数是最多等待的秒数。JSON 里写 `null` 表示一直等到有空闲 VM 或任务被取消。 |
+| `cleanup_timeout` | `60` 秒 | 运行结束后等待 VM 清理完成的时间。 |
+
+完整字段和重置要求见 [在现有 Linux VM 中运行任务](../isolation/vm-environment-extension.md)。
 
 ## 来源
 

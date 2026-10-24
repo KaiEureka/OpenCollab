@@ -80,7 +80,8 @@ client = OpenCollab(&quot;.&quot;, environment_providers={
 </ul>
 <p>策略名要合法，并且和注册的键一致。</p>
 <h2 id="使用现有-vm-提供器">使用现有 VM 提供器</h2>
-<p>已有 Linux VM 可以使用内置 <code>vm_isolation_provider</code>。下面的工厂与 Docker 工厂接受同一组运行参数，可按需要注册策略名。连接、目录和管理员重置程序应先按 <a href="../vm-environment-extension/index.html">VM 指南</a> 准备。</p>
+<p>如果你有现成的 Linux VM，可以直接用内置的 <code>vm_isolation_provider</code>，不用自己写环境池。它返回的工厂和 Docker 工厂收同一组运行参数，你可以用任意策略名注册它。</p>
+<p>注册前，先按 <a href="../vm-environment-extension/index.html">VM 指南</a> 准备好 SSH 连接、来宾目录和管理员的重置程序。</p>
 <pre><code class="language-python">from opencollab import OpenCollab
 from opencollab.environments import VMConnection, VMResource, vm_isolation_provider
 
@@ -105,8 +106,15 @@ client = OpenCollab(&quot;.&quot;, environment_providers={
     ),
 })
 </code></pre>
-<p>之后调用 <code>await client.workflow(flow, inputs, isolation=&quot;vm-group&quot;, cleanup_timeout=60)</code>。显式提供器模式由运行参数设置清理等待时间。需要通过 SDK、CLI 和 Team 共用可序列化配置时，使用 <code>config[&quot;vm&quot;]</code> 或 <code>OPENCOLLAB_VM</code>，其中 <code>cleanup_timeout</code> 默认是 <code>60</code> 秒。</p>
-<p>同一控制主机的进程通过同一个本地 SQLite 文件协调 VM 租约。多个控制主机共用机器池时，可以把外部分配服务接成自己的 EnvironmentPool，由服务维护跨机器分配与归还。稳定资源 ID 应与实际机器对应。</p>
+<p>使用：<code>await client.workflow(flow, inputs, isolation=&quot;vm-group&quot;, cleanup_timeout=60)</code>。</p>
+<p>要注意：</p>
+<ul>
+<li>直接注册提供器时，清理等待时间要在运行参数 <code>cleanup_timeout</code> 里写。</li>
+<li>想让 SDK、CLI 和 Team 共用一份可序列化配置，就改用 <code>config[&quot;vm&quot;]</code> 或环境变量 <code>OPENCOLLAB_VM</code>。这种方式下 <code>cleanup_timeout</code> 默认是 <code>60</code> 秒。</li>
+<li>同一台控制主机上的进程，靠同一个本地 SQLite 文件（<code>lease_database</code>）协调谁在用哪台 VM。</li>
+<li>多台控制主机共用一个机器池时，SQLite 文件不够用。你可以把外部分配服务包成自己的 EnvironmentPool，由这个服务负责跨机器分配和归还。</li>
+<li><code>resource_id</code> 要稳定，一个 ID 对应一台真实机器。</li>
+</ul>
 <h2 id="工厂收到的参数">工厂收到的参数</h2>
 <table>
 <thead>
@@ -194,11 +202,12 @@ client = OpenCollab(&quot;.&quot;, environment_providers={
 </ol>
 <h2 id="常见问题">常见问题</h2>
 <ul>
-<li>如果提示该策略需要 environment provider：说明这个策略名还没注册。检查 <code>environment_providers</code> 的键和 <code>isolation</code> 写的名字是否一致。
-内置 VM 提供器已经实现机器租约、项目复制、内容导出与归还重置，操作步骤见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。接入其他远端服务时，按服务的资源所有权完成对应生命周期。</li>
+<li>如果提示该策略需要 environment provider：说明这个策略名还没注册。检查 <code>environment_providers</code> 的键和 <code>isolation</code> 写的名字是否一致。</li>
+<li>如果想用虚拟机：内置 VM 提供器已经做好了领取机器、复制项目、导出改动和归还前重置，步骤见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。</li>
+<li>如果要接其他远端服务：看这个服务实际管哪些资源，你的提供器就负责把这些资源的生命周期走完。</li>
 </ul>
 <h2 id="参考">参考</h2>
-<p>环境池的组合方式见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/adapters/session_environments.py">策略池实现</a>。已有环境由谁负责清理，见 <a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a>。</p>
+<p>环境池的组合方式见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/adapters/session_environments.py">策略池实现</a>。已有环境由谁负责清理，见 <a href="../execution-environments/index.html">让任务在指定目录、容器或 VM 中执行</a>。</p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/custom-environment-providers.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/0c47f74a27441888286a22012b23b658185f8b8f">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>

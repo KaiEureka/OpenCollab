@@ -141,7 +141,7 @@ OC 内置的文件工具是 `file_read`、`grep`、`file_write`、`apply_patch` 
 
 如果出现"Agent 已经改好，但源目录没变"：先看当前环境和候选的交付状态，再怀疑编辑工具。隔离任务在自己的目录里修改后，要通过采用或恢复补丁把结果带回目标目录。
 
-`FileWriteTool(allow_create=False)` 的模型可见 schema 会列出 `str_replace`。自编 Workflow 继承父成员的创建限制后，子会话的工具说明随实际权限更新。
+如果你用 `FileWriteTool(allow_create=False)` 禁止创建文件，模型看到的工具 schema 里 `mode` 只剩 `str_replace` 一个选项。成员自己写的子 Workflow 会继承父成员的这项限制。子会话里的工具说明也会同步改成只能编辑已有文件。
 
 ## 源码与进一步阅读
 

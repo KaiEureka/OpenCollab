@@ -132,9 +132,24 @@ asyncio.run(main())
 
 ## VM 清理等待
 
-配置 VM profile 后，Team、Workflow、CLI 和成员自编子运行采用 `vm.cleanup_timeout`，默认 60 秒。SDK 调用或子运行 `launch` 中的显式值优先。未配置 VM profile 时，Team 默认 10 秒，Workflow 默认 2 秒。`agent()` 的默认清理等待仍为 2 秒。
+VM 清理比本地清理慢，所以配置了 VM（`config["vm"]` 或 `OPENCOLLAB_VM`）后，清理等待时间改用 `vm.cleanup_timeout`，默认 60 秒。
 
-VM 清理停止命令、导出产物并执行管理员重置，完成后释放租约。失败时保留现场供恢复，同一对象可重试清理。控制进程重启后的资源恢复见 [VM 指南](../isolation/vm-environment-extension.md)。
+| 情况 | 清理等待时间 |
+| --- | --- |
+| 配置了 VM，Team、Workflow、CLI 或成员自编子运行 | `vm.cleanup_timeout`，默认 60 秒 |
+| SDK 调用或子运行 `launch` 显式传了值 | 用显式值 |
+| 没配置 VM 的 Team | 10 秒 |
+| 没配置 VM 的 Workflow | 2 秒 |
+| `agent()` | 2 秒 |
+
+OC 清理一台 VM 时按顺序做这几件事：
+
+1. 停止还在运行的命令。
+2. 把改动和产物导出到控制端。
+3. 运行你配置的重置命令，把 VM 恢复到干净状态。
+4. 释放这台 VM 的租约，让别的会话可以领用。
+
+如果某一步失败，OC 会保留租约和现场，方便你排查。对同一个对象再调用一次清理即可重试。控制进程重启后怎样回收资源，见 [在现有 Linux VM 中运行任务](../isolation/vm-environment-extension.md)。
 
 ## 来源
 

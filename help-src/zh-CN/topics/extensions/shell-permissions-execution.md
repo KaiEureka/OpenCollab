@@ -106,7 +106,7 @@ OC 的 `bash` 工具在 Agent 绑定的执行环境里运行命令：本地环�
 
 保留原命令、退出状态和相关环境设置，比重新启动整个任务更容易定位原因。
 
-VM 策略下，命令由配置的 SSH 账号在来宾执行，网络和系统权限由来宾环境决定。成员自编 DW 的 Python 子进程也位于成员的执行环境中，准备方式见 [VM 指南](../isolation/vm-environment-extension.md)。
+如果隔离策略是 VM（`vm-group` 或 `vm-session`），OC 会通过 SSH 用你配置的账号在来宾机里执行命令。命令能访问哪些网络、有哪些系统权限，由来宾机自己的设置决定，OC 不另加限制。成员自己写的子 Workflow 会启动一个 Python 子进程，这个进程也运行在成员的执行环境里。来宾机的准备步骤见 [在现有 Linux VM 中运行任务](../isolation/vm-environment-extension.md)。
 
 ## 源码与进一步阅读
 

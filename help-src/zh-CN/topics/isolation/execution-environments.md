@@ -123,7 +123,11 @@ print(probe.returncode, probe.stdout)
 
 ## 连接已有 Linux VM 工作区
 
-需要借用来宾上已经存在的项目目录时，构造 `VMEnvironment` 并传给 SDK。Linux、SSH、同版本 OpenCollab 和私有状态目录的准备见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。下面的连接值应替换成实际资源，来宾目录要已经存在。
+如果项目已经放在某台 Linux VM（下文叫来宾）上，你想让 Agent 直接在那个目录里干活，就构造一个 `VMEnvironment` 传给 SDK。OC 通过 SSH 在来宾上读写文件、执行命令。
+
+开始前要准备好：来宾上的 Linux 和 SSH、与控制端同版本的 OpenCollab、一个私有状态目录。步骤见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
+
+下面的连接值换成你的。来宾上的项目目录要已经存在。
 
 ```python
 import asyncio
@@ -156,7 +160,12 @@ async def main():
 asyncio.run(main())
 ```
 
-这个入口直接访问来宾目录，调用方持有连接环境并负责清理。`cleanup()` 停止环境拥有的操作、回收其临时文件，来宾继续运行，项目和操作记录继续保存。需要按会话分配机器、复制源项目并在归还时重置来宾时，使用 `config["vm"]` 和 `vm-group`、`vm-session` 策略。
+几点说明：
+
+- 这种方式直接改来宾上的项目目录，不复制。
+- 环境对象归你持有，清理也由你负责。
+- `cleanup()` 会停止这个环境发起的操作，删掉它的临时文件。来宾继续运行，项目和操作记录都保留。
+- 如果你要的是“每个会话领一台机器、先复制项目、用完重置来宾”，就别手动建 `VMEnvironment`，改用 `config["vm"]` 加 `vm-group` 或 `vm-session` 策略。
 
 ## 连接后先做一次检查
 
@@ -169,7 +178,7 @@ asyncio.run(main())
 
 服务可以把宿主上的项目作为客户端的 `workspace`，把容器里的工作目录交给 environment。这样，配置发现在宿主侧进行，工具执行在容器里进行，各有明确位置。
 
-服务在容器或 VM 中运行子 Agent 时，`worktree` 策略继续使用父机器。需要为子会话分配其他容器或 VM 时，选择 `docker-session` 或 `vm-session` 并准备资源，见 [在容器中运行任务](docker-isolation.md) 和 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
+如果服务在容器或 VM 里运行子 Agent，`worktree` 策略会继续用父环境所在的那台机器。想让每个子会话拿到另一个容器或 VM，就选 `docker-session` 或 `vm-session`，并准备好资源。见 [在容器中运行任务](docker-isolation.md) 和 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
 
 ## 谁负责清理
 
@@ -178,7 +187,7 @@ asyncio.run(main())
 | 你传给 SDK 的 environment | 你。SDK 只是借用，运行结束后由你清理 |
 | 连接的已有容器 | 环境只管理本次发出的命令和临时资源，容器本身仍由创建它的服务管理 |
 | 新建的容器 | 拥有它的一方，在导出交付之后清理 |
-| 直接传入的 `VMEnvironment` | 调用方停止拥有的操作并回收临时文件，来宾与项目继续保存 |
+| 你直接传入的 `VMEnvironment` | 你。`cleanup()` 停止它发起的操作、删掉临时文件，来宾和项目都保留 |
 
 你自己提供环境时，SDK 结果里表示“环境活动已结束”的指标是 `None`。由你清理环境并确认操作已停止。会话执行和持久化是否完成，看 `session_quiesced`。详见 [把 OpenCollab 接进自己的服务](../architecture/service-integration-lifecycle.md)。
 

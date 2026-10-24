@@ -63,9 +63,14 @@ roles:
 </ol>
 <pre><code class="language-json">{&quot;action&quot;: &quot;describe&quot;, &quot;name&quot;: &quot;duo&quot;}
 </code></pre>
-<p>返回 <code>name</code>、<code>description</code>、<code>inputs</code> 和 <code>phases</code>。<code>inputs</code> 来自流程函数的 docstring，缺少 docstring 时采用流程说明。自定义作者在这里提供必填字段、类型和输入示例，成员按所选流程的说明构造 <code>args</code>。Duo、Weave 与 Reconstruct 各自接受不同输入。</p>
+<p>返回值有四个字段：<code>name</code>、<code>description</code>、<code>inputs</code> 和 <code>phases</code>。</p>
+<ul>
+<li><code>inputs</code> 取自流程函数的 docstring。没有 docstring 时，用流程说明代替。</li>
+<li>如果你写的是自定义 Workflow，就在 docstring 里写清必填字段、类型和输入示例。</li>
+<li>成员按 <code>inputs</code> 的说明构造 <code>args</code>。Duo、Weave 和 Reconstruct 要的输入各不相同，所以每次换流程都要先 <code>describe</code>。</li>
+</ul>
 <ol start="4">
-<li>成员按说明执行流程，例如下面的 Duo 调用。</li>
+<li>成员按说明用 <code>run</code> 执行流程。下面是一次 Duo 调用：</li>
 </ol>
 <pre><code class="language-json">{
   &quot;action&quot;: &quot;run&quot;,
@@ -118,7 +123,7 @@ roles:
 </tr>
 </tbody>
 </table>
-<p>工具开放上表中的字段，<code>budget</code> 和 <code>concurrency</code> 用于执行阶段。SDK 的其他运行参数在宿主调用或 Workflow 源代码里设置。</p>
+<p>工具只开放上表这些字段。<code>budget</code> 和 <code>concurrency</code> 只在 <code>run</code> 时起作用。SDK 的其他运行参数，要在宿主调用或 Workflow 源代码里设置。</p>
 <h2 id="运行环境和额度">运行环境和额度</h2>
 <p>子 Workflow 借用调用成员当前的：</p>
 <ul>

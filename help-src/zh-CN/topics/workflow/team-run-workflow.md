@@ -71,9 +71,13 @@ opencollab workflow list --workspace ...
 {"action": "describe", "name": "duo"}
 ```
 
-返回 `name`、`description`、`inputs` 和 `phases`。`inputs` 来自流程函数的 docstring，缺少 docstring 时采用流程说明。自定义作者在这里提供必填字段、类型和输入示例，成员按所选流程的说明构造 `args`。Duo、Weave 与 Reconstruct 各自接受不同输入。
+返回值有四个字段：`name`、`description`、`inputs` 和 `phases`。
 
-4. 成员按说明执行流程，例如下面的 Duo 调用。
+- `inputs` 取自流程函数的 docstring。没有 docstring 时，用流程说明代替。
+- 如果你写的是自定义 Workflow，就在 docstring 里写清必填字段、类型和输入示例。
+- 成员按 `inputs` 的说明构造 `args`。Duo、Weave 和 Reconstruct 要的输入各不相同，所以每次换流程都要先 `describe`。
+
+4. 成员按说明用 `run` 执行流程。下面是一次 Duo 调用：
 
 ```json
 {
@@ -95,7 +99,7 @@ opencollab workflow list --workspace ...
 | `budget` | 可选，正整数 | 成员剩余额度 | 本次上限，与剩余额度取较小值 |
 | `concurrency` | 可选，正整数 | 4 | 限制 Workflow 内同时活跃的 Agent 会话数 |
 
-工具开放上表中的字段，`budget` 和 `concurrency` 用于执行阶段。SDK 的其他运行参数在宿主调用或 Workflow 源代码里设置。
+工具只开放上表这些字段。`budget` 和 `concurrency` 只在 `run` 时起作用。SDK 的其他运行参数，要在宿主调用或 Workflow 源代码里设置。
 
 ## 运行环境和额度
 

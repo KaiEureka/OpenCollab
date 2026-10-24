@@ -124,11 +124,30 @@ await client.team(task, config="team.yaml", isolation="docker-session")
 
 ## VM 配置与子运行继承
 
-SDK 构造参数 `config={"vm": profile}` 注册 `vm-group` 和 `vm-session`，其中 `profile` 包含来宾资源、控制端共享 SQLite 路径、容量等待和清理时间。可直接修改的 JSON 与完整调用见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。显式传入的 `environment_providers` 同名工厂优先。
+在 SDK 里写 `OpenCollab(".", config={"vm": profile})`，OC 就会注册 `vm-group` 和 `vm-session` 两个策略名。`profile` 是一个字典，写明：
 
-`group` 是每次运行中对应环境池的范围。成员启动自己编写的子 Workflow 后，子运行拥有自己的环境池。需要让子 Agent 留在成员当前 VM 中时，在 `manage_workflow` 的 `launch` 中设置 `isolation="worktree"`。省略 `launch.isolation` 时继承成员策略，单次子调用仍可覆盖。使用 `vm-session` 申请其他来宾时，需要父 VM 之外的空闲机器。示例见 [让成员编写并管理自己的子 Workflow](../workflow/member-authored-workflow.md)。
+- 有哪些来宾 VM 可用；
+- 控制端用哪个 SQLite 文件记录机器占用；
+- 没有空闲机器时等多久（`wait_timeout`）；
+- 运行结束后等清理多久（`cleanup_timeout`）。
 
-VM profile 的 `cleanup_timeout` 默认为 `60` 秒，显式 SDK 运行参数与子运行 `launch.cleanup_timeout` 优先。它控制清理等待时间，机器容量等待由 `wait_timeout` 单独配置。
+可以直接改的 JSON 和完整调用见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。如果 `environment_providers` 里也注册了同名工厂，以 `environment_providers` 为准。
+
+子 Workflow 怎么继承策略：
+
+1. `group` 的范围是一次运行里的一个环境池。成员用 `manage_workflow` 启动自己写的子 Workflow 时，子运行有自己的环境池。
+2. 想让子 Agent 留在成员当前的 VM 里，在 `manage_workflow` 的 `launch` 里写 `isolation="worktree"`。
+3. 不写 `launch.isolation` 时，子运行继承成员的策略。子 Workflow 里单次调用仍可以再覆盖。
+4. 单次调用用 `vm-session` 申请另一台来宾时，池里要有父 VM 之外的空闲机器。
+
+示例见 [让成员编写并管理自己的子 Workflow](../workflow/member-authored-workflow.md)。
+
+两个超时别混：
+
+| 参数 | 管什么 | 默认值 | 谁能覆盖 |
+| --- | --- | --- | --- |
+| `cleanup_timeout` | 运行结束后等清理多久 | `60` 秒 | SDK 运行参数、子运行 `launch.cleanup_timeout` |
+| `wait_timeout` | 没有空闲机器时等多久 | `0`，立刻报错 | 在 VM profile 或 `vm_isolation_provider` 参数里设置 |
 
 ## 命令行
 
@@ -136,7 +155,13 @@ VM profile 的 `cleanup_timeout` 默认为 `60` 秒，显式 SDK 运行参数与
 - Team：根命令从 `--team-config team.yaml` 读取隔离配置。
 - 需要 DockerOptions 或自定义环境提供器时，用 SDK 组合。见 [在容器中运行任务](docker-isolation.md)。
 
-VM CLI 从 `OPENCOLLAB_VM` 读取完整 JSON，Workflow 可用 `--cleanup-timeout` 覆盖清理时间。Team 文件中的策略使用同一份 VM 配置。来宾准备和 JSON 示例见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
+用 VM 策略时：
+
+- CLI 从环境变量 `OPENCOLLAB_VM` 读完整的 VM 配置 JSON。
+- Workflow 命令可以用 `--cleanup-timeout` 覆盖清理等待时间。
+- Team 文件里写的 VM 策略，用的也是这份配置。
+
+来宾怎么准备、JSON 怎么写，见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
 
 ## 设置后怎样确认生效
 
@@ -152,8 +177,7 @@ VM CLI 从 `OPENCOLLAB_VM` 读取完整 JSON，Workflow 可用 `--cleanup-timeou
 - 如果策略名报错：名字只能用字母、数字、连字符和下划线，首尾带空格也会报错。
 - 如果提示该策略需要 environment provider：名字格式没问题，但还没注册对应的提供器。见 [接入自己的执行环境](custom-environment-providers.md)。
 - 如果环境申请成功了，却在准备工作区时失败：比如普通工作树的源目录有未提交改动。检查工作区内容和走的是哪种创建方式，处理方法见 [让多个任务在独立工作区改代码](worktree-workspaces.md)。
-
-选择 VM 策略却缺少资源时，错误会要求提供 `config.vm` 或对应环境提供器。
+- 如果选了 `vm-group` 或 `vm-session`，却报错要求提供 `config.vm` 或 environment provider：说明还没配 VM 资源。在 SDK 里传 `config={"vm": ...}`，或在命令行设置 `OPENCOLLAB_VM`。
 
 ## 参考
 

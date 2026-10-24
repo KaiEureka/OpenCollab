@@ -156,7 +156,7 @@ from opencollab.environments import DockerMount
 
 - 如果容器里连不上网：默认网络是 `none`。改成 `bridge` 或已有网络名，或者把依赖预装进镜像。
 - 如果补丁导出失败或结果被截断：工作区和容器会被保留，恢复位置带完整容器 ID。按 [找回隔离任务的改动并清理资源](workspace-recovery.md) 先收集改动，再清理资源。完整补丁本来会在运行拥有的容器被移除前捕获。
-- 如果想接一个已经在跑的容器：见 [让任务在指定目录或现有容器里执行](execution-environments.md)。
+- 如果想接一个已经在跑的容器：见 [让任务在指定目录、容器或 VM 中执行](execution-environments.md)。
 
 ## 参考
 

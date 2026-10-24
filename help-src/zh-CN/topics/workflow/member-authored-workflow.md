@@ -3,7 +3,7 @@
   "id": "member-authored-workflow",
   "title": "让成员自己写并运行子 Workflow",
   "category": "workflow",
-  "summary": "成员先发现能力，再现场编写 Python 子 Workflow，管理多个 Agent 的并发、隔离、预算与结果。",
+  "summary": "Team 成员现场写一个 Python 子 Workflow，用 manage_workflow 启动它，再按 id 查看、等待、取结果或停止，可以并行调用多个 Agent。",
   "aliases": [
     "动态工作单元",
     "动态 DW",
@@ -54,17 +54,34 @@
 
 # 让成员自己写并运行子 Workflow
 
-`manage_workflow` 是 OC 给 Team 成员的另一个工具：成员先用文件工具写出一个 Python Workflow 文件，再用 `launch` 启动它。`launch` 立即返回 child id，不阻塞；成员可以继续干别的，之后用 `status`、`wait`、`result`、`stop` 按 id 管理这个子运行。
+`manage_workflow` 是给 Team 成员用的一个工具。Team 成员就是 Team 里的一个 Agent 角色。有了这个工具，成员可以自己写一段 Python Workflow 代码，再把它当作子运行（child run）启动，类似 agent 在运行中自己拼出一个小型编排脚本。
 
-它和 `run_workflow` 的区别：`run_workflow` 只能跑已注册的名称，并且同步等待结束；`manage_workflow` 跑成员现写的代码，异步管理。源文件在成员执行环境里的一个独立 Python 进程中导入，入口函数接收普通的 `ctx` 和 `args`。
+用法分两步：
 
-DW 指由程序安排执行步骤的工作单元。成员可以根据任务现场写出一个 DW，再让其中多个 Agent 分工处理输入。下面先从一个 Agent 的最小例子开始，再扩展为三个任务。
+1. 成员用文件工具写出一个 Python 文件。
+2. 成员调用 `launch` 启动它。`launch` 马上返回一个 child id，不会等子运行结束。之后成员用 `status`、`wait`、`result`、`stop` 按这个 id 管理子运行。
 
-这套用法需要安装源码修订 `0c47f74a` 对应的 OpenCollab。按[从源码安装并核对当前 checkout](../setup/install-source-checkout.md)准备解释器，并以本页源码依据中的完整修订定位代码。包内版本号与已安装源码修订分别核对。
+什么时候用它，什么时候用 `run_workflow`：
+
+| 工具 | 跑什么 | 怎么等 |
+| --- | --- | --- |
+| `run_workflow` | 事先注册好的 Workflow 名称 | 同步等到结束 |
+| `manage_workflow` | 成员现场写的源码 | 异步，按 id 管理 |
+
+OC 会在成员自己的执行环境里起一个独立的 Python 进程，导入这个源文件。入口函数和普通 Workflow 一样，接收 `ctx` 和 `args`。
+
+本页里的 DW（动态工作单元）就是指这样一段由程序安排执行步骤的代码。成员可以按任务现场写一个 DW，让里面的多个 Agent 分工处理输入。下面先讲只调一个 Agent 的最小例子，再扩展到并行跑三个任务。
+
+版本要求：你需要安装源码修订 `0c47f74a` 对应的 OpenCollab。按[从源码安装并核对当前 checkout](../setup/install-source-checkout.md)准备解释器。本页源码依据里的链接带有完整修订号，可以用来定位代码。包内的版本号和已安装的源码修订要分别核对。
 
 ## 最小用法
 
-人类调用方先配置模型服务、额度和执行环境，再授予角色所需工具。模型配置通过控制端进程环境或工作区之外的配置文件提供。项目文件会按快照规则复制到子环境，凭据文件应保存在待复制目录之外。逻辑模型路由、共享请求容量、Docker 镜像与 VM 资源也由调用方准备。
+开始前，你（人类调用方）要先准备好这些东西：
+
+- 模型服务和额度。模型配置放在控制端进程的环境变量里，或者放在工作区之外的配置文件里。
+- 执行环境。如果要用逻辑模型路由、共享请求容量、Docker 镜像或 VM，也由你提前配好。
+- 凭据文件的位置。OC 会按快照规则把项目文件复制到子环境，所以凭据文件不要放在会被复制的目录里。
+- 角色的工具授权，见下一步。
 
 ### 1. 给角色配工具
 
@@ -79,20 +96,33 @@ roles:
 环境要求：
 
 - 目标环境里要有装了 OpenCollab 的 Python。默认解释器是 `python3`，可以用工具参数 `python` 指定别的路径。
-- 工具用成员的 shell 权限执行源代码。在宿主机上执行时，Team 调用方要显式允许 `allow_unisolated_shell`。
-- 容器或 VM 成员在自己的环境里执行源文件。目标解释器需要安装同一 OpenCollab 源码修订，工具原有的进程隔离要求和命令安全检查继续生效。
+- 角色必须有 `bash` 工具。`manage_workflow` 用成员的 shell 权限执行源代码。
+- 在宿主机上直接执行时，Team 调用方要显式允许 `allow_unisolated_shell`。
+- 容器或 VM 成员在自己的环境里执行源文件。那里的解释器也要装同一个 OpenCollab 源码修订。工具原有的进程隔离要求和命令安全检查照常生效。
 
 ### 2. 成员写出 Workflow 文件
 
-成员先读取当前接口和授权。
+成员先调用 `describe`，看看当前能用什么。
 
 ```json
 {"action": "describe"}
 ```
 
-返回值包括默认隔离策略 `default_isolation`、当前配置的 `strategies`、启动条件 `launch_allowed_in_current_environment`、可用工具 `allowed_child_tools`、可通过 `builtin_tools` 构造的 `builtin_child_tools`，以及入口说明和最小源码。成员按这些信息编写代码。策略标记为 `checked_on_allocation`，连接和资源余量在实际分配时检查，读取说明阶段保持现有资源分配。
+返回的字段：
 
-成员用编辑工具在工作区写入 `generated.py`。下面是一个完整的子工作流文件：先算输入的总和，再开一个 Agent 会话。
+| 字段 | 含义 |
+| --- | --- |
+| `default_isolation` | 默认隔离策略 |
+| `strategies` | 当前配置了哪些隔离策略 |
+| `launch_allowed_in_current_environment` | 当前环境能不能 `launch` |
+| `allowed_child_tools` | 子会话可以用哪些工具 |
+| `builtin_child_tools` | 其中哪些可以用 `builtin_tools` 构造 |
+
+返回值里还有入口说明和一段最小源码。成员照着这些信息写代码。
+
+每个策略都标着 `checked_on_allocation`。意思是：`describe` 只列出配置，不占用资源。连接是否可用、资源够不够，要等实际分配时才检查。
+
+然后成员用编辑工具在工作区写入 `generated.py`。下面是一个完整的子 Workflow 文件。它先算出输入的总和，再开一个 Agent 会话解释这个数。
 
 ```python
 from opencollab.tools import builtin_tools
@@ -110,9 +140,9 @@ async def main(ctx, args):
     return {'total': total, 'answer': answer}
 ```
 
-- 文件按 `entry` 加载，默认入口是 `main`。不需要装饰器，装饰器只用于按名称发现。
+- OC 按 `entry` 加载入口函数，默认是 `main`。不需要装饰器。装饰器只在按名称发现 Workflow 时才用。
 - 子会话请求的工具名必须在父成员的可用工具里。
-- 输出上限、shell 隔离要求和文件创建限制，都从父成员继承。
+- 子会话继承父成员的输出上限、shell 隔离要求和文件创建限制。
 
 ### 3. 启动
 
@@ -129,15 +159,27 @@ async def main(ctx, args):
 }
 ```
 
-- `source`：成员工作区里的 Python 文件。
-- `args`：要能跨子进程序列化，用字符串、数字、列表和字典即可。
-- 标准输入传入非敏感生成设置、输入与工具限制。桥接层的模型凭据、端点路由、请求池路径和共享请求名额由宿主管理。
+| 参数 | 说明 |
+| --- | --- |
+| `source` | 成员工作区里的 Python 文件，必填 |
+| `entry` | 入口函数名，默认 `main` |
+| `args` | 传给入口的输入。要能跨进程序列化，用字符串、数字、列表和字典即可 |
+| `python` | 目标环境里的解释器，默认 `python3` |
+| `budget` | 子运行的 token 预算，见[预算](#预算) |
+| `concurrency` | 子运行里同时活跃的 Agent 会话上限，默认 4 |
+| `isolation` | 子运行里 Agent 会话的默认隔离策略。省略时继承成员的策略 |
+| `cleanup_timeout` | 清理宽限秒数，必须是正数。省略时继承父运行配置 |
 
-`isolation` 选择子 Workflow 的默认会话策略，省略时继承成员策略。单次 `ctx.agent` 或 `ctx.agent_run` 可以覆盖它。`cleanup_timeout` 可以在 `launch` 时设置正数清理宽限，省略时继承父运行配置。
+`isolation` 和 `cleanup_timeout` 只能在 `launch` 里用。代码里单次调用 `ctx.agent` 或 `ctx.agent_run` 时，还可以再覆盖 `isolation`。
+
+子进程能拿到什么、拿不到什么：
+
+- OC 通过子进程的标准输入传入非敏感的生成设置、输入和工具限制。
+- 模型凭据、端点路由、请求池路径和共享请求名额留在宿主的桥接层。子进程要请求模型时，经由桥接层交给宿主的模型客户端。
 
 ### 4. 等待结果
 
-之后所有操作都用返回的 id，例如：
+之后的操作都用 `launch` 返回的 id，例如：
 
 ```json
 {"action": "wait", "id": "<child id>", "timeout": 30}
@@ -157,32 +199,40 @@ async def main(ctx, args):
 注意：
 
 - `wait` 超时只是结束这一次等待，子运行还在跑。这时返回记录里的 `result` 可能是空的，要结合 `status` 决定下一步。
-- child id 按调用成员保存。查询和停止均由创建者执行，其他成员通过 Team 已授权的通信关系联系创建者。
+- child id 只属于创建它的成员。只有创建者能查询和停止它。其他成员想操作，要通过 Team 已授权的通信关系联系创建者。
 
-## 进阶 让一个 DW 并行安排三个 Agent
+## 进阶：让一个 DW 并行跑三个 Agent
 
-成员通过 `file_write` 创建工作区内的 `generated.py`，使用 `path="generated.py"`、`mode="create"`，并将下面完整源码放入 `content`。源码由成员按任务编写，`manage_workflow` 负责加载文件和管理运行。
+### 1. 写源码
+
+成员调用 `file_write`，参数是 `path="generated.py"`、`mode="create"`，`content` 放下面的完整源码。源码由成员按任务自己写，`manage_workflow` 只负责加载文件和管理运行。
 
 ```python
 async def main(ctx, args):
+    # 工厂函数让每个任务保留自己的 index 和 task
     def make_task(index, task):
         async def run_one():
             answer = await ctx.agent(
                 task,
                 label=f"task-{index}",
-                tools=[],
+                tools=[],  # 只分析输入文字，不需要工具
             )
             return {"task": task, "answer": answer}
         return run_one
 
     tasks = [make_task(i, task) for i, task in enumerate(args["tasks"])]
-    results = await ctx.parallel(tasks)
+    results = await ctx.parallel(tasks)  # 结果按输入顺序返回
     return {"results": results, "spent_tokens": ctx.tokens_spent()}
 ```
 
-入口默认名为 `main`，接收 `ctx` 和 JSON 对象 `args`，返回可 JSON 序列化的值。按源文件启动时可以直接指定异步函数。`ctx.parallel` 接收无参异步任务函数，工厂函数让每个任务保留自己的输入和索引。这里每个任务创建一个新 Agent 会话，`tools=[]` 适合只分析输入文字的任务。返回列表保持输入顺序。
+要点：
 
-成员再用下面的参数启动文件。
+- 入口默认叫 `main`，接收 `ctx` 和 JSON 对象 `args`，返回值要能 JSON 序列化。按源文件启动时，可以直接指定一个异步函数作为入口。
+- `ctx.parallel` 接收一组无参的异步函数。
+- 每个任务都会开一个新的 Agent 会话。
+- 返回的列表保持输入顺序。
+
+### 2. 启动
 
 ```json
 {
@@ -203,11 +253,26 @@ async def main(ctx, args):
 }
 ```
 
-`source` 必须是成员工作区内的 Python 文件。`entry` 选择文件内入口，`args` 提供运行输入。`concurrency=2` 让这个 DW 同时最多有两个活跃 Agent 会话，集合任务容量也沿用这个值。三个输入依次填入可用容量。后续处理一百项输入时，成员可以把一百项任务交给同一段代码，并按预算和服务容量选择并发数。
+`concurrency=2` 表示这个 DW 里同时最多有两个活跃的 Agent 会话。`ctx.parallel` 的任务容量也用这个值。所以三个任务会先跑两个，空出位置后再跑第三个。
 
-`isolation` 选择子 Workflow 的默认会话环境，省略时继承成员策略。单次 `ctx.agent` 或 `ctx.agent_run` 还能覆盖它。当前配置可以提供 `shared`、`worktree`、`docker-group`、`docker-session`、`vm-group`、`vm-session` 和自定义名称，以 `describe` 返回的目录为准。`cleanup_timeout` 可在 `launch` 时设置正数清理宽限，省略时继承父运行配置。
+同一段代码也能处理一百项输入。成员只要把一百项任务交给它，再按预算和模型服务的容量选一个并发数。
 
-启动返回后保留实际 child id，成员可以继续其他工作，再用下面的请求观察与读取结果。各段 JSON 分别是一次工具调用。
+`isolation` 可选的值取决于当前配置，以 `describe` 返回的列表为准。常见的有：
+
+| 策略 | 子 Agent 在哪执行 |
+| --- | --- |
+| `shared` | 和成员共用执行环境和工作区 |
+| `worktree` | 在继承来的执行环境里，各自用独立工作树 |
+| `docker-group` | 共用一个专属容器，各自用独立工作树 |
+| `docker-session` | 每个子 Agent 一个专属容器和工作区 |
+| `vm-group` | 租用一台已配置的 Linux VM，各自用独立工作树 |
+| `vm-session` | 每个子 Agent 租用一台已配置的 Linux VM |
+
+还可以有自定义名称的策略。
+
+### 3. 观察和读取结果
+
+启动后，成员记下返回的 child id，可以先去做别的事。下面每段 JSON 都是一次单独的工具调用。
 
 ```json
 {"action": "status", "id": "<child id>"}
@@ -221,7 +286,19 @@ async def main(ctx, args):
 {"action": "result", "id": "<child id>"}
 ```
 
-`wait` 和 `result` 的外层记录包含 `result`，其中 `output` 保存入口返回值，`reason` 记录停止或失败原因，`agent_failures` 记录内部会话失败。检查示例的三项 `results` 和各项 `answer`。入口 `completed` 表示 Python 编排已返回，项目交付由实际文件、测试或应用验证确认。需要停止时调用下面的请求并等待清理。
+`wait` 和 `result` 返回的记录里有一个 `result` 字段，里面包含：
+
+| 字段 | 内容 |
+| --- | --- |
+| `output` | 入口函数的返回值 |
+| `reason` | 停止或失败的原因 |
+| `agent_failures` | 内部 Agent 会话的失败记录 |
+
+在这个例子里，成员要检查 `output` 里的三项 `results` 和每项的 `answer`。
+
+状态 `completed` 只说明 Python 编排代码已经返回。项目是否真的交付了，要靠实际文件、测试或应用来验证。
+
+需要停止时，调用 `stop`。它会等清理完成后再返回。
 
 ```json
 {"action": "stop", "id": "<child id>"}
@@ -229,7 +306,9 @@ async def main(ctx, args):
 
 ### 从宿主启动这个 Team
 
-配置好模型服务后，将下面代码保存为工作区内的 `run_authored.py`，用安装了指定源码修订的解释器运行。脚本只启动父 Team，成员在任务中编写并启动自己的 DW。示例中的 `sys.executable` 适用于父成员在当前本地环境执行的情况。
+上面是成员这一侧的工具调用。在宿主这一侧，你只需要启动父 Team，成员会在任务里自己写并启动 DW。
+
+配置好模型服务后，把下面的代码保存为工作区里的 `run_authored.py`，用装了指定源码修订的解释器运行。示例里的 `sys.executable` 只适用于父成员就在当前本地环境执行的情况。
 
 ```python
 import asyncio
@@ -273,23 +352,40 @@ async def main():
 asyncio.run(main())
 ```
 
-`request_capacity=2` 限制共享模型客户端同时进行的原生请求。`concurrency=2` 限制单个 DW 的活跃 Agent 会话，两项容量分别作用于模型服务和工作流。多个 Team 或 DW 使用同一服务时，宿主让它们共享同一 `request_pool` 绝对目录及容量配置。原生请求结束、进入工具执行前会释放请求名额，父成员等待子运行时，子会话可以继续请求模型。
+这里有两个容量设置，管的是不同的东西：
 
-宿主可以通过 `client.configuration` 检查模型、服务商、协议、路由映射、上下文与请求容量等公开配置。成员通过工具 schema 和 `describe` 发现当前执行能力。模型路由和容量由人类调用方提前配置，成员按获得的接口组织任务。
+| 设置 | 在哪设 | 限制什么 |
+| --- | --- | --- |
+| `request_capacity=2` | 宿主的 `OpenCollab` 配置 | 共享模型客户端同时发出的原生请求数 |
+| `concurrency=2` | `launch` 参数 | 单个 DW 里同时活跃的 Agent 会话数 |
 
-### 先运行仓库的本地演示
+`request_pool` 和 `request_capacity` 要一起设置。如果多个 Team 或 DW 用同一个模型服务，宿主要让它们使用同一个 `request_pool` 绝对目录和同样的容量配置。
 
-在已安装当前源码的 checkout 中，可以先执行仓库已有的离线演示。
+一次原生请求结束后、开始执行工具前，OC 就会释放请求名额。所以父成员在等子运行时，子会话照样可以请求模型。
+
+宿主可以通过 `client.configuration` 查看公开配置，包括模型、服务商、协议、路由映射、上下文和请求容量。成员则通过工具 schema 和 `describe` 了解自己能做什么。模型路由和容量由你提前配好，成员只按拿到的接口组织任务。
+
+### 先跑一下仓库自带的本地演示
+
+在装好当前源码的 checkout 里，可以先跑这个离线演示：
 
 ```bash
 python examples/member-authored-workflow/demo.py
 ```
 
-演示启动回环地址上的脚本化 HTTP 模型，由父成员实际写入 `generated.py`，启动 Python 子进程并收集原生结果。输出包括 `Local answer`、计算值 `15` 和总用量 `90`，打印的工作区保留源码与运行产物。随后可用上面的三任务源码和 Team 调用连接自己的模型服务。
+演示会做这些事：
 
-### 在 VM 成员内创建子工作区
+1. 在回环地址上启动一个脚本化的 HTTP 模型，所有请求都留在本机。
+2. 父成员真的写出 `generated.py`。
+3. 启动 Python 子进程，收集原生结果。
 
-按[VM 环境扩展](../isolation/vm-environment-extension.md)准备宿主 VM profile、SSH、guest 内的同修订 OpenCollab 与管理员 reset 操作。父 Team 使用 `isolation="vm-session"` 时，author 获得一个 VM。成员先 `describe`，再把源码写入该 VM 的工作区，使用下面的启动参数让子会话在这个 guest 内创建独立工作树。
+输出里会有 `Local answer`、计算值 `15` 和总用量 `90`。程序会打印工作区路径，里面保留了源码和运行产物。跑通之后，再用上面的三任务源码和 Team 调用接上你自己的模型服务。
+
+### 在 VM 成员里用独立工作树
+
+先按[VM 环境扩展](../isolation/vm-environment-extension.md)准备好这些：宿主上的 VM profile、SSH、guest 里同一修订的 OpenCollab，以及管理员 reset 操作。
+
+父 Team 使用 `isolation="vm-session"` 时，author 成员会拿到一台 VM。成员先 `describe`，再把源码写进这台 VM 的工作区，然后用下面的参数启动。这样子会话会在同一台 guest 里各自创建独立工作树。
 
 ```json
 {
@@ -303,9 +399,12 @@ python examples/member-authored-workflow/demo.py
 }
 ```
 
-这里的 `python` 指向 VM 准备步骤中安装 OpenCollab 的来宾解释器。DW 编排子进程也在父成员 VM 内运行，子 Agent 的工具在该 VM 的独立工作树中执行。要让子 Agent 观察或修改文件，父角色先获得相应工具，再在 DW 源码中用 `builtin_tools` 传给会话。例如 `builtin_tools("bash")` 可以配合明确的文件检查任务使用。
+- `python` 指向准备 VM 时装了 OpenCollab 的 guest 解释器。
+- DW 的编排子进程也跑在父成员的 VM 里。子 Agent 的工具在这台 VM 的独立工作树里执行。
+- 子 Agent 要查看或修改文件的话，父角色得先有对应工具，然后在 DW 源码里用 `builtin_tools` 传给会话。比如给一个明确的文件检查任务配上 `builtin_tools("bash")`。
+- 子进程的标准输入只有非敏感的生成设置、输入和工具限制。guest 经由 bridge 请求宿主的模型客户端，凭据和路由不进 guest。
 
-单次调用选择 `isolation="vm-session"` 时，宿主会为它申请另一台空闲 VM。父成员已经持有的 VM 计入资源占用，容量规划需要为额外 guest 留出资源。桥接层的模型凭据、端点路由、请求池路径和共享请求名额由宿主管理。子进程标准输入传入非敏感生成设置、输入与工具限制，guest 经 bridge 请求宿主模型客户端。
+如果某次调用选了 `isolation="vm-session"`，宿主会再为它申请一台空闲 VM。父成员手里的那台 VM 也算在资源占用里，所以规划容量时要给额外的 guest 留出位置。
 
 ## 预算
 
@@ -315,33 +414,37 @@ python examples/member-authored-workflow/demo.py
 | 显式 `budget` | 不超过可用余量 |
 | 父运行额度无限 | 可以启动无限额度的子运行 |
 
-- 有限额度会在活跃的子运行之间预留，也会影响父成员后续的模型请求。
-- 用量汇总到父成员时，按实际消耗只计一次。
+- 有限预算会为活跃的子运行预留。预留的部分父成员后续的模型请求也不能用。
+- 子运行的用量按实际消耗计入父成员，只计一次。
 
 ## 子运行什么时候结束
 
-子运行持续到以下任一情况：入口返回、执行失败、父成员停止。
+出现以下任一情况，子运行就结束：入口返回、执行失败、父成员停止。
 
-- 父成员正常完成时，会先停止还在跑的子运行，再保存最终的父快照。
-- 取消时，先请求子运行停止会话并保存状态。如果迟迟不结束，由拥有它的 Environment 取消命令并清理进程。
-- 普通 `bash` 命令的超时和这套生命周期是分开生效的。
+- 父成员正常完成时，OC 先停止还在跑的子运行，再保存最终的父快照。
+- 取消时，OC 先请子运行停止会话并保存状态。如果它迟迟不结束，由所属的 Environment 取消命令并清理进程。
+- 普通 `bash` 命令的超时和这套生命周期互不影响。
 
 ## 排查错误
 
 记录保存在哪：
 
-- 环境里的 `.opencollab/child-runs/<id>` 保存活跃的控制文件。
-- 父运行设置了产物目录时，会收集子运行的 Workflow 清单、会话、结果和命令输出。完成后 `artifacts` 指向宿主上的持久目录。
-- 父运行关闭时，先清理环境里的控制文件，再捕获成员的改动。
+- 环境里的 `.opencollab/child-runs/<id>` 保存运行中的控制文件。
+- 如果父运行设置了产物目录，OC 会收集子运行的 Workflow 清单、会话、结果和命令输出。完成后 `artifacts` 指向宿主上的持久目录。
+- 父运行关闭时，OC 先清理环境里的控制文件，再捕获成员的改动。
 
 错误会出现在哪：
 
 - 源文件导入错误、执行错误、输出序列化错误，都会写进结果。
-- 子工作流在会话失败后仍返回了数据时，`agent_failures` 照样保留失败信息。
+- 如果某个 Agent 会话失败了，但子 Workflow 仍然返回了数据，`agent_failures` 照样会记下失败信息。
 
-排查顺序：先读结果和进程输出，再对照入口名和父成员的工具授权。
+排查顺序：先读结果和进程输出，再核对入口名和父成员的工具授权。
 
-子工作流每次 Agent 调用都可以选择 `shared`、`worktree`、`docker-group`、`docker-session`、已配置的 `vm-group`、`vm-session` 或自定义策略，以 `describe` 返回的名称为准。父成员的步骤上限为子会话提供默认值，作者也可以通过 `ctx.agent_run(max_steps=...)` 指定单次步数。子环境分配与释放由宿主管理。
+其他细节：
+
+- 子 Workflow 里每次 Agent 调用都可以单独选隔离策略，名称以 `describe` 返回的为准。
+- 子会话的步数上限默认取父成员的步骤上限。作者也可以用 `ctx.agent_run(max_steps=...)` 指定单次步数。
+- 子环境的分配和释放由宿主管理。
 
 ## 源码依据
 

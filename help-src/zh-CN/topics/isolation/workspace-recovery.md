@@ -59,8 +59,9 @@ OC 给父成员的摘要有长度限制，可能只有半截补丁。别直接�
 
 - 本地：工作树路径。
 - 容器：完整容器 ID 加容器内目录。
+- VM：OC 会把完整工作区导出到控制端（运行 OC 的机器）运行产物下的 `vm/<租约 token>/<角色目录>`。导出成功后，直接在本机看文件和 Git 差异。
 
-VM 池将完整工作区导出到控制端产物的 `vm/<租约 token>/<角色目录>`。导出成功后可在本机检查文件和 Git 差异。导出失败时，保存错误中的实际机器 ID、来宾目录、操作 ID 与本机产物路径，恢复连接后继续导出。
+如果 VM 导出失败：记下错误里的机器 ID、来宾目录、操作 ID 和本机产物路径。等 SSH 连接恢复后，再继续导出。
 
 ## 步骤二：导出
 
@@ -98,11 +99,46 @@ docker cp CONTAINER_ID:/reported/workspace ./recovered-workspace
 
 ## VM 断线与租约恢复
 
-直接使用 `VMEnvironment` 时，`VMTransportError` 带有 `operation_id`，可在连接恢复后调用 `await environment.recover_operation(error.operation_id)`。`pending_operations` 列出仍需处理的操作。控制端重建环境时，使用原来的连接、工作区、状态目录和 `run_id`，继续读取同一份远端记录。操作状态尚未确定时，环境会等待恢复结果，再接受后续工作。
+VM 的问题分三种情况处理。租约是 OC 在控制端 SQLite 文件里写的一条记录，表示某台 VM 正被占用。
 
-VM 释放包含内容导出、拥有操作的停止、工作树清理和来宾重置。管理员提供的 `reset_command` 成功完成，任务目录回收后，池才释放租约。导出、清理、连接或重置失败时，租约与恢复资料继续保留，仍存活的池对象可以重试清理。
+### 情况一：你直接用 `VMEnvironment`，SSH 断了
 
-控制进程退出后，SQLite 租约继续保留。先确认对应远端进程已经结束，导出需要保留的文件，并完成管理员的来宾恢复程序，再删除该资源对应的确切租约记录。该记录可从配置指定的 `lease_database` 核对 `resource_id`、`owner` 与 `workspace`。新建池继续使用原数据库和稳定资源 ID，可以保留当前机器占用关系。准备和配置步骤见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
+SSH 出错时，OC 抛出 `VMTransportError`，里面带着 `operation_id`。远端命令不会因为断线而丢失。
+
+1. 等连接恢复。
+2. 调用 `await environment.recover_operation(error.operation_id)`，拿回这次操作的原始结果。
+3. 用 `pending_operations` 看还有哪些操作没处理完。
+
+如果控制端要重建环境对象：用原来的连接、工作区、状态目录和 `run_id`。这样新对象会读到同一份远端记录。
+
+操作状态还不确定时，环境会先等恢复结果，再接受新的工作。
+
+### 情况二：VM 池归还机器时失败
+
+OC 归还一台 VM 要依次做完：导出内容，停止自己发起的操作，清理工作树，运行重置。管理员的 `reset_command` 成功、任务目录删掉之后，池才释放租约。
+
+如果导出、清理、连接或重置失败：租约和恢复资料都会保留。只要池对象还活着，就可以重试清理。
+
+### 情况三：控制进程已经退出
+
+SQLite 里的租约不会自动消失。要手动释放一台机器，按顺序做：
+
+1. 确认这台机器上对应的远端进程已经结束。
+2. 导出需要保留的文件。
+3. 完成管理员的来宾恢复程序。
+4. 打开配置里 `lease_database` 指定的文件，按 `resource_id`、`owner` 和 `workspace` 核对，只删除这台资源对应的那一条租约记录。
+
+```bash
+# 表名和列名来自 OC 源码；先查看，再只删确认过的那一条
+sqlite3 /home/controller/oc-state/vm-leases.sqlite3 \
+  "SELECT resource_id, owner, workspace FROM vm_leases;"
+sqlite3 /home/controller/oc-state/vm-leases.sqlite3 \
+  "DELETE FROM vm_leases WHERE resource_id = 'worker-01' AND owner = '<租约 token>';"
+```
+
+如果还有机器在正常使用，不要删它们的记录。新建的池只要继续用原数据库和同样的 `resource_id`，就能认出当前哪些机器被占用。
+
+准备和配置步骤见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
 
 ## 为什么看到的补丁不完整
 
@@ -134,9 +170,9 @@ VM 释放包含内容导出、拥有操作的停止、工作树清理和来宾�
 | 运行自己创建的工作树或容器 | 对应的环境池 |
 | 外部传入的父环境 | 调用方 |
 | 连接的已有容器 | 原来的服务 |
-| VM 池分配的机器租约 | 对应环境池，归还前执行管理员重置程序，来宾由基础设施管理 |
+| VM 池分配的机器租约 | 对应的环境池，归还前运行管理员的重置程序。VM 本身由你的基础设施管理 |
 
-如果某个审阅环境依赖另一个候选目录，清理会先处理依赖它的一方。被依赖的来源会保留到导出和释放都结束。具体接法见 [让任务在指定目录或现有容器里执行](execution-environments.md)。
+如果某个审阅环境依赖另一个候选目录，清理会先处理依赖它的一方。被依赖的来源会保留到导出和释放都结束。具体接法见 [让任务在指定目录、容器或 VM 中执行](execution-environments.md)。
 
 ## 参考
 

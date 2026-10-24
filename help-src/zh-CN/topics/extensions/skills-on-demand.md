@@ -105,7 +105,7 @@ OC 的 Skill 和 Claude Code 的 Skill 思路相同：一个带 frontmatter 的 
 - 如果正文进入会话后被压缩了：技能正文是普通的工具结果，和其他工具结果一样受上下文整形规则影响。
 - 如果想跨项目共享技能：由部署流程把同一份技能放进各项目工作区的 `skills/` 目录。
 
-`use_skill` 的工具 schema 也列出当前技能名称和说明。单 Agent 或 Workflow 可以从工具定义选择技能，再按名称读取正文。
+`use_skill` 的工具 schema 里也写着当前可用的技能名称和说明。所以单 Agent 和 Workflow 里的 Agent 看工具定义就能选技能，再按名称调用 `use_skill` 读取正文。
 
 ## 源码与进一步阅读
 

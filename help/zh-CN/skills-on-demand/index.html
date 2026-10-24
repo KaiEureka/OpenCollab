@@ -141,7 +141,7 @@ roles:
 <li>如果正文进入会话后被压缩了：技能正文是普通的工具结果，和其他工具结果一样受上下文整形规则影响。</li>
 <li>如果想跨项目共享技能：由部署流程把同一份技能放进各项目工作区的 <code>skills/</code> 目录。</li>
 </ul>
-<p><code>use_skill</code> 的工具 schema 也列出当前技能名称和说明。单 Agent 或 Workflow 可以从工具定义选择技能，再按名称读取正文。</p>
+<p><code>use_skill</code> 的工具 schema 里也写着当前可用的技能名称和说明。所以单 Agent 和 Workflow 里的 Agent 看工具定义就能选技能，再按名称调用 <code>use_skill</code> 读取正文。</p>
 <h2 id="源码与进一步阅读">源码与进一步阅读</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/skills/README.md">skills/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/skills/file_skill_store.py">opencollab/adapters/skills/file_skill_store.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/use_skill.py">opencollab/adapters/tools/use_skill.py</a></p>
 

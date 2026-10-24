@@ -154,8 +154,45 @@ asyncio.run(main())
 </ol>
 <p>这三个进程变量在模块导入时读取。要调整，就在启动 Python 或 CLI 之前导出有限正数。单 Agent 或 <code>ctx.agent_run</code> 里的 <code>RunControl.tool_cancellation_cleanup_timeout</code> 可以只覆盖本次会话的第 1 段等待。SDK 的 <code>cleanup_timeout</code> 管的是运行结束后的资源清理，调用方应根据返回的清理状态安排下一步。具体实现见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution_runtime.py">工具取消与环境中止实现</a>。</p>
 <h2 id="vm-清理等待">VM 清理等待</h2>
-<p>配置 VM profile 后，Team、Workflow、CLI 和成员自编子运行采用 <code>vm.cleanup_timeout</code>，默认 60 秒。SDK 调用或子运行 <code>launch</code> 中的显式值优先。未配置 VM profile 时，Team 默认 10 秒，Workflow 默认 2 秒。<code>agent()</code> 的默认清理等待仍为 2 秒。</p>
-<p>VM 清理停止命令、导出产物并执行管理员重置，完成后释放租约。失败时保留现场供恢复，同一对象可重试清理。控制进程重启后的资源恢复见 <a href="../vm-environment-extension/index.html">VM 指南</a>。</p>
+<p>VM 清理比本地清理慢，所以配置了 VM（<code>config[&quot;vm&quot;]</code> 或 <code>OPENCOLLAB_VM</code>）后，清理等待时间改用 <code>vm.cleanup_timeout</code>，默认 60 秒。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>清理等待时间</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>配置了 VM，Team、Workflow、CLI 或成员自编子运行</td>
+<td><code>vm.cleanup_timeout</code>，默认 60 秒</td>
+</tr>
+<tr>
+<td>SDK 调用或子运行 <code>launch</code> 显式传了值</td>
+<td>用显式值</td>
+</tr>
+<tr>
+<td>没配置 VM 的 Team</td>
+<td>10 秒</td>
+</tr>
+<tr>
+<td>没配置 VM 的 Workflow</td>
+<td>2 秒</td>
+</tr>
+<tr>
+<td><code>agent()</code></td>
+<td>2 秒</td>
+</tr>
+</tbody>
+</table>
+<p>OC 清理一台 VM 时按顺序做这几件事：</p>
+<ol>
+<li>停止还在运行的命令。</li>
+<li>把改动和产物导出到控制端。</li>
+<li>运行你配置的重置命令，把 VM 恢复到干净状态。</li>
+<li>释放这台 VM 的租约，让别的会话可以领用。</li>
+</ol>
+<p>如果某一步失败，OC 会保留租约和现场，方便你排查。对同一个对象再调用一次清理即可重试。控制进程重启后怎样回收资源，见 <a href="../vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a>。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/cli/main.py#L182">opencollab/adapters/cli/main.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L121">docs/evaluation-runtime.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L149">docs/evaluation-runtime.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L165">docs/evaluation-runtime.md</a></p>
 <h2 id="相关指南">相关指南</h2>

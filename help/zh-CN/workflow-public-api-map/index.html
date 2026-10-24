@@ -173,8 +173,8 @@ async def run_example(workspace):
 </tr>
 <tr>
 <td><code>cleanup_timeout</code></td>
-<td>省略时按配置选择，显式值为有限正数</td>
-<td>Workflow 采用 <code>config.vm.cleanup_timeout</code>，VM profile 默认 60 秒，未配置 VM 时为 2 秒</td>
+<td>显式给出时须为有限正数。省略时：配置了 VM 就用 <code>config.vm.cleanup_timeout</code>（VM profile 默认 60 秒），否则 2 秒</td>
+<td>等待所属任务清理的时间</td>
 </tr>
 <tr>
 <td><code>artifacts</code></td>
@@ -428,7 +428,7 @@ async def run_example(workspace):
 <p>普通函数可以直接交给 SDK；要按名称发现，才需要 <code>@workflow</code> 注册。</p>
 <h2 id="评测集成">评测集成</h2>
 <p>评测集成使用上面的 SDK、环境和验证工具入口，使用文档见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md">配置评测运行时</a>。数据集加载、隐藏测试和正式评分由外部评测包负责，详见<a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a>。</p>
-<p><code>opencollab.environments</code> 也公开导出 <code>VMConnection</code>、<code>VMEnvironment</code>、<code>VMResource</code> 和 <code>vm_isolation_provider</code>，完整用法见 <a href="../vm-environment-extension/index.html">VM 指南</a>。</p>
+<p>VM 相关的公开接口也从 <code>opencollab.environments</code> 导出：<code>VMConnection</code>、<code>VMEnvironment</code>、<code>VMResource</code> 和 <code>vm_isolation_provider</code>。完整用法见 <a href="../vm-environment-extension/index.html">VM 指南</a>。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L96">opencollab/README.md</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/workflows.py#L14">opencollab/workflows.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow_collections.py#L253">opencollab/application/workflow_collections.py</a>。</p>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py">opencollab/sdk/client.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow_agent_run.py">opencollab/application/workflow_agent_run.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/tools.py">opencollab/tools.py</a>。</p>

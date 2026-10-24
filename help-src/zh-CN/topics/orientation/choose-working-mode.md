@@ -97,7 +97,7 @@ Team 和 Workflow 只管"怎么组织任务"。文件和命令实际在哪里运
 
 Skill 只提供任务上的指导。真正的流程要通过程序和运行接口来实现。
 
-隔离策略还包括 `vm-group` 和 `vm-session`，分别让一次运行共用 VM 或每个 Session 领取独立 VM。成员自编 DW 可以通过 `worktree` 在自己的 VM 内创建子工作区，具体见 [成员自编 Workflow](../workflow/member-authored-workflow.md)。
+隔离策略里还有两种 VM 策略。`vm-group` 让一次运行里的所有会话共用一台 VM。`vm-session` 让每个 Session 各领一台 VM。成员自己写的子 Workflow 可以选 `worktree` 隔离，在成员自己的 VM 里再开独立的工作树。具体见 [让成员自己写并运行子 Workflow](../workflow/member-authored-workflow.md)。
 
 ## 源码与进一步阅读
 

@@ -46,6 +46,8 @@
 
 [一次任务是怎么跑起来的](topics/architecture/runtime-execution-model.md) → [Session 怎样保存进度和继续执行](topics/architecture/session-state-lifecycle.md) → [工作流就是普通 Python：编程模型入门](topics/workflow/workflow-programming-model.md) → [工作流能做什么、不能做什么](topics/workflow/workflow-capabilities-boundaries.md) → [隔离怎么选](topics/isolation/isolation-overview.md) → [OpenCollab 管什么，我的需求该从哪里扩展](topics/architecture/extension-and-evaluation-boundaries.md) → [检查团队是否真的按分工协作](topics/observability/collaboration-adherence.md) → [用实际测试验证 Agent 的交付](topics/observability/native-test-evidence.md)
 
-## 让每个成员编写并运行自己的 DW
+## 让每个成员编写并运行自己的子 Workflow
 
-先在 [隔离指南](topics/isolation/isolation-overview.md) 选择成员执行环境，按 [VM 指南](topics/isolation/vm-environment-extension.md) 准备资源。随后阅读 [成员自编 Workflow](topics/workflow/member-authored-workflow.md)，完成能力查询、源码生成、并发启动和结果回收。用 [共享请求容量](topics/models/model-routing-request-capacity.md) 协调模型额度，按 [团队通信](topics/team/message-team-agents.md) 把结论发回队友。
+想让 Team 成员现场写一段 Workflow 代码，在自己的执行环境里并行调用多个 Agent，再把结论交回团队。先选好成员在哪执行，再准备 VM，然后学写子 Workflow。多个子运行同时请求模型时，用共享请求容量控制额度。最后用团队消息把结论发给队友。
+
+[隔离怎么选](topics/isolation/isolation-overview.md) → [在现有 Linux VM 中运行任务](topics/isolation/vm-environment-extension.md) → [让成员自己写并运行子 Workflow](topics/workflow/member-authored-workflow.md) → [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) → [向队友发消息并继续协作](topics/team/message-team-agents.md)

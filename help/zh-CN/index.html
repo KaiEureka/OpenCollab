@@ -42,7 +42,7 @@
 <h1 id="opencollab-wiki">OpenCollab Wiki</h1>
 <p>OpenCollab（OC）是一个多 Agent 编码框架：同一套 Session 与工具运行时之上，支持三种组织方式，单 Agent、由模型自主派发的 Team，以及用 Python 显式编排的 Workflow。隔离（工作树、Docker、VM）、预算和运行记录可以分别配置。</p>
 <p>这里的指南按&quot;你想做什么&quot;来组织。第一次接触 OC，建议先读<a href="concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a>，再照着<a href="first-run-workspace/index.html">在自己的项目中完成第一次运行</a>动手试一遍，大约十几分钟。遇到具体问题，可以直接用页面上方的搜索，或者翻<a href="questions/index.html">问题导航</a>。</p>
-<p>本 Wiki 依据 <a href="https://github.com/RISE-X-Lab/OpenCollab/tree/0c47f74a27441888286a22012b23b658185f8b8f">main 提交 0c47f74a</a> 核对，该源码的包版本为 0.9.5。使用 VM 和运行时能力查询时，按 <a href="install-source-checkout/index.html">源码安装指南</a> 安装这一提交。</p>
+<p>本 Wiki 按 <a href="https://github.com/RISE-X-Lab/OpenCollab/tree/0c47f74a27441888286a22012b23b658185f8b8f">main 分支提交 0c47f74a</a> 的源码核对。这份源码的包版本号仍是 0.9.5。如果你要用 VM 隔离，或让成员用 <code>manage_workflow describe</code> 查询可用能力，请按 <a href="install-source-checkout/index.html">源码安装指南</a> 安装这个提交。</p>
 <p><a href="https://rise-x-lab.github.io/OpenCollab/">返回项目站主页</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab">GitHub 源码</a> · <a href="reading-paths/index.html">阅读路径</a> · <a href="questions/index.html">问题导航</a></p>
 <h2 id="oc-名词速查">OC 名词速查</h2>
 <table>
@@ -223,7 +223,7 @@
 </tr>
 <tr>
 <td><a href="vm-environment-extension/index.html">在现有 Linux VM 中运行任务</a></td>
-<td>配好已有虚拟机，让一组会话共用一台机器或每个会话独占一台，并在结束后收回结果。</td>
+<td>把你已有的 Linux 虚拟机交给 Agent 用。可以一次运行共用一台，也可以每个会话各占一台。运行结束后导出改动并重置机器。</td>
 </tr>
 <tr>
 <td><a href="execution-environments/index.html">让任务在指定目录或现有容器里执行</a></td>

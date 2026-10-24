@@ -137,8 +137,9 @@
 <p>例如 SDK 里写 <code>concurrency=4, task_concurrency=2</code>，表示最多四个活跃 Agent 会话，同时最多两个集合单元。</p>
 <p>为什么分成两个：一个集合单元可能只跑普通 Python，也可能调一次 Agent，或者跑多个顺序步骤。两者分别计数，混合运行时，活跃工作数可能达到两个上限之和。</p>
 <p>建议把大量输入交给集合方法，运行时会按 <code>task_concurrency</code> 维持有限数量的 worker。如果你自己对大量调用用 <code>asyncio.gather</code>，创建多少宿主任务由你负责；不过 <code>ctx</code> 的会话上限仍然生效。</p>
-<p>成员自编 DW 使用 <code>manage_workflow launch</code> 的 <code>concurrency</code> 设置子运行的活跃会话容量，集合容量默认沿用它。成员可以现场写出任务列表再交给 <code>ctx.parallel</code>，完整的三任务例子见<a href="../member-authored-workflow/index.html">成员自编 DW 教程</a>。</p>
-<p>宿主 <code>request_capacity</code> 限制模型客户端同时执行的原生请求，通过共享 <code>request_pool</code> 配置。多个 Team 与 DW 可以共享这项服务容量，各工作流的局部容量继续分别生效。扩大输入前，可以测量小任务的实际耗时和用量，再按服务能力选择并发。</p>
+<p>如果是成员自编的 DW（用 <code>manage_workflow</code> 启动的子 Workflow），并发上限由 <code>launch</code> 的 <code>concurrency</code> 参数决定。它限制子运行里同时活跃的 Agent 会话，集合方法的任务容量默认也用这个值。成员可以现场写出任务列表，再交给 <code>ctx.parallel</code>。完整的三任务例子见<a href="../member-authored-workflow/index.html">成员自编 DW 教程</a>。</p>
+<p>另一层限制在模型服务这边。宿主用 <code>request_capacity</code> 限制模型客户端同时发出的原生请求，配合共享的 <code>request_pool</code> 目录使用。多个 Team 和 DW 可以共用这份容量，同时各工作流自己的并发上限照样生效。</p>
+<p>扩大输入规模前，建议先跑一个小任务，量一下实际耗时和用量，再按服务能力选并发数。</p>
 <h2 id="预算分配">预算分配</h2>
 <ul>
 <li>额度有限时，OC 按集合大小给每个单元规划额度。单元内的 Agent 调用从该单元和工作流的剩余额度里扣。</li>

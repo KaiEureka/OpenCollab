@@ -84,7 +84,9 @@ client = OpenCollab(".", environment_providers={
 
 ## 使用现有 VM 提供器
 
-已有 Linux VM 可以使用内置 `vm_isolation_provider`。下面的工厂与 Docker 工厂接受同一组运行参数，可按需要注册策略名。连接、目录和管理员重置程序应先按 [VM 指南](vm-environment-extension.md) 准备。
+如果你有现成的 Linux VM，可以直接用内置的 `vm_isolation_provider`，不用自己写环境池。它返回的工厂和 Docker 工厂收同一组运行参数，你可以用任意策略名注册它。
+
+注册前，先按 [VM 指南](vm-environment-extension.md) 准备好 SSH 连接、来宾目录和管理员的重置程序。
 
 ```python
 from opencollab import OpenCollab
@@ -112,9 +114,15 @@ client = OpenCollab(".", environment_providers={
 })
 ```
 
-之后调用 `await client.workflow(flow, inputs, isolation="vm-group", cleanup_timeout=60)`。显式提供器模式由运行参数设置清理等待时间。需要通过 SDK、CLI 和 Team 共用可序列化配置时，使用 `config["vm"]` 或 `OPENCOLLAB_VM`，其中 `cleanup_timeout` 默认是 `60` 秒。
+使用：`await client.workflow(flow, inputs, isolation="vm-group", cleanup_timeout=60)`。
 
-同一控制主机的进程通过同一个本地 SQLite 文件协调 VM 租约。多个控制主机共用机器池时，可以把外部分配服务接成自己的 EnvironmentPool，由服务维护跨机器分配与归还。稳定资源 ID 应与实际机器对应。
+要注意：
+
+- 直接注册提供器时，清理等待时间要在运行参数 `cleanup_timeout` 里写。
+- 想让 SDK、CLI 和 Team 共用一份可序列化配置，就改用 `config["vm"]` 或环境变量 `OPENCOLLAB_VM`。这种方式下 `cleanup_timeout` 默认是 `60` 秒。
+- 同一台控制主机上的进程，靠同一个本地 SQLite 文件（`lease_database`）协调谁在用哪台 VM。
+- 多台控制主机共用一个机器池时，SQLite 文件不够用。你可以把外部分配服务包成自己的 EnvironmentPool，由这个服务负责跨机器分配和归还。
+- `resource_id` 要稳定，一个 ID 对应一台真实机器。
 
 ## 工厂收到的参数
 
@@ -168,8 +176,9 @@ Environment 需要提供：准备、文件读写、命令执行、撤销、停�
 ## 常见问题
 
 - 如果提示该策略需要 environment provider：说明这个策略名还没注册。检查 `environment_providers` 的键和 `isolation` 写的名字是否一致。
-内置 VM 提供器已经实现机器租约、项目复制、内容导出与归还重置，操作步骤见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。接入其他远端服务时，按服务的资源所有权完成对应生命周期。
+- 如果想用虚拟机：内置 VM 提供器已经做好了领取机器、复制项目、导出改动和归还前重置，步骤见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
+- 如果要接其他远端服务：看这个服务实际管哪些资源，你的提供器就负责把这些资源的生命周期走完。
 
 ## 参考
 
-环境池的组合方式见[策略池实现](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/adapters/session_environments.py)。已有环境由谁负责清理，见 [让任务在指定目录或现有容器里执行](execution-environments.md)。
+环境池的组合方式见[策略池实现](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/adapters/session_environments.py)。已有环境由谁负责清理，见 [让任务在指定目录、容器或 VM 中执行](execution-environments.md)。
