@@ -377,14 +377,15 @@ def _handle_event(event: Any, state: _StreamState, expected_model: str | None = 
     if event_type == "response.function_call_arguments.delta":
         index = getattr(event, "output_index", None)
         delta = getattr(event, "delta", None)
-        if not isinstance(index, int) or not isinstance(delta, str):
+        # bool is an int subclass. Index 1 must not absorb a fragment labelled true.
+        if type(index) is not int or not isinstance(delta, str):
             raise ResponsesProtocolError("tool argument delta is missing output_index or text")
         state.argument_fragments.setdefault(index, []).append(delta)
         return False
     if event_type == "response.function_call_arguments.done":
         index = getattr(event, "output_index", None)
         arguments = getattr(event, "arguments", None)
-        if not isinstance(index, int) or not isinstance(arguments, str):
+        if type(index) is not int or not isinstance(arguments, str):
             raise ResponsesProtocolError("tool argument completion is incomplete")
         fragments = state.argument_fragments.get(index)
         if fragments and "".join(fragments) != arguments:

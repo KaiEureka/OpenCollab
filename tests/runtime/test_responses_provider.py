@@ -171,6 +171,20 @@ async def test_stream_orders_completed_items_by_output_index():
     assert parsed.usage.output_tokens == 30
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "extra"),
+    [
+        ("response.function_call_arguments.delta", {"delta": "{"}),
+        ("response.function_call_arguments.done", {"arguments": "{}"}),
+    ],
+)
+async def test_stream_rejects_boolean_tool_argument_index(event_type, extra):
+    stream = FakeStream([ns(type=event_type, output_index=True, **extra)])
+    with pytest.raises(ResponsesProtocolError, match="output_index|incomplete"):
+        await _consume_stream(stream, 1, 1)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("index", [None, -1, True, 1.5])
 async def test_stream_rejects_invalid_output_index(index):
     stream = FakeStream([ns(type="response.output_item.done", output_index=index, item=message_item("OK"))])
