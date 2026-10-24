@@ -207,6 +207,37 @@ async def test_ssh_cancelled_temporary_creation_keeps_cleanup_ownership(vm, monk
     assert (await vm.exec_cmd("test ! -e " + shlex.quote(temporary))).returncode == 0
 
 
+async def test_ssh_cleanup_during_setup_prevents_command_submission(vm, monkeypatch):
+    other = VMEnvironment(vm.connection, vm.workspace, state_directory=vm.state_directory)
+    original_rpc = other._rpc
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_setup(payload):
+        value = await original_rpc(payload)
+        if payload["method"] == "setup":
+            entered.set()
+            await release.wait()
+        return value
+
+    monkeypatch.setattr(other, "_rpc", delayed_setup)
+    task = asyncio.create_task(other.exec_cmd("printf late > after-cleanup"))
+    try:
+        await asyncio.wait_for(entered.wait(), 10)
+        await other.cleanup()
+        release.set()
+        with pytest.raises(RuntimeError, match="aborted"):
+            await task
+        assert not other.pending_operations
+        assert (await vm.exec_cmd("test ! -e after-cleanup")).returncode == 0
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await other.cleanup()
+
+
 async def test_ssh_streaming_copy_preserves_tree_and_binary_files(vm, tmp_path):
     source = tmp_path / "source"
     source.mkdir()

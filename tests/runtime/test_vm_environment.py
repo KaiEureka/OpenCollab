@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import math
+import sys
+import threading
 
 import pytest
 
 from opencollab import __version__
+from opencollab.adapters import _env_vm
 from opencollab.adapters.env import ExecResult, VMEnvironment, VMOperationError, VMTransportError
 from opencollab.adapters.vm_config import VMConnection
 
@@ -174,3 +177,131 @@ def test_helper_framing_ignores_banner_and_retains_invalid_payload_error():
                                        b'"message": "invalid request"}\n', "once")
     with pytest.raises(VMTransportError, match="incomplete"):
         VMEnvironment._decode_response(b'OCVM1\n{"ok":', "once")
+
+
+@pytest.mark.parametrize("action", ["setup", "exec", "lock", "upload", "download"])
+async def test_cleanup_during_setup_prevents_later_work(monkeypatch, tmp_path, action):
+    env = _env()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    requests = []
+
+    async def rpc(payload):
+        requests.append(payload["method"])
+        assert payload["method"] == "setup"
+        entered.set()
+        await release.wait()
+        return {"version": __version__, "identity": {"workspace": env.workspace}}
+
+    async def work():
+        if action == "setup":
+            await env.setup()
+        elif action == "exec":
+            await env.exec_cmd("touch late")
+        elif action == "lock":
+            async with env.file_write_lock("late"):
+                pytest.fail("edit lock was acquired after cleanup")
+        elif action == "upload":
+            await env.copy_from_host(tmp_path / "source", "late")
+        else:
+            await env.copy_to_host("late", tmp_path / "target")
+
+    monkeypatch.setattr(env, "_rpc", rpc)
+    task = asyncio.create_task(work())
+    await asyncio.wait_for(entered.wait(), 2)
+    await env.cleanup()
+    release.set()
+    with pytest.raises(RuntimeError, match="aborted"):
+        await task
+    assert requests == ["setup"]
+    assert not env.pending_operations
+    assert not (tmp_path / "target").exists()
+
+
+@pytest.mark.parametrize("stage", ["stream", "unpack", "publish"])
+async def test_cleanup_waits_for_download_and_local_publication(monkeypatch, tmp_path, stage):
+    env = _env()
+    env._identity = {"workspace": env.workspace}
+    source = tmp_path / "source"
+    source.write_bytes(b"downloaded\0\xff")
+    archive = tmp_path / "source.tar"
+    with archive.open("wb") as output:
+        _env_vm.pack(source, output, directory=False)
+    marker = tmp_path / "stream-ready"
+    code = (
+        "import pathlib,struct,sys,time; sys.stdin.buffer.read(); "
+        "data=pathlib.Path(sys.argv[1]).read_bytes(); "
+        "sys.stdout.buffer.write(b'OCVM1\\n{\"ok\":true,\"value\":{\"stream\":true}}\\n'); "
+        "sys.stdout.buffer.flush(); pathlib.Path(sys.argv[2]).touch(); "
+        "time.sleep(30) if sys.argv[3]=='stream' else None; "
+        "sys.stdout.buffer.write(struct.pack('!I',len(data))+data+struct.pack('!I',0)); "
+        "sys.stdout.buffer.flush()"
+    )
+    monkeypatch.setattr(env, "_ssh_command", lambda _method: [
+        sys.executable, "-c", code, str(archive), str(marker), stage])
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    if stage != "stream":
+        original = getattr(_env_vm, stage)
+
+        def blocked(*args, **kwargs):
+            loop.call_soon_threadsafe(entered.set)
+            if not release.wait(5):
+                raise TimeoutError("test did not release download worker")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(_env_vm, stage, blocked)
+
+    target = tmp_path / "target"
+    task = asyncio.create_task(env.copy_to_host("source", target))
+    cleanup = None
+    try:
+        if stage == "stream":
+            async def ready():
+                while not marker.exists():
+                    await asyncio.sleep(0.01)
+            await asyncio.wait_for(ready(), 2)
+        else:
+            await asyncio.wait_for(entered.wait(), 2)
+        cleanup = asyncio.create_task(env.cleanup())
+        if stage != "stream":
+            await asyncio.wait({cleanup}, timeout=0.05)
+            assert not cleanup.done()
+        release.set()
+        await asyncio.wait_for(cleanup, 2)
+        assert task.done()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        if stage == "publish":
+            assert target.read_bytes() == source.read_bytes()
+        else:
+            assert not target.exists()
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        if cleanup is not None:
+            await asyncio.gather(cleanup, return_exceptions=True)
+
+
+async def test_download_cleanup_failure_reaches_environment_cleanup(monkeypatch, tmp_path):
+    env = _env()
+    env._identity = {"workspace": env.workspace}
+    entered = asyncio.Event()
+
+    async def download(*args, **kwargs):
+        try:
+            entered.set()
+            await asyncio.Future()
+        finally:
+            raise _env_vm.ProcessCleanupError("download process remained alive")
+
+    monkeypatch.setattr(env, "_copy_to_host", download)
+    task = asyncio.create_task(env.copy_to_host("source", tmp_path / "target"))
+    await asyncio.wait_for(entered.wait(), 2)
+    with pytest.raises(_env_vm.ProcessCleanupError, match="remained alive"):
+        await env.cleanup()
+    with pytest.raises(_env_vm.ProcessCleanupError, match="remained alive"):
+        await task
