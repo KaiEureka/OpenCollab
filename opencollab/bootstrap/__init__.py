@@ -21,6 +21,7 @@ from opencollab.bootstrap.container import (
     load_session,
     snapshot_session,
 )
+from opencollab.bootstrap.isolation import prepare_scheduler
 
 __all__ = [
     "AgentRuntimeLifecycleError",
@@ -40,6 +41,7 @@ __all__ = [
     "build_workspace_safety_policy",
     "get_config",
     "load_session",
+    "prepare_scheduler",
     "run_agent",
     "snapshot_session",
 ]

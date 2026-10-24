@@ -133,6 +133,26 @@ class _CandidateWorkflowSessionFactory:
     def has_pending_isolated_cleanup(self) -> bool:
         return bool(self._isolated_environments)
 
+    @property
+    def default_isolation(self):
+        return getattr(self._factory, "default_isolation", "shared")
+
+    async def acquire_environment(self, *, isolation, label=None, environment=None):
+        owner = self._environment if environment is None else environment
+        if isolation == "shared":
+            return owner
+        acquire = getattr(self._factory, "acquire_environment", None)
+        if callable(acquire):
+            release = getattr(self._factory, "release_isolated_envs", None)
+            if not callable(release) or not _accepts_environment(release):
+                raise TypeError("candidate isolation requires environment-aware acquisition and scoped release")
+            isolated = await acquire(isolation=isolation, label=label, environment=owner)
+            self._isolated_environments.append((owner, isolated))
+            return isolated
+        if isolation == "worktree":
+            return await self.acquire_isolated_env(label=label, environment=owner)
+        raise ValueError(f"session factory does not support isolation strategy {isolation!r}")
+
     async def acquire_isolated_env(
         self, *, label: str | None = None, environment: Any | None = None,
     ) -> Any:

@@ -97,6 +97,8 @@ async def run_workflow(
     llm: Any | None = None,
     session_builder: Callable[..., Any] | None = None,
     limit_mode: str = "environment",
+    isolation: str | None = None,
+    environment_providers: Any | None = None,
 ) -> Any:
     """Run through one owned lifecycle with an optional wall-clock deadline."""
     if isinstance(agent_profile, str):
@@ -129,6 +131,7 @@ async def run_workflow(
                 llm=llm,
                 session_builder=session_builder,
                 limit_mode=limit_mode,
+                isolation=isolation, environment_providers=environment_providers,
                 candidate_workspace=candidate_workspace,
                 run_id=run_id,
                 save_dir=save_dir,

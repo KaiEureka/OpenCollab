@@ -74,7 +74,7 @@ class WorkflowStructuredMixin:
         schema: dict[str, Any],
         label: str | None,
         tools: Sequence[Any] | None,
-        isolation: bool,
+        isolation: bool | str | None,
         timeout: float | None = None,
         budget: int | None = None,
     ) -> dict | None:
@@ -177,7 +177,7 @@ class WorkflowStructuredMixin:
         *,
         schema: dict[str, Any],
         label: str | None,
-        isolation: bool,
+        isolation: bool | str | None,
         timeout: float | None,
         budget: int | None,
     ) -> dict | None:

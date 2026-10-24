@@ -50,7 +50,7 @@ def test_public_class_and_method_shapes_stay_lean() -> None:
             positional: {"workspace": "."},
             keyword: {
                 "model": None, "provider": None, "api_key": None,
-                "base_url": None, "config": None, "environment": None,
+                "base_url": None, "config": None, "environment": None, "environment_providers": None,
             },
         },
         sdk.OpenCollab.agent: {
@@ -72,7 +72,7 @@ def test_public_class_and_method_shapes_stay_lean() -> None:
             keyword: {
                 "config": None, "budget": None, "timeout": None,
                 "cleanup_timeout": 10.0, "artifacts": None, "trace": True,
-                "use_worktrees": True, "prebuild_team": False,
+                "use_worktrees": True, "prebuild_team": False, "isolation": None,
                 "allow_unisolated_shell": None, "max_steps": 100,
                 "serialize_turns": False, "record_delivery_tree": False,
                 "run_id": None,
@@ -85,7 +85,7 @@ def test_public_class_and_method_shapes_stay_lean() -> None:
                 "timeout": None, "max_steps": 100, "system_prompt": None,
                 "agent_profile": None, "cleanup_timeout": 2.0,
                 "artifacts": None, "trace": True, "candidate_workspace": None,
-                "run_id": None, "llm": None, "limit_mode": "environment",
+                "run_id": None, "llm": None, "limit_mode": "environment", "isolation": None,
             },
         },
     }
@@ -165,7 +165,7 @@ def test_advanced_capabilities_live_in_small_opt_in_modules() -> None:
         "profile_tool_names",
     ]
     assert environments.__all__ == [
-        "Environment",
+        "Environment", "EnvironmentPool",
         "attach_container",
         # A workspace an agent reads is not always on this host, so the listing
         # of it is asked of the environment rather than walked here.

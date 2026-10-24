@@ -15,8 +15,10 @@ from opencollab.adapters.llm.types import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     model_capabilities,
 )
+from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.working_tree import MAX_WORKING_TREE_DIFF_CHARS, EnvWorkingTreeProbe
 from opencollab.adapters.worktree_pool import WorktreePool
+from opencollab.application.isolation import isolation_name
 from opencollab.application.ports import EventPublisherPort, TracePort
 from opencollab.application.tool_execution_runtime import ToolRuntime
 from opencollab.application.workflow import WorkflowContext
@@ -110,10 +112,16 @@ class WorkflowSessionFactory:
         llm: Any | None = None,
         session_builder: Callable[..., Any] | None = None,
         run_id: str | None = None,
+        isolation: str | None = None,
+        environment_providers: Any | None = None,
     ) -> None:
         self._llm = llm
         self._session_builder = session_builder
         self._run_id = run_id
+        self.default_isolation = isolation_name(isolation, default="shared")
+        self._environment_providers = environment_providers
+        self._strategy_pool = None
+        self._strategy_envs = []
         self._model = model
         self._provider = provider
         self._wire_protocol = wire_protocol
@@ -195,6 +203,23 @@ class WorkflowSessionFactory:
             return None
         return workflow_transcript_path(self._save_dir, aid, label)
 
+    async def acquire_environment(self, *, isolation: str, label=None, environment=None):
+        if isolation == "shared":
+            return environment
+        if isolation == "worktree" and not self._environment_providers:
+            if environment is None:
+                return await self.acquire_isolated_env(label=label)
+            return await self.acquire_isolated_env(label=label, environment=environment)
+        if self._strategy_pool is None:
+            self._strategy_pool = SessionEnvironmentPool(
+                self._workspace or ".", isolation=self.default_isolation,
+                base_environment=self._env, providers=self._environment_providers,
+                owned_save_dir=self._save_dir,
+            )
+        env = await self._strategy_pool.acquire(label or "workflow-agent", source=environment, isolation=isolation)
+        self._strategy_envs.append((environment, env))
+        return env
+
     async def acquire_isolated_env(
         self, *, label: str | None = None, environment: Any | None = None
     ) -> Any:
@@ -228,6 +253,19 @@ class WorkflowSessionFactory:
     async def release_isolated_envs(self, *, environment: Any | None = None) -> None:
         """Release each owned environment and retain failed leases for retry."""
         errors: list[Exception] = []
+        if self._strategy_pool is not None:
+            for owner, env in tuple(self._strategy_envs):
+                if environment is not None and owner is not environment:
+                    continue
+                try:
+                    await self._strategy_pool.release_env(env)
+                except Exception as exc:
+                    errors.append(exc)
+                else:
+                    self._strategy_envs.remove((owner, env))
+            if environment is None and not errors:
+                await self._strategy_pool.release()
+                self._strategy_pool = None
         for owner, lease in tuple(self._candidate_isolation_leases):
             if environment is not None and owner is not environment:
                 continue
@@ -455,6 +493,8 @@ def build_workflow_context(
     llm: Any | None = None,
     session_builder: Callable[..., Any] | None = None,
     limit_mode: str = "environment",
+    isolation: str | None = None,
+    environment_providers: Any | None = None,
     run_id: str | None = None,
 ) -> WorkflowContext:
     """Build a :class:`WorkflowContext` wired to the concrete session factory.
@@ -473,6 +513,7 @@ def build_workflow_context(
         llm=llm,
         session_builder=session_builder,
         run_id=run_id,
+        isolation=isolation, environment_providers=environment_providers,
         model=cfg["model"],
         provider=cfg["provider"],
         wire_protocol=cfg.get("wire_protocol", "chat_completions"),

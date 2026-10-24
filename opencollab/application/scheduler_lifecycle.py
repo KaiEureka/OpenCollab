@@ -170,9 +170,12 @@ class LifecycleMixin:
                     "Cannot spawn agent: team token budget is fully allocated."
                 )
 
+            source = review_source
+            if source is None and getattr(self._worktree_pool, "inherit_parent_environment", False) is True:
+                source = self._sessions[parent_aid].env
             env = (
-                await self._worktree_pool.acquire(role, source=review_source)
-                if review_source is not None
+                await self._worktree_pool.acquire(role, source=source)
+                if source is not None
                 else await self._worktree_pool.acquire(role)
             )
             self._startup_envs[aid] = env

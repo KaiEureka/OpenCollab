@@ -331,7 +331,7 @@ async def _run(
         TuiPermissionPolicy,
     )
     from opencollab.application.event_bus import EventBus
-    from opencollab.bootstrap import build_runtime_context, build_scheduler
+    from opencollab.bootstrap import build_runtime_context, build_scheduler, prepare_scheduler
 
     tui = TUI(console, filter_messages=cfg["filter_messages"])
     # A redirected or piped run has no bottom region to own: nothing is painted
@@ -376,8 +376,8 @@ async def _run(
     tracer_failure: BaseException | None = None
     repeated_cancellation: asyncio.CancelledError | None = None
     try:
-        scheduler = build_scheduler(
-            ctx, use_worktrees=use_worktrees, interactive=True,
+        scheduler = await prepare_scheduler(
+            ctx, builder=build_scheduler, use_worktrees=use_worktrees, interactive=True,
             session_file=session_file, auto_save=True,
             team_config_path=team_config_path,
             allow_unisolated_child_shell=allow_local_child_shell,

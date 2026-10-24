@@ -501,6 +501,8 @@ async def run_workflow(
     run_id: str | None = None,
     llm: Any | None = None,
     limit_mode: str = "environment",
+    isolation: str | None = None,
+    environment_providers: Mapping[str, Any] | None = None,
 ) -> ProgrammaticResult:
     """Run one workflow and return its live metrics directly."""
     run_id = run_id if run_id is not None else f"workflow-{uuid.uuid4().hex}"
@@ -545,6 +547,7 @@ async def run_workflow(
                 agent_profile=agent_profile,
                 llm=llm,
                 limit_mode=limit_mode,
+                isolation=isolation, environment_providers=environment_providers,
                 candidate_workspace=candidate_workspace,
                 run_id=run_id,
                 return_details=True,
@@ -731,6 +734,8 @@ async def run_team(
     artifacts: Path | None,
     trace: bool,
     use_worktrees: bool,
+    isolation: str | None = None,
+    environment_providers: Mapping[str, Any] | None = None,
     prebuild_team: bool = False,
     allow_unisolated_shell: bool | None = None,
     max_steps: int | None = SESSION_MAX_STEPS,
@@ -761,6 +766,7 @@ async def run_team(
         artifacts=artifacts,
         trace=trace,
         use_worktrees=use_worktrees,
+        isolation=isolation, environment_providers=environment_providers,
         prebuild_team=prebuild_team,
         allow_unisolated_shell=allow_unisolated_shell,
         max_steps=max_steps,

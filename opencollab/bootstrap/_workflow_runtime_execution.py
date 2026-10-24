@@ -95,6 +95,8 @@ async def run_workflow(
     llm: Any | None = None,
     session_builder: Callable[..., Any] | None = None,
     limit_mode: str = "environment",
+    isolation: str | None = None,
+    environment_providers: Any | None = None,
 ) -> Any:
     """Run one workflow and return only after cleanup and evidence persistence."""
     cleanup_timeout = _positive_cleanup_timeout(cleanup_timeout)
@@ -134,6 +136,7 @@ async def run_workflow(
             llm=llm,
             session_builder=session_builder,
             limit_mode=limit_mode,
+            isolation=isolation, environment_providers=environment_providers,
             run_id=run_id,
             candidate_workspace=candidate_workspace,
             save_dir=save_dir,
