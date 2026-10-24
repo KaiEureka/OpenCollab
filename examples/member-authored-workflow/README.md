@@ -65,9 +65,12 @@ limit with `ctx.agent_run(max_steps=...)`.
 
 A launch lasts until its Workflow finishes or its parent stops. Ordinary
 parent completion stops any remaining children before saving the final parent
-snapshot. Each child retains its result and execution artifacts in
-`.opencollab/child-runs/<id>` inside the environment. A parent run with an
-artifacts directory also saves a child summary and command output there.
+snapshot. Active child control files live in
+`.opencollab/child-runs/<id>` inside the environment. When the parent run has an
+artifacts directory, it receives each child's native Workflow manifest,
+Session transcripts, result, and command output. The finished child's
+`artifacts` field names that persistent host directory. Parent shutdown removes
+child control files before the Team captures the member's patch.
 Source errors, execution errors, and output serialization errors appear in the
 result. Workflow agent failures retain the existing `agent_failures` field,
 including cases where the Workflow chooses to return after a failed agent.
@@ -78,9 +81,24 @@ command and performs its existing process cleanup. A `wait` call uses the
 managed lifecycle, so an ordinary `bash` timeout does not determine how long
 the Workflow can run.
 
-The execution environment is the integration point for shared workspaces,
-worktrees, containers, and custom Environment implementations. The runner
-receives serializable configuration and paths visible inside that environment.
-Custom Python provider objects remain with the process that created them.
-The registered `run_workflow` tool continues to run registered names through
-its existing interface.
+An authored Workflow inherits its member's isolation strategy. Each
+`ctx.agent` or `ctx.agent_run` call can select `shared`, `worktree`,
+`docker-group`, `docker-session`, or a host-registered strategy through its
+`isolation` argument. See the [session isolation guide](../../docs/session-isolation.md)
+for provider configuration. For example, these calls create two independent
+Docker execution environments when the host configures the `docker-session`
+provider.
+
+```python
+async def main(ctx, args):
+    first = await ctx.agent("inspect the source", tools=tools, isolation="docker-session")
+    second = await ctx.agent("verify the source", tools=tools, isolation="docker-session")
+    return first, second
+```
+
+The host owns the configured provider factories and each authored run's child
+environments. The member's Python process sends environment operations and
+model requests through its private run directory. The host calls the member's
+resolved model backend and returns its native response and usage. This also
+supports a member container with Docker's default `none` network. Parent
+cancellation waits for active child operations and releases their environments.
