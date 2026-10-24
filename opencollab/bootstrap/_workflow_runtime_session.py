@@ -207,6 +207,8 @@ class WorkflowSessionFactory:
         if isolation == "shared":
             return environment
         if isolation == "worktree" and not self._environment_providers:
+            if environment is None:
+                return await self.acquire_isolated_env(label=label)
             return await self.acquire_isolated_env(label=label, environment=environment)
         if self._strategy_pool is None:
             self._strategy_pool = SessionEnvironmentPool(

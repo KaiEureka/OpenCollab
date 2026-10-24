@@ -35,7 +35,7 @@ _PUBLIC_TEXT_NAMES = {
 }
 _ACTION_REF = re.compile(r"^\s*(?:-\s+)?uses:\s+([^#\s]+)", re.MULTILINE)
 _FULL_GIT_SHA = re.compile(r"[0-9a-f]{40}")
-_LOCALIZED_README = re.compile(r"README\.[a-z]{2}(?:-[A-Z]{2})?\.md")
+_LOCALIZED_DOCUMENT = re.compile(r".+\.[a-z]{2}(?:-[A-Z]{2})?\.md")
 
 def _repository_files() -> list[Path]:
     completed = subprocess.run(
@@ -72,7 +72,7 @@ def test_public_text_is_english_and_uses_canonical_project_names() -> None:
         relative = path.relative_to(_REPO_ROOT)
         for line_number, line in enumerate(text.splitlines(), start=1):
             contains_chinese = any("\u4e00" <= char <= "\u9fff" for char in line)
-            if contains_chinese and not _LOCALIZED_README.fullmatch(path.name):
+            if contains_chinese and not _LOCALIZED_DOCUMENT.fullmatch(path.name):
                 findings.append(f"{relative}:{line_number}: non-English public text")
             for value in forbidden:
                 if value in line:

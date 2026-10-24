@@ -1,6 +1,6 @@
 # Session isolation
 
-[中文](session-isolation.zh-CN.md)
+[Chinese](session-isolation.zh-CN.md)
 
 Team and Workflow calls can select an execution environment strategy. Session
 messages remain private to each agent. The strategy controls the workspace and

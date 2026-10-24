@@ -356,7 +356,9 @@ class WorkflowContext(
         Emitted after the build, because an agent that failed to build has no
         id to attribute anything to; the caller records that failure instead.
         """
-        strategy = isolation_name(isolation, default=getattr(self._factory, "default_isolation", "shared"))
+        default_isolation = getattr(self._factory, "default_isolation", "shared")
+        explicit_strategy = isinstance(isolation, str) or default_isolation != "shared"
+        strategy = isolation_name(isolation, default=default_isolation)
         acquire = getattr(self._factory, "acquire_environment", None)
         if callable(acquire):
             env = await acquire(isolation=strategy, label=label)
@@ -389,7 +391,7 @@ class WorkflowContext(
                 # An isolated writer needs a recorded handoff because siblings cannot see
                 # its edits through the shared filesystem.
                 "isolated": bool(isolation),
-                "isolation": strategy,
+                **({"isolation": strategy} if explicit_strategy else {}),
             },
         )
         return session
