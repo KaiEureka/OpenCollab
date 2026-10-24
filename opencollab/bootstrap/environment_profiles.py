@@ -16,6 +16,7 @@ class VMProfile(BaseModel):
     resources: tuple[VMResource, ...] = Field(min_length=1)
     lease_database: str
     wait_timeout: float | None = Field(default=0, ge=0, allow_inf_nan=False)
+    cleanup_timeout: float = Field(default=60, gt=0, allow_inf_nan=False)
 
     @field_validator("resources", mode="before")
     @classmethod
@@ -45,11 +46,11 @@ class VMProfile(BaseModel):
             raise ValueError("VM lease_database must be an absolute local path")
         return value
 
-    @field_validator("wait_timeout", mode="before")
+    @field_validator("wait_timeout", "cleanup_timeout", mode="before")
     @classmethod
     def _wait_timeout(cls, value: Any) -> Any:
         if isinstance(value, bool):
-            raise ValueError("VM wait_timeout must be a non-negative number or None")
+            raise ValueError("VM timeouts must be numeric")
         return value
 
 
@@ -75,3 +76,15 @@ def configured_environment_providers(
             f"isolation strategy {isolation!r} requires VM resources in config.vm or an environment provider"
         )
     return selected
+
+
+def environment_cleanup_timeout(config: Mapping[str, Any], requested: float | None, *, default: float) -> float:
+    if requested is not None:
+        return requested
+    value = config.get("vm")
+    if value is None:
+        return default
+    if isinstance(value, str):
+        value = json.loads(value)
+    profile = value if isinstance(value, VMProfile) else VMProfile.model_validate(value)
+    return profile.cleanup_timeout

@@ -740,7 +740,7 @@ async def run_team(
     team_config_path: str | os.PathLike[str] | None,
     max_tokens: int,
     timeout: float | None,
-    cleanup_timeout: float = DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS,
+    cleanup_timeout: float | None = None,
     artifacts: Path | None,
     trace: bool,
     use_worktrees: bool,

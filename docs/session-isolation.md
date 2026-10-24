@@ -148,7 +148,7 @@ client = OpenCollab(".", environment_providers={
     "vm-group": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3"),
     "vm-session": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3", scope="session"),
 })
-result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="vm-group")
+result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="vm-group", cleanup_timeout=60)
 ```
 
 The stable `resource_id` identifies the actual machine across connection aliases.
@@ -170,11 +170,19 @@ lease. Successful reset returns the VM to the pool. An export, cleanup, transpor
 or reset failure preserves the lease and recovery material for retry.
 
 For a serializable SDK configuration, put the same values in `config["vm"]`.
-The `vm` object contains `resources`, `lease_database`, and optional `wait_timeout`.
+The `vm` object contains `resources`, `lease_database`, optional `wait_timeout`,
+and `cleanup_timeout` with a default of 60 seconds.
 Each resource object contains the `VMResource` fields, with a `connection` object
 containing `VMConnection` fields. `OpenCollab` loads both VM strategies from this
 profile. Explicit `environment_providers` entries override matching configured
 names.
+
+The profile's cleanup grace applies to SDK Team and Workflow calls, the CLI,
+and member-authored child Workflows. An explicit `cleanup_timeout` on an SDK
+call or child `launch` takes precedence. The Workflow CLI accepts
+`--cleanup-timeout`. Without a VM profile, existing runtime cleanup defaults
+continue to apply. Custom VM providers can set cleanup grace through those
+same call options, as in the provider example above.
 
 ```python
 import json

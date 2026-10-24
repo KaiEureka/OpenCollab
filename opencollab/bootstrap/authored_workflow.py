@@ -38,6 +38,7 @@ class _Child:
     environment: EnvironmentPort
     artifacts: str
     budget: int | None
+    cleanup_timeout: float = 2.0
     task: asyncio.Task[None] | None = None
     execution: asyncio.Task[Any] | None = None
     stop_requested: bool = False
@@ -70,6 +71,8 @@ class AuthoredWorkflowTool(Tool):
             "python": {"type": "string", "default": "python3"},
             "budget": {"type": "integer", "minimum": 1},
             "concurrency": {"type": "integer", "minimum": 1, "default": 4},
+            "cleanup_timeout": {"type": "number", "minimum": 0,
+                                "description": "launch only. Cleanup grace in seconds. Omitted inherits the parent."},
             "isolation": {"type": "string", "description": "launch only. Default strategy for child agents. "
                           "Omitted inherits the member strategy."},
             "timeout": {"type": "number", "minimum": 0,
@@ -99,8 +102,8 @@ class AuthoredWorkflowTool(Tool):
             parent.own_runtime(self.aclose, reserve_tokens=self._reserved_tokens)
             self._registered = True
         action = params["action"]
-        if action != "launch" and "isolation" in params:
-            raise ValueError("isolation is only supported by the launch action")
+        if action != "launch" and (extra := {"isolation", "cleanup_timeout"} & params.keys()):
+            raise ValueError(f"{' and '.join(sorted(extra))} is only supported by the launch action")
         if action == "launch":
             async with self._launch_lock:
                 child = await self._launch(params, runtime)
@@ -161,6 +164,12 @@ class AuthoredWorkflowTool(Tool):
             if remaining <= 0:
                 raise ValueError("Team session token budget is exhausted or reserved by child runs")
             budget = max(1, remaining // 2) if budget is None else min(budget, remaining)
+        cleanup_timeout = params.get("cleanup_timeout", self._config.workflow_cleanup_timeout)
+        if (
+            isinstance(cleanup_timeout, bool) or not isinstance(cleanup_timeout, (int, float))
+            or not math.isfinite(cleanup_timeout) or cleanup_timeout <= 0
+        ):
+            raise ValueError("cleanup_timeout must be finite and positive")
         pool = (self._environment_pool_factory(environment, role=parent.agent.name)
                 if self._environment_pool_factory is not None else SessionEnvironmentPool(
                     environment.workspace, isolation="shared", base_environment=environment,
@@ -176,7 +185,7 @@ class AuthoredWorkflowTool(Tool):
             raise
         child_id = f"child-{uuid.uuid4().hex}"
         artifacts = posixpath.join(environment.workspace, ".opencollab", "child-runs", child_id)
-        child = _Child(child_id, environment, artifacts, budget)
+        child = _Child(child_id, environment, artifacts, budget, cleanup_timeout=cleanup_timeout)
         config = {key: value for key, value in {**vars(self._config), **vars(parent.agent)}.items()
                   if key in {"model", "provider", "wire_protocol", "api_key", "auth_token", "base_url",
                              "temperature", "top_p", "thinking", "thinking_params", "reasoning_effort",
@@ -194,6 +203,7 @@ class AuthoredWorkflowTool(Tool):
         request = {"id": child_id, "source": source, "entry": params.get("entry", "main"),
                    "args": params.get("args", {}), "config": config, "budget": budget,
                    "max_steps": parent.max_steps, "concurrency": params.get("concurrency", 4),
+                   "cleanup_timeout": cleanup_timeout,
                    "allowed_tools": [tool.name for tool in parent.agent.tools],
                    "tool_limits": tool_limits,
                    "process_isolated": isolated,
@@ -328,7 +338,8 @@ class AuthoredWorkflowTool(Tool):
         child.stop_requested = True
         try:
             await child.environment.write_file(posixpath.join(child.artifacts, "stop"), "stop")
-            await asyncio.wait_for(asyncio.shield(child.task), timeout=_RUNNER_STOP_GRACE_SECONDS)
+            await asyncio.wait_for(asyncio.shield(child.task),
+                                   timeout=max(_RUNNER_STOP_GRACE_SECONDS, child.cleanup_timeout))
         except (OSError, RuntimeError, asyncio.TimeoutError):
             if child.execution is not None and not child.execution.done():
                 child.execution.cancel()

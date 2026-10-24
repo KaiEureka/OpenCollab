@@ -7,12 +7,14 @@ import os
 import shlex
 import sqlite3
 import sys
+import time
 import uuid
 from pathlib import Path
 
 import pytest
 
 from opencollab import OpenCollab
+from opencollab.adapters.vm_isolation import VMIsolationPool
 from opencollab.bootstrap import _workflow_runtime_session as wiring
 from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
 from opencollab.environments import VMConnection, VMEnvironment
@@ -34,6 +36,22 @@ async def vm_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT))
     identity = f"sdk-{uuid.uuid4().hex}"
     controls = []
+    cleanup_operations = []
+    for method_name in ("_export", "_cleanup_owner"):
+        method = getattr(VMIsolationPool, method_name)
+
+        async def measured(pool, *args, _method=method, _name=method_name):
+            started = time.monotonic()
+            completed = False
+            try:
+                result = await _method(pool, *args)
+                completed = True
+                return result
+            finally:
+                cleanup_operations.append({"operation": _name, "resource_id": args[-1].resource.resource_id,
+                                           "seconds": time.monotonic() - started, "completed": completed})
+
+        monkeypatch.setattr(VMIsolationPool, method_name, measured)
     for resource in profile["resources"]:
         control = VMEnvironment(VMConnection(**resource["connection"]), resource["workspace_root"],
                                 state_directory=resource["state_directory"])
@@ -57,11 +75,29 @@ async def vm_profile(tmp_path, monkeypatch):
         retained = []
         if Path(profile["lease_database"]).exists():
             with sqlite3.connect(profile["lease_database"]) as database:
-                retained = database.execute("SELECT resource_id FROM vm_leases").fetchall()
+                retained = database.execute("SELECT resource_id, owner, workspace FROM vm_leases").fetchall()
+        guests = []
         for control, root, state in controls:
+            script = '''import json, pathlib, socket, sys
+root, state = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+receipt = state / 'reset-receipt'
+print(json.dumps({'hostname': socket.gethostname(),
+                  'boot_id': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                  'workspace': str(root), 'state_directory': str(state),
+                  'reset_receipt': receipt.read_text() if receipt.exists() else '',
+                  'remaining_workspace_entries': sorted(path.name for path in root.iterdir())}))
+'''
+            try:
+                evidence = await control.exec_cmd("python3 - " + shlex.quote(root) + " " + shlex.quote(state),
+                                                  input_bytes=script.encode())
+                guests.append(json.loads(evidence.stdout))
+            except Exception as exc:
+                guests.append({"workspace": root, "receipt_error": str(exc)})
             if not retained:
                 await control.exec_cmd(f"rm -rf -- {shlex.quote(root)} {shlex.quote(state)}")
             await control.cleanup()
+        (tmp_path / "vm-receipt.json").write_text(json.dumps({"guests": guests, "retained_leases": retained,
+                                                          "cleanup_operations": cleanup_operations}, indent=2))
 
 
 @pytest.mark.parametrize("scope, unbounded", [("group", False), ("session", False), ("group", True)])

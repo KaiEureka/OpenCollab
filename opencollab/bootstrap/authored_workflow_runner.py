@@ -99,6 +99,7 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
                 max_steps=request["max_steps"], max_concurrency=request["concurrency"],
                 save_dir=str(artifacts), trace=False, run_id=request["id"],
                 session_builder=build_child, return_details=True, limit_mode="explicit",
+                cleanup_timeout=request.get("cleanup_timeout", 2.0),
                 **({"isolation": request["bridge"]["isolation"],
                     "environment_providers": {name: partial(bridge.provider, name)
                                               for name in request["bridge"]["strategies"]}}

@@ -306,9 +306,13 @@ async def _drive(
         if not task.cancelled() and task.exception() is not None:
             raise task.exception()
 
-async def _await_scheduler_cleanup(scheduler: Any) -> asyncio.CancelledError | None:
+async def _await_scheduler_cleanup(
+    scheduler: Any, *, cleanup_timeout: float | None = None,
+) -> asyncio.CancelledError | None:
     """Keep the CLI-owned scheduler teardown alive through repeated cancel."""
-    cleanup_task = asyncio.create_task(scheduler.cleanup())
+    cleanup_task = asyncio.create_task(scheduler.cleanup(
+        **({"cleanup_timeout": cleanup_timeout} if cleanup_timeout is not None else {}),
+    ))
     repeated_cancellation: asyncio.CancelledError | None = None
     while True:
         try:
@@ -470,7 +474,9 @@ async def _run(
         primary_failure = exc
     if scheduler is not None:
         try:
-            repeated_cancellation = await _await_scheduler_cleanup(scheduler)
+            repeated_cancellation = await _await_scheduler_cleanup(
+                scheduler, cleanup_timeout=(cfg.get("vm") or {}).get("cleanup_timeout"),
+            )
         except BaseException as exc:
             cleanup_failure = exc
     if ctx.tracer:

@@ -98,6 +98,9 @@ def run_cmd(
         help="Max active parallel/pipeline units (defaults to --concurrency)",
     ),
     isolation: Optional[str] = typer.Option(None, "--isolation", help="Default agent environment strategy"),
+    cleanup_timeout: Optional[float] = typer.Option(
+        None, "--cleanup-timeout", min=0.001, help="Cleanup grace in seconds (default from the VM profile or runtime)",
+    ),
     agent_profile: Optional[str] = typer.Option(
         None,
         "--agent-profile",
@@ -173,6 +176,7 @@ def run_cmd(
             task_concurrency=task_concurrency,
             agent_profile=agent_profile,
             **({"isolation": isolation} if isolation is not None else {}),
+            **({"cleanup_timeout": cleanup_timeout} if cleanup_timeout is not None else {}),
             save_dir=save_dir,
             trace=trace,
             return_details=True,

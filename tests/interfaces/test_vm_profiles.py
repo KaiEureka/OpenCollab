@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 from opencollab import OpenCollab
 from opencollab.adapters.session_environments import SessionEnvironmentPool
+from opencollab.bootstrap import _workflow_runtime_execution as workflow_execution
+from opencollab.bootstrap import programmatic
 from opencollab.bootstrap.config import build_config
 from opencollab.bootstrap.environment_profiles import configured_environment_providers
 from opencollab.environments import VMConnection, VMEnvironment, VMResource, vm_isolation_provider
@@ -53,6 +56,7 @@ def test_vm_config_round_trips_and_environment_factories_remain_overridable(tmp_
 @pytest.mark.parametrize("change", [
     {"resources": []}, {"lease_database": "relative.sqlite3"}, {"wait_timeout": -1},
     {"wait_timeout": True}, {"wait_timeout": float("inf")}, {"unexpected": "value"},
+    {"cleanup_timeout": 0}, {"cleanup_timeout": True}, {"cleanup_timeout": float("nan")},
     {"resources": [{"resource_id": "a", "connection": {"host": "guest", "user": "worker", "port": True}}]},
     {"resources": [{"resource_id": "a", "connection": {"host": "guest", "user": "worker", "password": "unused"}}]},
 ])
@@ -124,6 +128,87 @@ async def test_authored_isolation_override_is_validated_at_launch(tmp_path, loca
                 "action": "launch", "source": "authored.py", "isolation": "missing",
             }, runtime)
         assert not tool._children
+    finally:
+        await parent.aclose()
+
+
+@pytest.mark.parametrize("with_vm, explicit, parent_grace, child_grace", [
+    (False, None, 10, 2), (True, None, 60, 60), (False, 7, 7, 7), (True, 7, 7, 7),
+])
+async def test_team_cleanup_defaults_preserve_child_grace_and_accept_explicit_override(
+    tmp_path, monkeypatch, with_vm, explicit, parent_grace, child_grace,
+):
+    captured = {}
+
+    class Scheduler:
+        used_tokens = 0
+        table = SimpleNamespace(entries={0: object()})
+        lead_session = SimpleNamespace(phase=SimpleNamespace(value="done"), state=SimpleNamespace(terminal_reason=None))
+
+        async def run(self, prompt):
+            return "done"
+
+        async def cleanup(self, *, cleanup_timeout):
+            captured["parent_grace"] = cleanup_timeout
+            if "worktree_pool" in captured:
+                await captured["worktree_pool"].release()
+
+    def build(_ctx, **kwargs):
+        captured.update(kwargs)
+        return Scheduler()
+
+    monkeypatch.setattr(programmatic, "build_scheduler", build)
+    result = await OpenCollab(tmp_path, config={"vm": _profile(tmp_path)} if with_vm else {}).team(
+        "done", use_worktrees=False, trace=False,
+        **({"cleanup_timeout": explicit} if explicit is not None else {}),
+    )
+    assert result.ok
+    assert captured["parent_grace"] == parent_grace
+    assert captured["workflow_cleanup_timeout"] == child_grace
+
+
+@pytest.mark.parametrize("with_vm, explicit, expected", [(False, None, 2), (True, None, 60), (True, 7, 7)])
+async def test_workflow_cleanup_uses_profile_default_and_explicit_override(
+    tmp_path, monkeypatch, with_vm, explicit, expected,
+):
+    captured = []
+    finalize = workflow_execution._quiesce_and_finalize_workflow_context
+
+    async def remember(ctx, *, timeout):
+        captured.append(timeout)
+        return await finalize(ctx, timeout=timeout)
+
+    monkeypatch.setattr(workflow_execution, "_quiesce_and_finalize_workflow_context", remember)
+
+    async def flow(ctx, args):
+        return "done"
+
+    result = await OpenCollab(tmp_path, config={"vm": _profile(tmp_path)} if with_vm else {}).workflow(
+        flow, trace=False, **({"cleanup_timeout": explicit} if explicit is not None else {}),
+    )
+    assert result.ok
+    assert captured == [expected]
+
+
+@pytest.mark.parametrize("inherited, explicit, expected", [(2, None, 2), (60, None, 60), (60, 7, 7)])
+async def test_authored_launch_inherits_cleanup_grace_and_can_override_it(
+    tmp_path, local_environment_factory, inherited, explicit, expected,
+):
+    environment = local_environment_factory(str(tmp_path))
+    (tmp_path / "authored.py").write_text("async def main(ctx, args):\n    return 'done'\n")
+    parent, tool, runtime = _manager(environment)
+    tool._config.workflow_cleanup_timeout = inherited
+    try:
+        launched = json.loads(await tool.execute_with_runtime({
+            "action": "launch", "source": "authored.py", "python": sys.executable,
+            **({"cleanup_timeout": explicit} if explicit is not None else {}),
+        }, runtime))
+        child = tool._children[launched["id"]]
+        assert child.cleanup_timeout == expected
+        result = json.loads(await tool.execute_with_runtime({"action": "wait", "id": child.id}, runtime))
+        assert result["result"]["output"] == "done", result
+        with pytest.raises(ValueError, match="only supported by the launch"):
+            await tool.execute_with_runtime({"action": "status", "cleanup_timeout": 7}, runtime)
     finally:
         await parent.aclose()
 

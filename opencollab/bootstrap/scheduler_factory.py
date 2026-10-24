@@ -26,6 +26,7 @@ from opencollab.bootstrap.config import (
 )
 from opencollab.bootstrap.container import RuntimeContext, build_workspace_safety_policy
 from opencollab.bootstrap.context_builder import SpawnConfig
+from opencollab.bootstrap.environment_profiles import environment_cleanup_timeout
 from opencollab.bootstrap.session_factory import (
     SESSION_MAX_STEPS,
     DefaultSessionFactory,
@@ -100,6 +101,7 @@ def build_scheduler(
     record_delivery_tree: bool = False,
     run_id: str | None = None,
     worktree_pool=None,
+    workflow_cleanup_timeout: float | None = None,
 ) -> Scheduler:
     """Compose a team and initialize agent 0 with the selected configuration.
 
@@ -186,6 +188,7 @@ def build_scheduler(
             llm_stream_idle_timeout=cfg.get("llm_stream_idle_timeout", 180.0),
             llm_stream_chat=bool(cfg.get("llm_stream_chat", False)),
             provider_error_time_budget=cfg.get("provider_error_time_budget", 0.0),
+            workflow_cleanup_timeout=environment_cleanup_timeout(cfg, workflow_cleanup_timeout, default=2.0),
             tracer=ctx.tracer,
             event_bus=event_bus,
             permission_policy=ctx.permission_policy,

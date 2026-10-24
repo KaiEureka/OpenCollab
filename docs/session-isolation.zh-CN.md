@@ -103,7 +103,7 @@ client = OpenCollab(".", environment_providers={
     "vm-group": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3"),
     "vm-session": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3", scope="session"),
 })
-result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="vm-group")
+result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="vm-group", cleanup_timeout=60)
 ```
 
 稳定的 `resource_id` 标识实际机器，同一机器的不同连接别名应使用相同标识。
@@ -119,9 +119,15 @@ result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="v
 保留租约和恢复资料以供重试。
 
 SDK 可将相同配置序列化后放入 `config["vm"]`。`vm` 对象包含 `resources`、
-`lease_database` 和可选的 `wait_timeout`。每个资源对象采用 `VMResource` 的字段，
+`lease_database`、可选的 `wait_timeout` 和默认 60 秒的 `cleanup_timeout`。
+每个资源对象采用 `VMResource` 的字段，
 其中 `connection` 对象采用 `VMConnection` 字段。OpenCollab 据此注册两种 VM 策略。
 显式 `environment_providers` 中的同名项目优先。
+
+配置中的清理等待时间适用于 SDK Team、Workflow、CLI 和成员自编子 Workflow。
+SDK 调用或子运行 `launch` 显式传入的 `cleanup_timeout` 优先。
+Workflow CLI 支持 `--cleanup-timeout`。省略 VM 配置时，继续使用已有运行默认值。
+自定义 VM 提供者通过这些调用参数选择清理等待时间，上面的提供者示例使用了这一方式。
 
 ```python
 import json

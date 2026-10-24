@@ -78,6 +78,7 @@ class SpawnConfig:
     request_pool: str | None = None
     request_capacity: int | None = None
     logical_model: str | None = None
+    workflow_cleanup_timeout: float = 2.0
 
     def model_settings(self, model: str | None = None) -> dict[str, Any]:
         return resolve_model_route(
