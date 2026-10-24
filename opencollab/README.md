@@ -282,6 +282,11 @@ another async workflow with the same context or use `ctx.candidate_workflow`
 for an isolated candidate. Team spawning continues to create members within the
 same Team. Workflow sessions receive the tools selected by their Python workflow.
 
+Members that write new Workflow source during a run can use `manage_workflow`
+to launch the file and later inspect, wait for, or stop its child run.
+The [member-authored Workflow example](../examples/member-authored-workflow/README.md)
+documents its permissions, budget sharing, lifecycle, and offline demonstration.
+
 ### Workflow authoring
 
 A workflow is a plain async Python function tagged with `@workflow`. Create
