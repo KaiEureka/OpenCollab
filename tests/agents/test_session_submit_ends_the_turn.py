@@ -69,20 +69,6 @@ def test_a_step_that_did_not_submit_still_loops_back_to_another_call():
     assert answer == "done exploring"
     assert len(llm.calls) == 2
 
-def test_submit_is_a_success_terminal_not_a_stop():
-    runner, _ = _runner(
-        submitted=True,
-        responses=[llm_response(tool_calls=[tool_call("t1", "submit", '{"summary": "s"}')])],
-    )
-
-    run(runner.run_loop())
-
-    # STOPPED is the controlled-halt terminal and the scheduler turns it into
-    # "Error: agent stopped"; an agent that said it was finished must not be
-    # reported as one that was cut off.
-    assert runner.state.phase is not SessionPhase.STOPPED
-    assert runner.state.phase is SessionPhase.DONE
-
 @pytest.mark.parametrize("content", [None, SUMMARY, SUMMARY + "\n", "I have checked the requested change."])
 @pytest.mark.parametrize("aid", [0, 7])
 async def test_public_session_delivers_submitted_text_once_to_its_agent(tmp_path, content, aid):

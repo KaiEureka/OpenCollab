@@ -572,30 +572,20 @@ async def test_budget_spent_sums_session_tokens():
     assert ctx.budget.remaining() == 10_000 - 350
 
 @pytest.mark.asyncio
-async def test_budget_exceeded_raises_before_next_call():
-    s1 = FakeSession(reply="a", tokens=500)
-    s2 = FakeSession(reply="b", tokens=0)
-    ctx = WorkflowContext(FakeFactory([s1, s2]), budget_total=500)
-
-    assert await ctx.agent("first") == "a"
-    with pytest.raises(WorkflowBudgetExceeded):
-        await ctx.agent("second")
-
-@pytest.mark.asyncio
 async def test_over_budget_ok_bypasses_the_pre_call_raise():
     """The final write may bypass an exhausted token pool under the caller's timeout.
 
     An ordinary budget refusal occurs before consuming a scripted session.
     """
     s1 = FakeSession(reply="a", tokens=500)
-    s2 = FakeSession(reply="forced", tokens=0)
+    s2 = FakeSession(reply="b", tokens=0)
     ctx = WorkflowContext(FakeFactory([s1, s2]), budget_total=500)
 
     assert await ctx.agent("first") == "a"
     assert ctx.budget.remaining() <= 0
     with pytest.raises(WorkflowBudgetExceeded):
-        await ctx.agent("default is still gated")
-    assert await ctx.agent("forced write", over_budget_ok=True) == "forced"
+        await ctx.agent("second")
+    assert await ctx.agent("forced write", over_budget_ok=True) == "b"
 
 @pytest.mark.asyncio
 async def test_budget_none_never_raises():

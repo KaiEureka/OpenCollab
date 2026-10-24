@@ -269,21 +269,15 @@ _TEAM_TESTER_BUNDLE = (
 _SCRIPTED_TESTER_BUNDLE = ("bash", "file_read", "git_diff", "grep", "run_tests", "submit")
 _READING_ANALYST_BUNDLE = ("bash", "file_read", "grep", "run_tests", "submit")
 
-# Enumerate every seat from OpenCollab-Eval experiment/arm_registry.py role_tool_names.
+# Distinct tool bundles and agent ids from OpenCollab-Eval experiment/arm_registry.py.
 ARM_SEATS: tuple[tuple[str, str, tuple[str, ...], int], ...] = (
     ("single", "swe_agent", _SINGLE_BUNDLE, 0),
-    ("best-of-n", "swe_agent", _SINGLE_BUNDLE, 0),
     ("team", "analyst", _TEAM_WORKING_BUNDLE, 0),
     ("team", "coder", _TEAM_WORKING_BUNDLE, 1),
     ("team", "tester", _TEAM_TESTER_BUNDLE, 2),
     ("self-collaboration", "analyst", _SINGLE_BUNDLE, -1),
-    ("self-collaboration", "coder:r1", _SINGLE_BUNDLE, -1),
     ("self-collaboration", "tester:r1", _SCRIPTED_TESTER_BUNDLE, -1),
-    ("self-collaboration", "analyst:adjudicate:r1", _SINGLE_BUNDLE, -1),
     ("self-collaboration-reading-analyst", "analyst", _READING_ANALYST_BUNDLE, -1),
-    ("self-collaboration-reading-analyst", "coder:r1", _SINGLE_BUNDLE, -1),
-    ("self-collaboration-reading-analyst", "tester:r1", _SCRIPTED_TESTER_BUNDLE, -1),
-    ("self-collaboration-reading-analyst", "analyst:adjudicate:r1", _SINGLE_BUNDLE, -1),
 )
 
 class _ToolStub:
@@ -317,7 +311,7 @@ def _client_over(fake: _FakeChatClient, *, stream: bool) -> LLMClient:
     ARM_SEATS,
     ids=[f"{arm}:{seat}" for arm, seat, _tools, _aid in ARM_SEATS],
 )
-def test_every_arm_seat_records_transport_timing_on_its_llm_call(
+def test_seat_execution_inputs_record_transport_timing_on_llm_call(
     arm: str, seat: str, tool_names: tuple[str, ...], aid: int, stream: bool
 ):
     tracer = FakeTracer()

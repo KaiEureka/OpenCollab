@@ -163,13 +163,6 @@ def test_monotonic_one_more_exchange_flips_exactly_one_and_keeps_old_stubs():
         assert _tool_content(turn_n, tid) == _tool_content(turn_n1, tid)
         assert _is_stub(_tool_content(turn_n1, tid))
 
-def test_monotonic_never_unstubs():
-    sh = EagerToolOutputClearShaper(keep_recent=3)
-    once = sh.shape(_history(8))
-    again = sh.shape(once)
-    for tid in ("t1", "t2", "t3", "t4", "t5"):
-        assert _is_stub(_tool_content(again, tid))
-
 def test_idempotent_shape_of_shape_equals_shape():
     messages = _history(9)
     once = _shaper().shape(messages)

@@ -668,12 +668,6 @@ async def test_local_temp_files_have_owned_cleanup(local_environment_factory, tm
     await env.remove_file(path)
     assert not os.path.exists(path)
 
-async def test_local_temp_cleanup_removes_registered_path(local_environment_factory, tmp_path) -> None:
-    env = local_environment_factory(str(tmp_path))
-    path = await env.write_temp_file("owned", prefix="probe-", suffix=".txt")
-    await env.remove_file(path)
-    assert not os.path.exists(path)
-
 async def test_local_temp_cleanup_rejects_replaced_workspace_symlink(local_environment_factory, tmp_path) -> None:
     workspace = tmp_path / "workspace"
     outside = tmp_path / "outside"

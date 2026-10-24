@@ -330,6 +330,9 @@ async def test_agent_schema_free_text_stop_triggers_forced_retry():
     assert "MUST call" in corrective_prompt
     assert "prose" in corrective_prompt
     assert "structured_output" in corrective_prompt
+    assert len(factory.builds) == 2
+    assert factory.builds[0]["thinking"] is None
+    assert factory.builds[1]["thinking"] is None
 
 @pytest.mark.asyncio
 async def test_agent_schema_first_pass_capture_skips_forced_retry():
@@ -412,18 +415,6 @@ async def test_forced_retry_carries_first_pass_exploration():
     assert len(factory.sessions[0].messages) == len(exploration) + 1
 
 @pytest.mark.asyncio
-async def test_structured_agent_inherits_the_run_wide_reasoning_setting():
-    """Both schema sessions inherit the run-wide reasoning setting."""
-    factory = ScriptedFactory(payloads=[_NO_CALL, {"x": 7}])
-    ctx = WorkflowContext(factory)
-
-    await ctx.agent("give me x", schema=SCHEMA, tools=[object()])
-
-    assert len(factory.builds) == 2
-    assert factory.builds[0]["thinking"] is None
-    assert factory.builds[1]["thinking"] is None
-
-@pytest.mark.asyncio
 async def test_schema_and_plain_agents_agree_on_the_reasoning_setting():
     """A schema= call and a plain call must hand the factory the same
     ``thinking`` value. The two differ in how the answer is captured, and an
@@ -436,17 +427,7 @@ async def test_schema_and_plain_agents_agree_on_the_reasoning_setting():
     await WorkflowContext(plain_factory).agent("just do it")
 
     assert schema_factory.builds[0]["thinking"] == plain_factory.builds[0]["thinking"]
-
-@pytest.mark.asyncio
-async def test_non_structured_agent_leaves_thinking_default():
-    """A plain (non-schema) agent call must NOT force thinking off — it leaves
-    ``thinking`` as None so the factory's run-wide default applies."""
-    factory = ScriptedFactory(payloads=[])
-    ctx = WorkflowContext(factory)
-
-    await ctx.agent("just do it")
-
-    assert factory.builds[0]["thinking"] is None
+    assert plain_factory.builds[0]["thinking"] is None
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(

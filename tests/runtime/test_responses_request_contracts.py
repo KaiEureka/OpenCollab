@@ -45,27 +45,6 @@ def test_responses_preserves_image_url_content_blocks():
         }
     ]
 
-def test_responses_restored_assistant_parts_remain_easy_input_content():
-    _, items = _messages_to_input(
-        [
-            {
-                "role": "assistant",
-                "content": [
-                    {"type": "text", "text": "Recovered answer."},
-                ],
-            }
-        ]
-    )
-
-    assert items == [
-        {
-            "role": "assistant",
-            "content": [
-                {"type": "input_text", "text": "Recovered answer."},
-            ],
-        }
-    ]
-
 @pytest.mark.parametrize("part_type", ["text", "input_text", "output_text"])
 def test_responses_normalizes_restored_text_block_variants(part_type):
     _, items = _messages_to_input(

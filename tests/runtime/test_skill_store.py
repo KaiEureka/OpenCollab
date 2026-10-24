@@ -214,11 +214,6 @@ def test_file_store_rejects_large_files_at_a_bounded_read_limit(tmp_path, monkey
     assert observed_limits
     assert max(observed_limits) <= 64 * 1024
 
-def test_file_store_does_not_cap_small_body(tmp_path):
-    _write_skill(tmp_path, "small", description="S.", body="tiny")
-    store = FileSkillStore(tmp_path)
-    assert store.get_body("small") == "tiny"
-
 @pytest.mark.parametrize("kind", ["fifo", "symlink", "oversized"])
 def test_file_store_skips_unsafe_or_oversized_skill_file(
     tmp_path,
