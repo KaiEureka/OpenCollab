@@ -1,6 +1,6 @@
 # VM member-authored Workflow
 
-[中文](README.zh-CN.md)
+[Chinese](README.zh-CN.md)
 
 Prepare two existing Linux VMs using the [VM guide](../../docs/virtual-machines.md).
 Install the same OpenCollab revision on the controller and both guests, then save
