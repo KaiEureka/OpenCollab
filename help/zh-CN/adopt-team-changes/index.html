@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>采用队友改动并验证交付 · OpenCollab 帮助中心</title>
+<meta name="description" content="将已完成 Coder 的改动交付到团队工作区，再让新的 Tester 验证采用后的结果。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/adopt-team-changes/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心 · 中文</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details open><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="index.html" aria-current="page">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">Team 与子 Agent</p>
+<h1 id="采用队友改动并验证交付">采用队友改动并验证交付</h1>
+<p>入口成员可以用 <code>adopt_agent</code> 把当前轮成功完成的直接 Coder 子任务改动写入团队交付目录。采用后应创建新的 Tester，让它验证用户最终会得到的文件。独立工作树中的成功回答与源目录更新之间，由这个显式动作连接。</p>
+<h2 id="从成功完成结果取得-aid">从成功完成结果取得 aid</h2>
+<p>入口角色的 <code>tools</code> 要包含 <code>adopt_agent</code>。Coder 成功结束后，完成结果会附带可采用的 aid。例如看到 <code>Completed coder aid=3</code>，入口可以发出下列工具调用。</p>
+<pre><code class="language-json">{&quot;aid&quot;: 3}
+</code></pre>
+<p>工具只接收 <code>aid</code>，值为正整数。运行时会确认调用者是拥有该能力的入口成员、对象是它的直接 coder 子成员，并且对象已经在当前入口轮次成功完成。成员角色名按规范化形式检查。失败、停止、其他角色或先前轮次的结果需要先处理其状态，才能进入对应的交付过程。</p>
+<h2 id="独立实现怎样进入交付目录">独立实现怎样进入交付目录</h2>
+<p>声明采纳工具的 Team 会从当前源文件内容准备子任务，包括用户尚未提交的修改和已采纳的实现。Coder 在自己的环境中修改，完成后捕获整份变化。采用时保留源仓库索引，将独立增量合入交付目录。</p>
+<p>同一文件发生冲突时，采纳操作会拒绝应用并保持交付文件完整。错误会指出完整候选材料的恢复位置。应先导出补丁，比较源目录与候选的实际差异，再安排冲突处理。让新任务基于已更新交付目录继续修改，通常比反复应用同一冲突补丁更容易理解。</p>
+<p>共享环境中，Coder 已经直接修改交付目录，工具会说明这些变化已经存在。独立环境中，工具成功返回采用结果后，才能在交付目录观察到相应修改。入口自身也被显式隔离时，最终还需要取出入口补丁，具体见 <a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>。</p>
+<h2 id="修订和重复采用">修订和重复采用</h2>
+<p>在同一个活动入口轮次内，同一 Coder 后续完成新修订时，运行时会计算它相对上次成功采用结果的增量。再次采用只应用新增变化。重复采用完全相同的完成结果，会返回 already adopted，并保持交付文件状态。</p>
+<p>如果采用失败，完整候选补丁会保存在当前运行产物中。未启用产物目录时，会使用私有临时恢复目录。应在释放运行资源前保存这些材料，恢复步骤见 <a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a>。</p>
+<h2 id="让-tester-检查已经采用的内容">让 Tester 检查已经采用的内容</h2>
+<p>采用成功后，入口可以派发 <code>{&quot;role&quot;: &quot;tester&quot;, &quot;task&quot;: &quot;验证刚采用的 parser 修复，执行相关回归测试并报告命令、退出码和失败信息。&quot;, &quot;context&quot;: &quot;检查当前交付目录中的空输入处理。&quot;}</code>。新 Tester 从已经更新的交付内容准备环境，测试结果应对应这次实际交付。</p>
+<p>最终报告应给出改变了哪些文件、采用是否成功以及执行了哪些项目验证。测试命令的退出码和目标执行情况共同说明验证结果，完整回答可关联本次运行的产物记录。</p>
+<p>工具参数见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/adopt_agent.py">采纳工具</a>，当前轮次与增量处理见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/_scheduler_team.py">调度器实现</a>，团队整体配置见 <a href="../configure-team/index.html">Team 完整指南与团队配置</a>。</p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/adopt-team-changes.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E6%88%90%E5%8A%9F%E5%AE%8C%E6%88%90%E7%BB%93%E6%9E%9C%E5%8F%96%E5%BE%97-aid">从成功完成结果取得 aid</a><a href="#%E7%8B%AC%E7%AB%8B%E5%AE%9E%E7%8E%B0%E6%80%8E%E6%A0%B7%E8%BF%9B%E5%85%A5%E4%BA%A4%E4%BB%98%E7%9B%AE%E5%BD%95">独立实现怎样进入交付目录</a><a href="#%E4%BF%AE%E8%AE%A2%E5%92%8C%E9%87%8D%E5%A4%8D%E9%87%87%E7%94%A8">修订和重复采用</a><a href="#%E8%AE%A9-tester-%E6%A3%80%E6%9F%A5%E5%B7%B2%E7%BB%8F%E9%87%87%E7%94%A8%E7%9A%84%E5%86%85%E5%AE%B9">让 Tester 检查已经采用的内容</a></aside>
+</div>
+</body>
+</html>

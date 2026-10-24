@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>设置 token 预算、步数与运行并发 · OpenCollab 帮助中心</title>
+<meta name="description" content="为单 agent、团队和工作流设置合适的执行额度，并解释预算拒绝、等待与停止。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/token-step-concurrency-limits/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心 · 中文</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details open><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="index.html" aria-current="page">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">预算、上下文与运行恢复</p>
+<h1 id="设置-token-预算步数与运行并发">设置 token 预算、步数与运行并发</h1>
+<p><code>budget</code> 控制累计输入与输出 token，<code>max_steps</code> 控制会话执行步数，<code>concurrency</code> 控制工作流同时运行的 Agent 会话数。先按任务规模设置有限额度，再根据实际用量和完成证据调整。token 预算与美元花费分别记录，单次输出上限也有独立配置。</p>
+<h2 id="给单-agent-明确额度">给单 Agent 明确额度</h2>
+<p>下面是一个可直接运行的脚本。只读任务使用较小步数，模型设置沿用本地配置。</p>
+<pre><code class="language-python">import asyncio
+from opencollab import OpenCollab
+
+async def main() -&gt; None:
+    result = await OpenCollab(&quot;.&quot;).agent2(
+        &quot;阅读测试配置，说明应执行哪些验证以及依据。&quot;,
+        tools=&quot;read&quot;,
+        budget=80_000,
+        max_steps=30,
+        timeout=300,
+    )
+    print(result.status, result.reason, result.tokens)
+    print(result.metrics.get(&quot;steps&quot;))
+
+asyncio.run(main())
+</code></pre>
+<p><code>budget</code> 和 <code>max_steps</code> 接受正整数。旧参数 <code>steps</code> 与 <code>max_steps</code> 互斥。客户端的 <code>max_output_tokens</code> 默认 8,192，限制每次模型调用的输出，较大的整次预算会支持更多次调用。每次重复发送历史都会增加累计输入用量。</p>
+<h2 id="团队怎样分配-token">团队怎样分配 token</h2>
+<p>动态团队从同一个池中分配额度。创建子成员时同步保留至多 <code>min(total, max(10_000, total // 4))</code>，同时受尚未分配余额限制。入口 Agent 的当前轮次可以租用剩余池，成员的未结算请求继续拥有相应保留量。</p>
+<p>预建团队共享池时，每个已声明席位还有累计上限，当前按总池除以席位数分配。也可以在团队文件顶层或角色的 <code>budget</code> 对象中设置 <code>tokens</code>。一旦某个角色设置独立额度，全部角色都必须有额度，团队总额为各角色之和。此模式需要 <code>prebuild_team=True</code>，由文件提供额度，同时传 SDK <code>budget=</code> 会报错。</p>
+<p>两种团队用法的示例放在已有 <code>async</code> 函数中，<code>client</code> 是已经构造的客户端。选择其中一种调用。</p>
+<pre><code class="language-python">result = await client.team(
+    &quot;完成指定实现并验证。&quot;,
+    config=&quot;team.yaml&quot;,
+    budget=300_000,
+    max_steps=100,
+)
+</code></pre>
+<pre><code class="language-python">result = await client.team(
+    &quot;完成指定实现并验证。&quot;,
+    config=&quot;team-with-role-budgets.yaml&quot;,
+    prebuild_team=True,
+    max_steps=100,
+)
+</code></pre>
+<h2 id="工作流有两类并发">工作流有两类并发</h2>
+<p><code>concurrency</code> 限制 Agent 会话，<code>task_concurrency</code> 独立限制活跃的 parallel 或 pipeline 单元，包括候选子工作流，省略时继承前者。混合 Agent 与任务工作时，峰值可以达到两个限制之和。共享后端请求数还可由模型请求池单独限制。下面的 Duo 命令显式允许宿主工作区执行 shell，按本次任务需要选择执行环境。</p>
+<pre><code class="language-bash">opencollab workflow run duo --workspace /path/to/application \
+  --task '完成指定修改并运行验证。' \
+  --args '{&quot;allow_unisolated_shell&quot;:true}' \
+  --budget 300000 --concurrency 2 --task-concurrency 2
+</code></pre>
+<p>Duo 按 A 再 B 的顺序运行候选，提高并发限制后仍保留这一次序。工作流调用在执行前从工作流池保留预算，实际授权可能因为其它调用占有份额而低于请求值。清理完成后返还未使用的保留量。预算拒绝表示无法取得执行额度，等待并发槽表示暂时没有运行席位，应分开判断。</p>
+<h2 id="按进展扩展软额度">按进展扩展软额度</h2>
+<p><code>RunControl</code> 支持在硬授权内先给较小软额度，再由 <code>decide_budget</code> 返回 <code>BudgetDecision</code> 保持或增加额度。回调可读取实际消耗、步数、输入保留量和最低输出需求，并结合应用中的执行证据决定是否继续。增加值必须覆盖实际消耗且不超过硬授权，减少现有软额度会导致策略错误。硬额度耗尽后进入普通额度停止。下面的片段放在已有 <code>async</code> 函数中，沿用 <code>client</code>，按消耗阈值扩展一次软额度。应用可把触发条件接到实际执行检查的进展信号。</p>
+<pre><code class="language-python">from opencollab import BudgetDecision, RunControl
+
+def decide(snapshot):
+    allowance = snapshot.soft_budget_tokens
+    if snapshot.used_tokens &gt;= 25_000:
+        allowance = snapshot.hard_budget_tokens
+    return BudgetDecision(allowance)
+
+result = await client.agent2(
+    &quot;阅读项目并解释可执行的验证步骤。&quot;,
+    tools=&quot;read&quot;,
+    budget=100_000,
+    run_control=RunControl(
+        initial_soft_budget_tokens=50_000,
+        decide_budget=decide,
+    ),
+)
+</code></pre>
+<p><code>OPENCOLLAB_UNBOUNDED_LIMITS=true</code> 对入口有不同影响。Base 和 Single2 的显式预算与步数继续生效，省略的限制变为无限制。<code>workflow()</code> 默认 <code>limit_mode=&quot;environment&quot;</code> 会采用无限 token 和角色步数，即使传入了数值。需要保留明确限制时用 <code>limit_mode=&quot;explicit&quot;</code>。<code>team()</code> 继续使用共享或声明额度及其 <code>max_steps</code>。时间和清理限制继续生效。</p>
+<p>额度检查发生在调用边界，已经进行中的请求可能超过剩余额度。停止后查看 <code>reason</code>、部分产物和最终用量，再判断是否继续任务。</p>
+<h2 id="来源">来源</h2>
+<p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md#L113">docs/runtime-design.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L286">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L18">docs/evaluation-runtime.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L408">opencollab/sdk/client.py</a></p>
+<h2 id="相关指南">相关指南</h2>
+<p><a href="../context-compaction/index.html">上下文窗口与自动压缩</a>　<a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a>　<a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a>　<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a>　<a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a></p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/token-step-concurrency-limits.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%BB%99%E5%8D%95-agent-%E6%98%8E%E7%A1%AE%E9%A2%9D%E5%BA%A6">给单 Agent 明确额度</a><a href="#%E5%9B%A2%E9%98%9F%E6%80%8E%E6%A0%B7%E5%88%86%E9%85%8D-token">团队怎样分配 token</a><a href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E6%9C%89%E4%B8%A4%E7%B1%BB%E5%B9%B6%E5%8F%91">工作流有两类并发</a><a href="#%E6%8C%89%E8%BF%9B%E5%B1%95%E6%89%A9%E5%B1%95%E8%BD%AF%E9%A2%9D%E5%BA%A6">按进展扩展软额度</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+</div>
+</body>
+</html>

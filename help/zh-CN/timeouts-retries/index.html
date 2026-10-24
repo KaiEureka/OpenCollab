@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>超时、重试与请求卡住诊断 · OpenCollab 帮助中心</title>
+<meta name="description" content="按卡住的位置调整模型请求或整次任务的时间限制，并理解重试如何停止。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/timeouts-retries/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心 · 中文</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details open><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="index.html" aria-current="page">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">预算、上下文与运行恢复</p>
+<h1 id="超时重试与请求卡住诊断">超时、重试与请求卡住诊断</h1>
+<p>请求等待在哪个阶段发生，就调整该阶段的超时。模型连接、首个流事件、流事件之间的空闲和 provider 请求各有独立设置。整次任务的期限通过 SDK <code>timeout=</code> 设置，执行结束后的资源清理由 <code>cleanup_timeout=</code> 另行限制。</p>
+<h2 id="根据停顿位置选设置">根据停顿位置选设置</h2>
+<p>以下变量单位都是秒，默认值适合先运行再根据服务表现调整。</p>
+<table>
+<thead>
+<tr>
+<th>设置</th>
+<th>默认值</th>
+<th>覆盖阶段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENCOLLAB_LLM_CONNECT_TIMEOUT</code></td>
+<td>30</td>
+<td>建立连接</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_LLM_FIRST_EVENT_TIMEOUT</code></td>
+<td>180</td>
+<td>等待第一个流事件</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_LLM_STREAM_IDLE_TIMEOUT</code></td>
+<td>180</td>
+<td>相邻流事件之间的等待</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_LLM_TIMEOUT</code></td>
+<td>600</td>
+<td>provider 请求超时，包含流式传输的单次 socket 读取</td>
+</tr>
+</tbody>
+</table>
+<p>服务连接困难时，先排查地址与网络，再看连接限制。已经建立连接但生成很慢时，可调整首事件等待。输出到一半长时间停顿时，检查流空闲限制和尾部完成事件。单纯增加整次任务期限，仍会保留这些请求阶段的限制。</p>
+<p>下面是一组可以写进选定 env 文件的设置。数值需要按实际端点表现选择，修改文件后重新构造 SDK 客户端。</p>
+<pre><code class="language-dotenv">OPENCOLLAB_LLM_CONNECT_TIMEOUT=30
+OPENCOLLAB_LLM_FIRST_EVENT_TIMEOUT=240
+OPENCOLLAB_LLM_STREAM_IDLE_TIMEOUT=180
+OPENCOLLAB_LLM_TIMEOUT=600
+OPENCOLLAB_LLM_MAX_RETRIES=3
+OPENCOLLAB_PROVIDER_ERROR_TIME_BUDGET=120
+</code></pre>
+<h2 id="给整个任务设置期限">给整个任务设置期限</h2>
+<p>以下脚本为一次 Agent 执行设置五分钟期限，另给清理十秒。达到运行期限后，SDK 返回 <code>stopped</code> 且 <code>reason=&quot;timeout&quot;</code>。调用方主动取消任务时则在资源清理后收到 <code>asyncio.CancelledError</code>。</p>
+<pre><code class="language-python">import asyncio
+from opencollab import OpenCollab
+
+async def main() -&gt; None:
+    client = OpenCollab(&quot;.&quot;)
+    result = await client.agent(
+        &quot;阅读项目结构，并给出最小测试步骤。&quot;,
+        tools=&quot;read&quot;,
+        timeout=300,
+        cleanup_timeout=10,
+        budget=100_000,
+    )
+    print(result.status, result.reason)
+    print(result.metrics.get(&quot;session_quiesced&quot;))
+
+asyncio.run(main())
+</code></pre>
+<p>工作流角色的 <code>timeout=</code> 限制该角色，SDK <code>workflow(timeout=...)</code> 限制整次工作流。<code>cleanup_timeout</code> 应为有限正数，描述执行结束后框架等待自己拥有的资源停止的时段。没有 token 或步数上限的运行也保留这些时间限制。</p>
+<h2 id="重试次数和失败时间额度">重试次数和失败时间额度</h2>
+<p><code>llm_max_retries</code> 默认 3，表示被分类为可重试 provider 故障后的重试次数。框架使用退避，并在服务提供时考虑 <code>Retry-After</code>。普通配置错误和上下文溢出有各自处理路径，查看错误分类可判断请求进入哪条路径。</p>
+<p><code>provider_error_time_budget</code> 默认 0，此时只按重试次数控制。设置正数后，失败尝试及重试延迟还共同受到该时间额度限制，次数或时间任一先达到上限都会结束重试。<code>llm_max_retries=0</code> 关闭这类额外尝试。它们与请求超时共同决定一次失败调用可能占用的时间。</p>
+<p>同一工作流中的会话、总结与候选共享该工作流的 provider 重试时间额度。由 <code>create_model_client()</code> 创建的客户端用于新的 SDK Agent 或 Workflow 运行时，会得到该次运行的新额度。</p>
+<h2 id="记录停止时的最终状态">记录停止时的最终状态</h2>
+<p>看到 timeout 后，先保留状态、原因和 <code>metrics</code>，再检查轨迹、会话与可用文件。部分输出可能已经保存，迟到的 provider usage 会在框架拥有的清理阶段结算一次。开始和取消事件的零已知 token 只是当时观测值，最终用量应结合完成记录和清理结果。</p>
+<p>复查故障时记录有效协议、四类超时、重试次数、失败时间额度和错误发生阶段。<code>agent_failures</code> 中的类型、HTTP 状态与 <code>exception_chain</code> 可以帮助区分连接、provider 与执行环境问题，完整轨迹则用来找到对应调用。</p>
+<h2 id="来源">来源</h2>
+<p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L94">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/config.py#L199">opencollab/bootstrap/config.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L34">docs/evaluation-runtime.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L121">docs/evaluation-runtime.md</a></p>
+<h2 id="相关指南">相关指南</h2>
+<p><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a>　<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a>　<a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a></p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/timeouts-retries.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%A0%B9%E6%8D%AE%E5%81%9C%E9%A1%BF%E4%BD%8D%E7%BD%AE%E9%80%89%E8%AE%BE%E7%BD%AE">根据停顿位置选设置</a><a href="#%E7%BB%99%E6%95%B4%E4%B8%AA%E4%BB%BB%E5%8A%A1%E8%AE%BE%E7%BD%AE%E6%9C%9F%E9%99%90">给整个任务设置期限</a><a href="#%E9%87%8D%E8%AF%95%E6%AC%A1%E6%95%B0%E5%92%8C%E5%A4%B1%E8%B4%A5%E6%97%B6%E9%97%B4%E9%A2%9D%E5%BA%A6">重试次数和失败时间额度</a><a href="#%E8%AE%B0%E5%BD%95%E5%81%9C%E6%AD%A2%E6%97%B6%E7%9A%84%E6%9C%80%E7%BB%88%E7%8A%B6%E6%80%81">记录停止时的最终状态</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+</div>
+</body>
+</html>

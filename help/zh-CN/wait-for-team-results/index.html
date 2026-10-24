@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>等待队友结果并读懂团队状态 · OpenCollab 帮助中心</title>
+<meta name="description" content="区分派发结果、消息回复和团队结束条件，采用适合当前交接方式的等待操作。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/wait-for-team-results/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心 · 中文</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details open><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="index.html" aria-current="page">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">Team 与子 Agent</p>
+<h1 id="等待队友结果并读懂团队状态">等待队友结果并读懂团队状态</h1>
+<p>等待队友时，要先分清正在等派发工具结果，还是等一条后续消息。<code>spawn_agent</code> 的完成结果会填回原工具调用。<code>message_agent</code> 立即返回入队回执，队友的答复在后续回合作为消息到达，并能重新唤起已经结束当前回合的发送方。</p>
+<h2 id="派发时由运行时连接结果">派发时由运行时连接结果</h2>
+<p>父成员调用 <code>spawn_agent</code> 后，运行时保存工具调用与子成员 aid 的关联，进入等待事件状态。同一批可以派发多个子任务，整批待处理结果填齐后，父成员从保存点继续模型调用。因此，一次派发通常已经包含等待过程。</p>
+<p>完成结果可能同时带回答、工作树变化和错误原因。读取它时应确认对应 aid 与最终状态，再决定采纳或修订。子成员的文件改动需要按 <a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a> 处理，文字中的完成说明应结合实际产物确认。</p>
+<h2 id="消息交接通过后续回合完成">消息交接通过后续回合完成</h2>
+<p>发送消息后，发送方可以做与回复无关的工作。暂时没有其他动作时，结束当前回合就是交出执行机会。接收方的回复会进入发送方对话，重新打开它的回合。配置串行回合时，这个结束动作尤其关键，因为队友只能在当前成员退出回合后开始。</p>
+<p>例如入口向已有 coder 发出 <code>{&quot;to_aid&quot;: 1, &quot;summary&quot;: &quot;补做测试&quot;, &quot;content&quot;: &quot;请执行目标测试，并回信给出退出码和失败摘要。&quot;}</code>，之后提交自己的当前进展。coder 完成并通过消息回复后，入口会再次得到执行机会，继续阅读结果和安排后续动作。</p>
+<h2 id="怎样读团队状态">怎样读团队状态</h2>
+<p><code>team_status</code> 使用空参数 <code>{}</code>。名册是当前时刻的观察，可用于确认目标与定位等待位置。</p>
+<table>
+<thead>
+<tr>
+<th>显示状态</th>
+<th>实际含义</th>
+<th>可以继续观察的内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>busy</code></td>
+<td>该成员的执行任务仍在运行</td>
+<td>当前工具、模型请求或执行记录</td>
+</tr>
+<tr>
+<td><code>queued</code></td>
+<td>成员在等待串行回合机会</td>
+<td>当前占用回合的成员是否已经结束</td>
+</tr>
+<tr>
+<td><code>awaiting</code></td>
+<td>成员正在等延迟事件结果</td>
+<td>它派发的子成员及对应结果</td>
+</tr>
+<tr>
+<td><code>idle</code></td>
+<td>成员已完成当前回合</td>
+<td>是否会收到新消息并开始下一轮</td>
+</tr>
+<tr>
+<td><code>stopped</code> 或 <code>error</code></td>
+<td>成员停止或发生故障</td>
+<td>停止原因、可用改动与失败记录</td>
+</tr>
+</tbody>
+</table>
+<p>团队要在所有活动任务与待投递消息都处理完后，才会判断当前工作已经静止。入口先给出一段交接说明，随后队友回复重新唤起入口，属于正常协作过程。消息队列中仍有内容时，团队会继续处理这些消息。</p>
+<h2 id="等待超出预期时">等待超出预期时</h2>
+<p>先核对等待的是哪个 aid，查看它是否存在及对应角色。接着确认通信方向、入队回执与接收方是否有回信能力，再查看它是在执行、排队还是等待自己的子任务。最后结合终止原因与执行轨迹判断是否需要修订任务、增加必要输入或恢复保留工作区。</p>
+<p>Team 成员调用 Workflow 时，Workflow 的内部会话由自己的运行时等待与清理，Team 工具结果在子 Workflow 结束后返回。具体使用方式见 <a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a> 和 <a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>。</p>
+<p>等待语义见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/spawn.py">派发工具</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/message.py">消息工具</a>及<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/tests/workflows/test_message_wait_semantics.py">回复唤醒测试</a>。</p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/wait-for-team-results.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%B4%BE%E5%8F%91%E6%97%B6%E7%94%B1%E8%BF%90%E8%A1%8C%E6%97%B6%E8%BF%9E%E6%8E%A5%E7%BB%93%E6%9E%9C">派发时由运行时连接结果</a><a href="#%E6%B6%88%E6%81%AF%E4%BA%A4%E6%8E%A5%E9%80%9A%E8%BF%87%E5%90%8E%E7%BB%AD%E5%9B%9E%E5%90%88%E5%AE%8C%E6%88%90">消息交接通过后续回合完成</a><a href="#%E6%80%8E%E6%A0%B7%E8%AF%BB%E5%9B%A2%E9%98%9F%E7%8A%B6%E6%80%81">怎样读团队状态</a><a href="#%E7%AD%89%E5%BE%85%E8%B6%85%E5%87%BA%E9%A2%84%E6%9C%9F%E6%97%B6">等待超出预期时</a></aside>
+</div>
+</body>
+</html>
