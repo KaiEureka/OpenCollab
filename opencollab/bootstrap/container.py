@@ -132,8 +132,8 @@ def _resolve_llm(
         context_window=getattr(agent, "context_window", None),
         provider_error_time_budget=getattr(agent, "provider_error_time_budget", 0.0),
         provider_retry_budget=provider_retry_budget,
-        **({"request_pool": agent.request_pool, "request_capacity": agent.request_capacity}
-           if agent.request_pool is not None else {}),
+        **({"request_pool": agent.request_pool, "request_capacity": getattr(agent, "request_capacity", None)}
+           if getattr(agent, "request_pool", None) is not None else {}),
     )
 
 
