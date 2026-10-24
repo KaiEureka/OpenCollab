@@ -256,6 +256,50 @@ async def main(ctx, args):
     await parent.aclose()
 
 
+async def test_stop_grace_leaves_finished_runner_result_persistence_owned(
+    local_environment_factory, tmp_path, monkeypatch,
+):
+    from opencollab.bootstrap import authored_workflow
+
+    monkeypatch.setattr(authored_workflow, "_RUNNER_STOP_GRACE_SECONDS", 0.05)
+    (tmp_path / "authored.py").write_text("async def main(ctx, args):\n    return 1\n")
+    environment = local_environment_factory(str(tmp_path))
+    parent, tool, runtime = _manager(environment)
+    entered, finish = asyncio.Event(), asyncio.Event()
+    native_read = environment.read_file
+    read_cancelled = False
+
+    async def delayed_result(path):
+        nonlocal read_cancelled
+        value = await native_read(path)
+        if path.endswith("/result.json"):
+            entered.set()
+            try:
+                await finish.wait()
+            except asyncio.CancelledError:
+                read_cancelled = True
+                raise
+        return value
+
+    monkeypatch.setattr(environment, "read_file", delayed_result)
+    child = await _launch(tool, runtime)
+    stopping = None
+    try:
+        await asyncio.wait_for(entered.wait(), 10)
+        assert tool._children[child["id"]].execution.done()
+        stopping = asyncio.create_task(tool.execute_with_runtime({"action": "stop", "id": child["id"]}, runtime))
+        await asyncio.sleep(0.1)
+        assert not stopping.done() and not read_cancelled
+        finish.set()
+        result = json.loads(await asyncio.wait_for(stopping, 2))
+        assert result["status"] == "completed" and result["result"]["output"] == 1
+    finally:
+        finish.set()
+        if stopping is not None:
+            await asyncio.gather(stopping, return_exceptions=True)
+        await parent.aclose()
+
+
 async def test_child_budget_reservations_and_parent_ownership(local_environment_factory, tmp_path):
     (tmp_path / "authored.py").write_text("import asyncio\nasync def main(ctx, args):\n    await asyncio.sleep(300)\n")
     env = local_environment_factory(str(tmp_path))

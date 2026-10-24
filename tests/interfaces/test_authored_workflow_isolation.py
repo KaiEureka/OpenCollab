@@ -136,6 +136,12 @@ async def main(ctx, args):
                 pass
             else:
                 assert cancelled.status == "stopped", cancelled
+            children = list((tmp_path / "artifacts").glob("child-*/result.json"))
+            assert len(children) == 1
+            stopped = json.loads(children[0].read_text())
+            assert stopped["status"] == "stopped", stopped
+            assert not stopped["result"].get("cleanup_errors")
+            assert json.loads((children[0].parent / "workflow.json").read_text())["status"] == "stopped"
         else:
             result = await asyncio.wait_for(task, 90)
             assert result.ok and result.output == "collected"

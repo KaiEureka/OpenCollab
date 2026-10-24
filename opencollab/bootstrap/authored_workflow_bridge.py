@@ -117,6 +117,12 @@ class AuthoredWorkflowBridge:
         self._tasks: dict[str, asyncio.Task] = {}
         self._handles: dict[str, int] = {}
         self._edits: dict[str, _FileEdit] = {}
+        self._cancelled_tasks: set[asyncio.Task[Any]] = set()
+
+    def _cancel(self, task: asyncio.Task[Any]) -> None:
+        if not task.done() and task not in self._cancelled_tasks:
+            self._cancelled_tasks.add(task)
+            task.cancel()
 
     def _model(self) -> Any:
         if self._llm is None:
@@ -152,18 +158,21 @@ class AuthoredWorkflowBridge:
             if identity not in self._tasks:
                 self._tasks[identity] = asyncio.create_task(self._respond(identity, request))
                 self._handles[identity] = handle
-            if request.get("cancel") and not self._tasks[identity].cancelling():
-                self._tasks[identity].cancel()
+            elif request.get("cancel"):
+                self._cancel(self._tasks[identity])
                 if identity in self._edits:
-                    self._edits[identity].task.cancel()
+                    self._cancel(self._edits[identity].task)
         for identity, task in tuple(self._tasks.items()):
             if identity not in requests and task.done():
                 task.result()
+                self._cancelled_tasks.discard(task)
                 del self._tasks[identity]
                 del self._handles[identity]
 
     async def _respond(self, identity: str, request: dict[str, Any]) -> None:
         try:
+            if request.get("cancel"):
+                raise asyncio.CancelledError
             reply = {"value": await self._dispatch(identity, request)}
         except BaseException as exc:
             if not isinstance(exc, (Exception, asyncio.CancelledError)):
@@ -194,7 +203,7 @@ class AuthoredWorkflowBridge:
             try:
                 await asyncio.shield(edit.ready)
             except BaseException:
-                edit.task.cancel()
+                self._cancel(edit.task)
                 await await_owned_operation(asyncio.gather(edit.task, return_exceptions=True))
                 del self._edits[identity]
                 raise
@@ -254,8 +263,7 @@ class AuthoredWorkflowBridge:
             pending.extend(edit.task for edit in self._edits.values()
                            if edit.environment is environment and not edit.task.done())
             for task in pending:
-                if not task.cancelling():
-                    task.cancel()
+                self._cancel(task)
             await asyncio.gather(*pending, return_exceptions=True)
             await self._pool.release_env(environment)
             del self._environments[handle]
@@ -290,8 +298,7 @@ class AuthoredWorkflowBridge:
     async def aclose(self) -> None:
         tasks = [*self._tasks.values(), *(edit.task for edit in self._edits.values())]
         for task in tasks:
-            if not task.done() and not task.cancelling():
-                task.cancel()
+            self._cancel(task)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         if self._llm is not None:
             await self._llm.close()

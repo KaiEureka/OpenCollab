@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     from opencollab.application.session import Session
     from opencollab.bootstrap.context_builder import SpawnConfig
 
+_RUNNER_STOP_GRACE_SECONDS = 5.0
+
 
 @dataclass
 class _Child:
@@ -36,6 +38,8 @@ class _Child:
     artifacts: str
     budget: int | None
     task: asyncio.Task[None] | None = None
+    execution: asyncio.Task[Any] | None = None
+    stop_requested: bool = False
     status: str = "running"
     tokens: int = 0
     result: dict[str, Any] | None = None
@@ -216,6 +220,9 @@ class AuthoredWorkflowTool(Tool):
         execution = asyncio.create_task(child.environment.exec_cmd(
             command, timeout=math.inf, input_bytes=request_bytes,
         ))
+        child.execution = execution
+        if child.stop_requested:
+            execution.cancel()
         logs: dict[str, Any] = {}
         status = "running"
         try:
@@ -295,11 +302,13 @@ class AuthoredWorkflowTool(Tool):
     async def _stop(self, child: _Child) -> None:
         if child.task is None or child.task.done():
             return
+        child.stop_requested = True
         try:
             await child.environment.write_file(posixpath.join(child.artifacts, "stop"), "stop")
-            await asyncio.wait_for(asyncio.shield(child.task), timeout=5.0)
+            await asyncio.wait_for(asyncio.shield(child.task), timeout=_RUNNER_STOP_GRACE_SECONDS)
         except (OSError, RuntimeError, asyncio.TimeoutError):
-            child.task.cancel()
+            if child.execution is not None and not child.execution.done():
+                child.execution.cancel()
             await await_owned_operation(
                 asyncio.gather(child.task, return_exceptions=True), propagate_cancellation=False,
             )

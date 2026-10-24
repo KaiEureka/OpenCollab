@@ -248,6 +248,35 @@ async def test_bridge_retains_native_budget_protocols_and_thinking_output_floor(
         await environment.cleanup()
 
 
+async def test_bridge_acknowledges_request_cancelled_before_first_poll(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    environment = LocalEnvironment(str(tmp_path))
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    bridge = AuthoredWorkflowBridge(
+        environment, str(artifacts),
+        SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=environment),
+        {}, ToolRuntime(environment, None, None), allow_unisolated_shell=True,
+    )
+    client = BridgeClient(artifacts, bridge.options())
+    operation = asyncio.create_task(client.call("exec_cmd", {"cmd": "touch unwanted"}))
+    try:
+        await asyncio.sleep(0)
+        operation.cancel()
+        await asyncio.sleep(0)
+        assert client._pending["1"]["cancel"]
+        await bridge.poll()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(operation, 2)
+        assert not (tmp_path / "unwanted").exists() and not client._pending
+    finally:
+        if not operation.done():
+            operation.cancel()
+        await bridge.aclose()
+        await asyncio.gather(operation, return_exceptions=True)
+        await environment.cleanup()
+
+
 @pytest.mark.parametrize("error_usage", [False, True])
 async def test_cancelled_bridge_call_waits_for_native_slot_and_retains_late_usage(tmp_path, monkeypatch, error_usage):
     monkeypatch.chdir(tmp_path)
@@ -306,7 +335,16 @@ async def test_cancelled_bridge_call_waits_for_native_slot_and_retains_late_usag
             await asyncio.sleep(0.005)
 
     server = asyncio.create_task(serve())
-    first = asyncio.create_task(llm.complete([], on_admitted=lambda: admissions.append("first")))
+    cancelled_usage = []
+
+    async def first_request():
+        try:
+            return await llm.complete([], on_admitted=lambda: admissions.append("first"))
+        except asyncio.CancelledError as exc:
+            cancelled_usage.append(exc.usage.total_tokens)
+            raise
+
+    first = asyncio.create_task(first_request())
     second = None
     try:
         await asyncio.wait_for(first_entered.wait(), 2)
@@ -317,9 +355,9 @@ async def test_cancelled_bridge_call_waits_for_native_slot_and_retains_late_usag
         assert not first.done() and not second.done()
         assert entered == 1 and "second" not in admissions
         finish.set()
-        with pytest.raises(asyncio.CancelledError) as cancelled:
+        with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(first, 2)
-        assert cancelled.value.usage.total_tokens == 10
+        assert cancelled_usage == [10]
         response = await asyncio.wait_for(second, 2)
         assert response.provider_items[0]["encrypted_content"] == "opaque"
         assert response.provider_state["response_id"] == "native-response"
