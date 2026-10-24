@@ -75,7 +75,7 @@ class DockerIsolationPool:
             enable_adoption=True, owned_save_dir=self._owned_save_dir,
             owned_output_paths=self._owned_output_paths,
         )
-        owner = _DockerOwner(DockerEnvironment(options=self._options), [source_pool])
+        owner = _DockerOwner(DockerEnvironment(options=self._options, init_process=True), [source_pool])
         self._owners.append(owner)
         candidate = await source_pool.acquire(role, source=source)
         workspace = await _import_snapshot(candidate, owner.container)

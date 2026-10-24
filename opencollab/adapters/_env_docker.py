@@ -180,6 +180,7 @@ class DockerEnvironment(Environment):
         timeout_returncode: int = -1,
         backing_environment: Environment | None = None,
         options: DockerOptions | None = None,
+        init_process: bool = False,
     ) -> None:
         super().__init__()
         self._options = options or DockerOptions()
@@ -211,6 +212,7 @@ class DockerEnvironment(Environment):
         self._owner_token = None if self._attached else uuid.uuid4().hex
         self._exec_workdir = exec_workdir
         self._command_prefix = command_prefix
+        self._init_process = init_process
         self._timeout_returncode = timeout_returncode
         self._backing_environment = backing_environment
         self._execution_owner: DockerEnvironment | None = None
@@ -319,6 +321,8 @@ class DockerEnvironment(Environment):
             "--label",
             f"{DOCKER_OWNER_LABEL}={self._owner_token}",
         ]
+        if self._init_process:
+            args.append("--init")
         for flag, value in (
             ("--cpus", self._options.cpus), ("--memory", self._options.memory),
             ("--pids-limit", self._options.pids_limit),

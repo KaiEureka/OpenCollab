@@ -219,6 +219,15 @@ async def test_options_set_owned_resources_and_readonly_mount_without_socket(mon
     assert argv[argv.index("--network") + 1] == "none"
     assert argv[argv.index("--mount") + 1] == f"type=bind,source={assets},target=/assets,readonly"
     assert "docker.sock" not in " ".join(argv)
+    assert "--init" not in argv
+
+
+async def test_owned_docker_init_process_is_opt_in(monkeypatch) -> None:
+    fake = FakeDocker(lambda command, kwargs: _result(stdout=f"{CONTAINER_ID}\n".encode()))
+    _patch(monkeypatch, fake)
+    env = DockerEnvironment(init_process=True)
+    await env.setup()
+    assert "--init" in fake.calls[0][0]
 
 
 async def test_options_reject_socket_directory_before_container_launch(monkeypatch, tmp_path) -> None:
@@ -287,6 +296,7 @@ async def test_docker_sessions_execute_and_deliver_before_owned_cleanup(
         first_id = first._delegate.container_reference
         second_id = second._delegate.container_reference
         inspected = json.loads(subprocess.check_output(["docker", "inspect", first_id]))[0]
+        assert inspected["HostConfig"]["Init"] is True
         assert inspected["HostConfig"]["NetworkMode"] == "none"
         assert inspected["HostConfig"]["NanoCpus"] == 1_000_000_000
         assert inspected["HostConfig"]["Memory"] == 256 * 1024 * 1024
@@ -322,7 +332,8 @@ async def test_docker_sessions_execute_and_deliver_before_owned_cleanup(
     assert not pool._owners
 
 
-async def test_docker_group_imports_external_review_source_and_cancels_owned_command(tmp_path: Path) -> None:
+@pytest.mark.parametrize("scope", ["group", "session"])
+async def test_docker_imports_external_review_source_and_cancels_owned_command(tmp_path: Path, scope: str) -> None:
     image = os.environ.get("OPENCOLLAB_DOCKER_TEST_IMAGE")
     if not image:
         pytest.skip("OPENCOLLAB_DOCKER_TEST_IMAGE selects a local image with bash and git")
@@ -335,14 +346,16 @@ async def test_docker_group_imports_external_review_source_and_cancels_owned_com
     assets = tmp_path / "assets"
     assets.mkdir()
     (assets / "data.txt").write_text("read-only\n")
-    pool = DockerIsolationPool(str(source), options=DockerOptions(
+    pool = DockerIsolationPool(str(source), scope=scope, options=DockerOptions(
         image=image, mounts=(DockerMount(str(assets), "/assets"),),
     ))
     running = None
+    container_ids = set()
     try:
         first = await pool.acquire("first")
         review = await pool.acquire("review", source=LocalEnvironment(str(external)))
-        assert first.container_reference == review.container_reference
+        container_ids.update((first.container_reference, review.container_reference))
+        assert (first.container_reference == review.container_reference) is (scope == "group")
         assert await review.read_file("answer.py") == "answer = 4\n"
         assert await first.read_file("input.txt") == "original\n"
         assert await first.read_file("/assets/data.txt") == "read-only\n"
@@ -360,15 +373,10 @@ async def test_docker_group_imports_external_review_source_and_cancels_owned_com
             await running
         control = pool._owners[0].container
         container_id = first.container_reference
-        if control.revoked:
-            inspected = json.loads(subprocess.check_output(["docker", "inspect", container_id]))[0]
-            assert inspected["State"]["Running"] is False
-            artifact = tmp_path / "started.txt"
-            subprocess.run(["docker", "cp", f"{container_id}:{first.workspace}/started", str(artifact)], check=True)
-            assert artifact.read_text() == "ready"
-            subprocess.run(["docker", "start", container_id], check=True, capture_output=True)
-        else:
-            assert (await control.exec_cmd(f"test -e {first.workspace}/late")).returncode == 1
+        assert not control.revoked
+        inspected = json.loads(subprocess.check_output(["docker", "inspect", container_id]))[0]
+        assert inspected["State"]["Running"] is True
+        assert (await control.exec_cmd(f"test -e {first.workspace}/late")).returncode == 1
         first.retain_changes()
         assert "started" in await first.get_diff()
     finally:
@@ -378,3 +386,55 @@ async def test_docker_group_imports_external_review_source_and_cancels_owned_com
         await pool.release()
     assert not (source / "started").exists()
     assert not (source / ".git").exists()
+    for container_id in container_ids:
+        assert subprocess.run(["docker", "inspect", container_id], capture_output=True).returncode != 0
+
+
+async def test_unproven_docker_cancellation_retains_unexported_candidate(tmp_path: Path) -> None:
+    image = os.environ.get("OPENCOLLAB_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("OPENCOLLAB_DOCKER_TEST_IMAGE selects a local image with bash and git")
+    source = tmp_path / "source"
+    _repository(source)
+    pool = DockerIsolationPool(str(source), scope="session", options=DockerOptions(image=image))
+    running = None
+    first = None
+    try:
+        first = await pool.acquire("first")
+        container_id = first.container_reference
+        running = asyncio.create_task(first.exec_cmd(
+            "rm -f /tmp/.opencollab-exec-*.pid; printf 'answer = 5\\n' > answer.py; "
+            "printf ready > started; sleep 300; printf late > late",
+            timeout=600,
+        ))
+        for _ in range(100):
+            if (await first.exec_cmd("test -e started")).returncode == 0:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            pytest.fail("owned Docker command did not reach its executable probe")
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+        assert first.revoked
+        inspected = json.loads(subprocess.check_output(["docker", "inspect", container_id]))[0]
+        assert inspected["HostConfig"]["Init"] is True
+        assert inspected["State"]["Running"] is False
+        first.retain_changes()
+        with pytest.raises(OSError, match="retained"):
+            await pool.release()
+        assert pool._owners
+        assert first.recovery_location == f"{container_id}:{first.workspace}"
+        artifact = tmp_path / "answer.py"
+        subprocess.run(["docker", "cp", f"{container_id}:{first.workspace}/answer.py", str(artifact)], check=True)
+        assert artifact.read_text() == "answer = 5\n"
+    finally:
+        if running is not None and not running.done():
+            running.cancel()
+            await asyncio.gather(running, return_exceptions=True)
+        if first is not None and first.recovery_location is not None:
+            subprocess.run(["docker", "start", first.container_reference], check=True, capture_output=True)
+            assert "+answer = 5" in await first.get_diff()
+        await pool.release()
+    assert (source / "answer.py").read_text() == "answer = 1\n"
+    assert subprocess.run(["docker", "inspect", container_id], capture_output=True).returncode != 0
