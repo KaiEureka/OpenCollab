@@ -5,8 +5,7 @@
 准备已有工作区，以及由 SSH 账号拥有的私有状态目录。操作状态放在工作区之外。每个环境在状态目录内使用一个运行 ID。控制端重启后重建环境时继续使用原运行 ID。
 
 ```python
-from opencollab.adapters.env import VMEnvironment
-from opencollab.adapters.vm_config import VMConnection
+from opencollab.environments import VMConnection, VMEnvironment
 
 connection = VMConnection(
     host="vm.example.net",
@@ -49,3 +48,15 @@ await env.cleanup()
 工作区适配器可以通过 `copy_to_host(source, target, directory=False)` 与 `copy_from_host(source, destination, directory=False)` 流式传输二进制文件和目录归档，传输大小独立于命令输出上限。客户机源路径和目标路径是工作区适配器明确指定的绝对路径，也可以指向暴露子目录之外的仓库元数据。目录复制将内容传入空目录或新目录，并保留已有工作区的 inode。常规权限、符号链接、空文件，以及目标文件系统支持的文件名会随传输保留。传输时移除 setuid 与 setgid 位。
 
 归档先在目标文件系统内的自有临时目录解包，再通过目录描述符写入目标。父目录跳转、重复路径、硬链接、设备文件，以及经由符号链接父目录写入的情况会触发失败，并保留临时目录。上传分块带有明确结束帧，完整接收后才允许执行持久化导入。上传中断时保留操作编号和部分归档，供检查或清理继续处理。操作记录还保存失败导入的临时目录路径。向已有内容的目录复制时抛出 `FileExistsError`。
+
+SDK、CLI 和 Team 通过既有隔离设置选择 `vm-group` 或 `vm-session`。
+[Session 隔离指南](session-isolation.zh-CN.md#vm-隔离策略) 介绍 `VMResource`、
+公开的 `vm_isolation_provider`、可序列化的 `config["vm"]` 和 `OPENCOLLAB_VM`。
+两种作用域使用相同的本地租约数据库和稳定资源标识。归还来宾时，先运行管理员提供的重置命令，
+再释放租约。控制进程重启后，持久化租约继续保留，由管理员核实远端进程已清理并重置来宾后恢复。
+
+[成员自编 VM 示例](../examples/vm-authored-workflow/README.zh-CN.md) 从 Team 成员在自己的来宾中写出
+Workflow 源码开始。子运行默认选择 `worktree`，显式 `vm-session` 调用会分配另一台 VM。
+模型请求继续使用既有宿主桥接，原生结果和 Session 记录传回控制端。
+将 `OPENCOLLAB_TEST_VM_PROFILE` 指向两台专用来宾的 JSON 配置后，运行
+`pytest -q tests/interfaces/test_sdk_vm_isolation.py` 验证公开入口。

@@ -125,8 +125,12 @@ SDK 可将相同配置序列化后放入 `config["vm"]`。`vm` 对象包含 `res
 
 ```python
 import json
+from dataclasses import asdict
 from pathlib import Path
 
+profile = {"resources": [asdict(resource) for resource in resources],
+           "lease_database": "/var/tmp/oc-leases.sqlite3"}
+Path("vm-profile.json").write_text(json.dumps(profile))
 profile = json.loads(Path("vm-profile.json").read_text())
 client = OpenCollab(".", config={"vm": profile})
 result = await client.team("Inspect the source", config="team.yaml", isolation="vm-group")
@@ -141,6 +145,10 @@ OPENCOLLAB_VM="$(cat vm-profile.json)" opencollab workflow run solve --isolation
 
 模型路由、凭据和共享请求额度保存在控制端。VM 选择决定工具执行位置和工作区归属。
 Team 成员之间的通信继续遵循配置中的拓扑。
+
+控制进程退出后租约继续保留。管理员确认资源拥有的远端进程已结束、来宾已成功重置后，
+可以移除该资源对应的确切租约记录并恢复分配。仍在运行的池对象支持清理重试。
+重新创建池会保留已有租约，等待上述恢复完成。
 
 `manage_workflow` 的 `launch` 可选传入 `isolation`，设置子 Workflow 的默认隔离策略。
 省略时继承成员策略。成员使用 `{"action":"launch","source":"generated.py","isolation":"worktree"}`

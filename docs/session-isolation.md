@@ -178,8 +178,12 @@ names.
 
 ```python
 import json
+from dataclasses import asdict
 from pathlib import Path
 
+profile = {"resources": [asdict(resource) for resource in resources],
+           "lease_database": "/var/tmp/oc-leases.sqlite3"}
+Path("vm-profile.json").write_text(json.dumps(profile))
 profile = json.loads(Path("vm-profile.json").read_text())
 client = OpenCollab(".", config={"vm": profile})
 result = await client.team("Inspect the source", config="team.yaml", isolation="vm-group")
@@ -196,6 +200,12 @@ OPENCOLLAB_VM="$(cat vm-profile.json)" opencollab workflow run solve --isolation
 Model routes, credentials and shared request slots stay with the controller.
 VM selection controls tool execution and workspace ownership. Team communication
 continues to follow its declared topology.
+
+Leases survive controller process exit. An administrator can recover a retained
+resource after confirming that its owned remote processes have stopped and its
+guest reset succeeded, then removing that resource's exact lease record. Active
+pool objects support cleanup retries. Recreating a pool leaves retained leases
+in place until that recovery is complete.
 
 `manage_workflow` accepts an optional `isolation` on `launch` to select the child
 Workflow's default. Omission inherits its member's strategy. A member can launch

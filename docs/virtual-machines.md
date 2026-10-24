@@ -5,8 +5,7 @@
 Prepare an existing workspace and a private state directory owned by the SSH account. Keep operation state outside the workspace. Each environment uses a run ID beneath that directory. Preserve the run ID when reconstructing an environment after a controller restart.
 
 ```python
-from opencollab.adapters.env import VMEnvironment
-from opencollab.adapters.vm_config import VMConnection
+from opencollab.environments import VMConnection, VMEnvironment
 
 connection = VMConnection(
     host="vm.example.net",
@@ -49,3 +48,20 @@ The opt-in SSH regression suite reads `OPENCOLLAB_TEST_VM_CONFIG` from a JSON fi
 Adapter integrations can call `copy_to_host(source, target, directory=False)` and `copy_from_host(source, destination, directory=False)` to stream binary files or directory archives across SSH beyond command-output limits. Guest source and destination paths are explicit absolute paths selected by trusted workspace adapters, including repository metadata outside an exposed subdirectory. Directory transfers copy contents into an empty or absent destination and preserve the inode of an existing workspace. Regular permissions, symlinks, empty files, and filenames supported by the destination filesystem survive the roundtrip. Setuid and setgid bits are removed when crossing the transfer boundary.
 
 Archive extraction uses an owned staging directory on the destination filesystem and descriptor-relative publication. Parent traversal, repeated paths, hard links, device entries, and writes through symlink parents fail with the staging retained. Upload chunks carry an explicit completion frame before a durable import can execute. An interrupted upload keeps its operation ID and partial archive for inspection or cleanup. Operation records also retain failed import staging paths. Copying a directory into an existing populated destination raises `FileExistsError`.
+
+For SDK, CLI and Team execution, select `vm-group` or `vm-session` through the
+existing isolation setting. The [session isolation guide](session-isolation.md#vm-strategies)
+describes `VMResource`, the public `vm_isolation_provider` helper, serializable
+`config["vm"]` profiles and `OPENCOLLAB_VM`. Both scopes use the same local lease
+database and stable resource identities. Returned guests run the administrator's
+reset command before their leases become available again. A process restart
+preserves persistent leases for administrator recovery after verifying remote
+process cleanup and resetting the guest.
+
+The [member-authored VM example](../examples/vm-authored-workflow/README.md)
+starts with a Team member writing Workflow source inside its own guest. Its
+child default selects `worktree`, and an explicit `vm-session` call allocates
+another VM. Model requests use the existing host bridge while native results
+and Session records return to the controller. Run the public integration suite
+with `pytest -q tests/interfaces/test_sdk_vm_isolation.py` after setting
+`OPENCOLLAB_TEST_VM_PROFILE` to a JSON profile for two dedicated guests.
