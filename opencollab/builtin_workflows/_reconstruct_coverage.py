@@ -78,6 +78,13 @@ def categories(inp: Any, kind: str) -> set[str]:
             return {"int:mid"} if inp <= 99 else {"int:large"}
         if kind == "pair" and isinstance(inp, (list, tuple)) and len(inp) == 2:
             a, b = inp
+            if (
+                isinstance(a, bool)
+                or isinstance(b, bool)
+                or not isinstance(a, (int, float))
+                or not isinstance(b, (int, float))
+            ):
+                return set()
             cats = {"pair:equal" if a == b else "pair:a<b" if a < b else "pair:a>b"}
             if max(a, b) >= 20:
                 cats.add("pair:large")
@@ -97,7 +104,13 @@ def categories(inp: Any, kind: str) -> set[str]:
             if n == 0:
                 return set()
             cats = {"pts:few" if n <= 2 else "pts:some" if n <= 5 else "pts:many"}
-            flat = [c for p in inp if isinstance(p, (list, tuple)) for c in p if isinstance(c, (int, float))]
+            flat = [
+                c
+                for p in inp
+                if isinstance(p, (list, tuple))
+                for c in p
+                if isinstance(c, (int, float)) and not isinstance(c, bool)
+            ]
             if n > 1 and len({repr(p) for p in inp}) < n:
                 cats.add("pts:dup")
             if any(c < 0 for c in flat):

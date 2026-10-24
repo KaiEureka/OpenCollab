@@ -235,7 +235,17 @@ def outputs_match(actual: Any, expected: Any) -> bool:
         if len(expected) != len(actual):
             return False
         return all(outputs_match(a, e) for a, e in zip(actual, expected))
-    if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if set(expected) != set(actual):
+            return False
+        return all(outputs_match(actual[key], expected[key]) for key in expected)
+    # bool is an int subclass; True must not satisfy an expected 1, or the reverse.
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return isinstance(actual, bool) and isinstance(expected, bool) and actual == expected
+    if (
+        isinstance(expected, (int, float))
+        and isinstance(actual, (int, float))
+    ):
         if isinstance(expected, int):
             return actual == expected
         return abs(actual - expected) < 1e-6
