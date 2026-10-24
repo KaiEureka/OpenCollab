@@ -475,3 +475,38 @@ def test_cli_route_validation_keeps_credentials_out_of_diagnostics(tmp_path, mon
     assert "model_routes.worker" in diagnostic
     assert "request_poolandrequest_capacitymustbesuppliedtogether" in diagnostic
     assert secret not in result.output
+
+
+@pytest.mark.parametrize("entry", ["sdk", "cli"])
+def test_team_entry_route_supplies_its_own_cli_credentials(tmp_path, monkeypatch, entry):
+    from typer.testing import CliRunner
+
+    from opencollab.adapters.cli.main import app
+
+    requests = []
+
+    def respond(request):
+        requests.append((str(request.url), dict(request.headers), json.loads(request.content)))
+        return completion_http_response(request, text="finished")
+
+    install_sdk_transport(monkeypatch, "openai", respond)
+    monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({"writer": {
+        "model": "physical-writer", "api_key": "route-key", "base_url": "https://writer.example/v1",  # pragma: allowlist secret
+    }}))
+    team = tmp_path / "team.yaml"
+    team.write_text("entry: reader\nroles:\n  reader:\n    prompt: Finish.\n    model: writer\n    tools: []\n")
+    if entry == "sdk":
+        result = asyncio.run(OpenCollab(tmp_path).team("finish", config=team, use_worktrees=False, trace=False))
+        assert result.ok
+        assert result.output == "finished"
+    else:
+        result = CliRunner().invoke(app, [
+            "--workspace", str(tmp_path), "--team-config", str(team), "--no-worktrees", "--prompt", "finish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert "finished" in result.output
+    assert len(requests) == 1
+    url, headers, body = requests[0]
+    assert url == "https://writer.example/v1/chat/completions"
+    assert headers["authorization"] == "Bearer route-key"
+    assert body["model"] == "physical-writer"
