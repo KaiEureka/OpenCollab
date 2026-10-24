@@ -178,17 +178,17 @@ class VMIsolationPool:
                 self._lifecycle.notify_all()
 
     async def _export(self, env: Environment, owner: _VMOwner) -> None:
-        if env in self._exported:
-            return
         if not isinstance(env, _TeamCandidateEnvironment):
             raise TypeError("VM pool expected a candidate workspace")
-        for view in (owner.control, *owner.views):
+        for view in (owner.control, *owner.views, env._lease.base_environment):
             for operation_id in view.pending_operations:
                 try:
                     await view.recover_operation(operation_id)
                 except BaseException:
                     if operation_id in view.pending_operations:
                         raise
+        if env in self._exported:
+            return
         env.retain_changes()
         await env._delegate.cleanup()
         await env.capture_changes()
