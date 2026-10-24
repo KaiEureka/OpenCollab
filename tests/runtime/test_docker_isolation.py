@@ -92,13 +92,26 @@ async def test_import_preserves_initialized_submodule_without_source_git_directo
     assert "answer.py" in _git(child, "diff", "--name-only")
 
 
-async def test_import_tracks_changes_in_directory_without_git(tmp_path: Path) -> None:
+async def test_import_tracks_changes_in_directory_without_git(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "source"
     source.mkdir()
     (source / ".gitignore").write_text("cache.txt\n")
     (source / "cache.txt").write_text("before\n")
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    marker = tmp_path / "hook-ran"
+    post_commit = hooks / "post-commit"
+    post_commit.write_text(f"#!/bin/sh\ntouch '{marker}'\n")
+    post_commit.chmod(0o700)
+    configuration = tmp_path / "global-config"
+    configuration.write_text(f"[core]\n\thooksPath = {hooks}\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(configuration))
+    _repository(tmp_path / "control")
+    assert marker.exists()
+    marker.unlink()
     target = _LocalImportTarget(str(tmp_path / "target"))
     await _import_snapshot(LocalEnvironment(str(source)), target)
+    assert not marker.exists()
     (Path(target.workspace) / "cache.txt").write_text("after\n")
     assert "-before" in _git(Path(target.workspace), "diff")
     assert "+after" in _git(Path(target.workspace), "diff")

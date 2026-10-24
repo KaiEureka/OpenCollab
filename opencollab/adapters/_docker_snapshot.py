@@ -71,19 +71,26 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                     await _copy_to_host(source, remote, bundle)
                 local = LocalEnvironment(str(local_root))
                 try:
+                    git = (
+                        f"GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "
+                        f"git -c core.hooksPath=/dev/null -C {shlex.quote(str(local_root))}"
+                    )
                     command = (
-                        f"git -C {shlex.quote(str(local_root))} init --quiet && "
-                        f"git -C {shlex.quote(str(local_root))} fetch --quiet {shlex.quote(str(bundle))} HEAD && "
-                        f"git -C {shlex.quote(str(local_root))} reset --mixed --quiet FETCH_HEAD"
+                        f"{git} init --quiet && {git} fetch --quiet {shlex.quote(str(bundle))} HEAD && "
+                        f"{git} reset --mixed --quiet FETCH_HEAD"
                     )
                     _complete(await local.exec_cmd(command, timeout=900), "Docker private repository metadata")
                 finally:
                     await local.cleanup()
                 bundle.unlink()
         else:
+            await asyncio.to_thread(_remove_marker, contents)
             local = LocalEnvironment(str(contents))
             try:
-                git = f"git -C {shlex.quote(str(contents))}"
+                git = (
+                    "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "
+                    f"git -c core.hooksPath=/dev/null -C {shlex.quote(str(contents))}"
+                )
                 _complete(await local.exec_cmd(
                     f"{git} init --quiet && {git} add --force --all && "
                     f"{git} -c user.name='OpenCollab Agent' -c user.email=agent@opencollab.invalid "
