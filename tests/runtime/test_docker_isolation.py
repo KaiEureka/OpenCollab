@@ -17,6 +17,7 @@ from opencollab.adapters._docker_snapshot import _import_snapshot
 from opencollab.adapters.docker_isolation import DockerIsolationPool
 from opencollab.adapters.env import DockerEnvironment, LocalEnvironment
 from opencollab.domain.docker import DockerMount, DockerOptions
+from tests.support.asyncio_test_support import assert_cancel_reason
 from tests.support.docker_env_test_support import CONTAINER_ID, FakeDocker, _patch, _result
 
 
@@ -160,7 +161,7 @@ async def test_cancelled_import_waits_for_host_io_before_removing_its_source(tmp
         resume.set()
         with pytest.raises(asyncio.CancelledError) as failure:
             await task
-        assert failure.value.args == ("first cancellation",)
+        assert_cancel_reason(failure.value, "first cancellation")
         assert finished.is_set()
         assert not candidate.exists()
         assert not temporary.exists()
