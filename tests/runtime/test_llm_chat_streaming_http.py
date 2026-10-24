@@ -139,6 +139,7 @@ async def test_switch_on_streams_and_records_reasoning_over_real_sse():
         "stream",
         "stream_options",
     }
+    assert requests[0]["stream"] is True
     assert requests[0]["stream_options"] == {"include_usage": True}
     assert response.reasoning == "17*23 = 391"
     assert response.content == "391"

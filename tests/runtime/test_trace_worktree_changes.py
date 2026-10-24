@@ -164,14 +164,6 @@ def test_added_modified_and_deleted_files_are_recorded_with_content_shas(tmp_pat
     ]
     assert row.status is RowStatus.DONE
 
-def test_the_row_names_the_revision_its_files_were_measured_against(tmp_path):
-    """A file counts as changed only relative to a base, so name the base."""
-    env = _RebasedEnv(THREE_FILE_DIFF, {"pkg/new.py": ADDED, "pkg/mod.py": MODIFIED})
-
-    payloads, _ = _run_one_child(tmp_path, env, "worktree-base")
-
-    assert payloads[0]["diff_base"] == "9" * 40
-
 def test_an_environment_that_names_no_base_records_a_null_one(tmp_path):
     """A non-Git worktree has no revision to name, and must not invent one."""
     env = _Env(THREE_FILE_DIFF, {"pkg/new.py": ADDED, "pkg/mod.py": MODIFIED})

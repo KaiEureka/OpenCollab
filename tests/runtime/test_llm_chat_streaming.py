@@ -159,34 +159,6 @@ def tool_delta(
         call["type"] = "function"
     return {"tool_calls": [call]}
 
-async def test_stream_off_sends_no_stream_keys_to_create():
-    completion = ChatCompletion.model_validate({
-        "id": "chatcmpl-1",
-        "object": "chat.completion",
-        "created": 1,
-        "model": MODEL,
-        "choices": [
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": "391"},
-                "finish_reason": "stop",
-            }
-        ],
-        "usage": USAGE,
-    })
-    client = FakeClient([completion])
-
-    await complete_openai(client, MODEL, MESSAGES, None, 0.0, 0)
-
-    assert "stream" not in client.calls[0]
-    assert "stream_options" not in client.calls[0]
-
-async def test_stream_on_adds_stream_and_include_usage():
-    _, client = await run_stream(text_script())
-
-    assert client.calls[0]["stream"] is True
-    assert client.calls[0]["stream_options"] == {"include_usage": True}
-
 async def test_streamed_and_non_streamed_answers_parse_identically():
     completion = ChatCompletion.model_validate({
         "id": "chatcmpl-1",

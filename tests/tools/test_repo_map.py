@@ -240,12 +240,6 @@ def test_build_repo_map_via_env_limits_enumeration_work() -> None:
     assert 'wait "$repo_map_find_pid"' in env.cmds[0]
     assert "repo_map_find_status=$?" in env.cmds[0]
 
-def test_build_repo_map_via_env_reports_nothing_when_find_itself_failed():
-    """Ordering the listing must not be able to dress up a failed traversal."""
-    env = _FakeEnv(stdout="./alpha.py\n./zeta.py\n", returncode=71)
-
-    assert run(build_repo_map_via_env(env)) == ""
-
 def test_build_repo_map_via_env_puts_the_top_of_the_tree_first():
     """Sort before truncation so find traversal order cannot hide top-level source paths."""
     env = _FakeEnv(

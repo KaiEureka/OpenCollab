@@ -103,6 +103,7 @@ def test_the_cap_is_the_share_constant_times_an_equal_split():
     # An equal split gives each seat a solo-sized cap.
     assert CAP == TOTAL // len(ROLES)
     assert CAP * len(ROLES) == TOTAL
+    assert per_agent_cap(1_000_000, 3) == 333_333
 
 def test_every_seat_gets_the_same_cap_agent_zero_included():
     """Agent 0's allowance is the rule's, not a privilege of being the root."""

@@ -67,6 +67,7 @@ def test_default_team_is_self_collaboration_over_a_closed_topology(monkeypatch):
     monkeypatch.delenv("OPENCOLLAB_TEAM_FILE", raising=False)
     cfg = default_team_config()
     assert set(cfg.roles) == {"analyst", "coder", "tester"}
+    assert cfg.entry == "analyst"
     assert cfg.roles["analyst"].tools == list(ANALYST_TOOL_NAMES)
     assert cfg.roles["coder"].tools == list(CODER_TOOL_NAMES)
     assert cfg.roles["tester"].tools == list(TESTER_TOOL_NAMES)
@@ -147,7 +148,10 @@ def test_load_team_roundtrip_roles_and_topology(tmp_path, monkeypatch):
     cfg = load_team_config(str(tmp_path))
 
     assert set(cfg.roles) == {"lead", "coder"}
+    assert cfg.entry == "lead"
     assert cfg.roles["lead"].model == "gpt-4o-mini"
+    assert cfg.roles["lead"].temperature is None
+    assert cfg.roles["coder"].temperature is None
     assert cfg.roles["lead"].tools == ["bash", "spawn_agent", "message_agent"]
     assert cfg.topology.allow_all is False
     assert cfg.topology.allows("lead", "coder")
@@ -267,12 +271,6 @@ def test_team_config_accepts_json_compatible_yaml(tmp_path):
     assert cfg.roles["lead"].tools == ["file_read"]
     assert cfg.topology.allows("lead", "worker")
 
-def test_role_temperature_defaults_to_none_when_unset(tmp_path, monkeypatch):
-    _write_team(tmp_path, monkeypatch)
-    cfg = load_team_config(str(tmp_path))
-    assert cfg.roles["lead"].temperature is None
-    assert cfg.roles["coder"].temperature is None
-
 def test_role_temperature_override_is_parsed(tmp_path, monkeypatch):
     yaml_text = """\
 roles:
@@ -352,14 +350,6 @@ def test_unknown_role_falls_back_to_generic_spec(tmp_path, monkeypatch):
     assert fallback.tools == list(BASE_TOOL_NAMES)
     assert "spawn_agent" not in fallback.tools
     assert "use_skill" not in fallback.tools
-
-def test_default_team_entry_is_analyst(monkeypatch):
-    monkeypatch.delenv("OPENCOLLAB_TEAM_FILE", raising=False)
-    assert default_team_config().entry == "analyst"
-
-def test_entry_prefers_lead_role_when_unset(tmp_path, monkeypatch):
-    _write_team(tmp_path, monkeypatch)
-    assert load_team_config(str(tmp_path)).entry == "lead"
 
 def test_entry_prefers_case_normalized_lead_role_when_unset(tmp_path):
     config = tmp_path / "team.yaml"

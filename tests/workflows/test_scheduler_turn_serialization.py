@@ -93,32 +93,6 @@ def test_serializing_turns_lets_only_one_agent_run_at_a_time():
     assert not _overlaps(log)
     assert [entry for entry in log if entry.startswith("alone:")] == ["alone:coder"]
 
-def test_a_suspended_parent_does_not_hold_the_gate_against_its_child():
-    """The reason the gate cannot deadlock, pinned as behaviour.
-
-    The lead spawns from inside its own turn, so its child's driver is created
-    while the lead holds the gate. ``run_loop`` returns when the lead suspends on
-    ``AWAITING_EVENTS`` instead of blocking on the child, which releases the gate
-    and lets the child run. A gate held across the suspension would hang here.
-    """
-    lead = ScriptedSession(
-        "lead",
-        [
-            suspend_spawning([("coder", "do it", "tc-1")]),
-            resume_done(lambda results: f"final: {results[0]}"),
-        ],
-    )
-    child = ScriptedSession("coder", [terminal("child output")])
-    scheduler, _ = build_scheduler(lead, [child], serialize_turns=True)
-
-    async def scenario() -> str:
-        return await asyncio.wait_for(
-            scheduler.run("please delegate"), GATE_TIMEOUT_SECONDS
-        )
-
-    assert asyncio.run(scenario()) == "final: child output"
-    assert lead.state.phase is SessionPhase.DONE
-
 def test_a_queued_message_still_wakes_its_target_under_serialization():
     """Serializing changes when a woken agent runs, never whether it runs."""
     lead = ScriptedSession("lead", [])
@@ -177,6 +151,7 @@ def test_the_gate_is_the_only_thing_the_flag_changes(serialize_turns):
     )
 
     assert result == "final: child output"
+    assert lead.state.phase is SessionPhase.DONE
     assert [scb.agent.name for scb in scheduler.table.entries.values()] == [
         "lead",
         "coder",

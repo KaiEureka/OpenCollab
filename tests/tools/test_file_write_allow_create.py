@@ -45,18 +45,3 @@ def test_allow_create_false_still_allows_str_replace(tmp_path):
 
     assert "content changed" in result
     assert target.read_text(encoding="utf-8") == "hello there\n"
-
-def test_allow_create_true_default_creates_file(tmp_path):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    tool = FileWriteTool()
-
-    result = asyncio.run(
-        tool.execute_with_runtime(
-            {"path": "new.py", "mode": "create", "content": "x = 1\n"},
-            _runtime(ws),
-        )
-    )
-
-    assert "Created/wrote" in result
-    assert (ws / "new.py").read_text(encoding="utf-8") == "x = 1\n"

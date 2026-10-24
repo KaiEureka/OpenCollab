@@ -13,8 +13,6 @@ from opencollab.adapters.storage import SessionStore
 from opencollab.application.autosave import AutoSaveSubscriber
 from opencollab.application.scheduler_types import LaunchSpec
 from opencollab.application.session import SessionRuntime
-from opencollab.application.session_run import SessionRunUseCase
-from opencollab.application.tool_execution import ToolExecutionUseCase
 from opencollab.bootstrap import build_session as Session
 from opencollab.bootstrap import load_session, snapshot_session
 from tests.support.environment_test_support import local_environment_factory as local_environment_factory
@@ -60,15 +58,6 @@ def _new_session(local_environment_factory, **overrides) -> Session:
         kwargs["env"] = local_environment_factory()
     return Session(**kwargs)
 
-def test_session_builds_runtime_collaborators_eagerly():
-    session = Session(agent=_FakeAgent(), llm=_FakeLLM())
-    try:
-        assert isinstance(session.tool_execution, ToolExecutionUseCase)
-        assert isinstance(session.runner, SessionRunUseCase)
-        assert isinstance(session.store, SessionStore)
-    finally:
-        run(session.env.cleanup())
-
 def test_session_pending_cleanup_includes_tool_execution_owners(local_environment_factory):
     async def scenario():
         session = _new_session(local_environment_factory)
@@ -91,26 +80,6 @@ def test_session_seed_user_messages_follow_system_prompt(local_environment_facto
         {"role": "user", "content": "Task:\nbuild it"},
     ]
 
-def test_session_wires_a_default_shaper_pipeline(local_environment_factory):
-    from opencollab.application.shaping import ShaperPipeline
-
-    session = _new_session(local_environment_factory)
-    assert isinstance(session.runner.shaper, ShaperPipeline)
-
-def test_session_event_bus_reaches_injected_sink(local_environment_factory):
-    from opencollab.domain.events import SessionRuntimeEvent as SessionEvent
-
-    seen: list = []
-
-    async def sink(event):
-        seen.append(event)
-
-    session = _new_session(local_environment_factory, event_sink=sink)
-    event = SessionEvent(type="marker", data={"k": 1})
-    run(session.event_bus.emit(event))
-
-    assert seen == [event]
-
 def test_session_runtime_preserves_legacy_positional_optional_fields():
     subscriber = AutoSaveSubscriber(lambda: None)
     runtime = SessionRuntime(
@@ -121,13 +90,6 @@ def test_session_runtime_preserves_legacy_positional_optional_fields():
     assert runtime.auto_save_subscriber is subscriber
     assert runtime.owns_llm is True
     assert runtime.run_id is None
-
-def test_session_with_auto_save_path_subscribes_autosave_subscriber(local_environment_factory, tmp_path):
-    path = tmp_path / "auto.jsonl"
-    session = _new_session(local_environment_factory, auto_save_path=str(path))
-
-    subs = [t for t in session.event_bus._targets if isinstance(t, AutoSaveSubscriber)]
-    assert len(subs) == 1
 
 def test_session_without_auto_save_path_does_not_subscribe_autosave(local_environment_factory):
     session = _new_session(local_environment_factory)

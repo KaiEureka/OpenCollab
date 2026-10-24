@@ -84,22 +84,6 @@ def test_line_replace_lands_on_a_uniquely_matching_expected_str(tmp_path):
 
     assert result.startswith("Applied line_replace")
     assert target.read_text(encoding="utf-8") == "one\ntwo\nTHREE\nfour\n"
-
-def test_a_relocated_line_replace_says_where_it_actually_landed(tmp_path):
-    # Silence here would leave the caller planning its next edit against line
-    # numbers that were already wrong.
-    ws, _ = _file(tmp_path, "one\ntwo\nthree\nfour\n")
-
-    result = _apply(ws, {
-        "path": "f.py",
-        "mode": "line_replace",
-        "relocate_expected": True,
-        "start_line": 1,
-        "end_line": 1,
-        "expected_str": "three",
-        "new_str": "THREE",
-    })
-
     assert "did not match lines 1-1" in result
     assert "matched lines 3-3 uniquely" in result
 

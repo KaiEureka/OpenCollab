@@ -37,7 +37,6 @@ from tests.support.session_run_test_support import (
 from tests.support.session_run_test_support import (
     agent_with_submit as _agent_with_submit,
 )
-from tests.support.tool_execution_test_support import build_sensor_use_case as _use_case
 
 
 def _captured():
@@ -272,18 +271,6 @@ def test_watchdog_forced_turn_ignored_escalates_once_then_commits():
     assert llm.calls[0]["tool_choice"] == _FORCED_SUBMIT_CHOICE
     assert llm.calls[1]["tool_choice"] == _FORCED_SUBMIT_CHOICE
     assert submit.captured is not None
-
-class ScriptedTool:
-    def __init__(self, name, outputs):
-        self.name = name
-        self._outputs = list(outputs)
-
-    async def execute_with_runtime(self, args, runtime):
-        return self._outputs.pop(0) if self._outputs else ""
-
-def _run_one(state, tool, name, args):
-    call = {"id": "c1", "function": {"name": name, "arguments": args}}
-    run(_use_case(state, tool).process([call])).apply_to(state)
 
 def test_steps_since_progress_resets_on_user_turn():
     state = SessionState(messages=[])

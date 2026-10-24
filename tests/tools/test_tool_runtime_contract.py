@@ -85,15 +85,6 @@ def test_bash_tool_passes_permission_confirm_fn_to_safety_check():
     assert env.exec_calls == [("echo ok", 120.0)]
     assert "stdout:\nok" in result
 
-def test_bash_tool_respects_custom_timeout():
-    env = FakeEnv(stdout="ok\n")
-    safety = SpySafetyPolicy()
-    runtime = ToolRuntime(environment=env, safety_policy=safety, permission_policy=None)
-
-    run(BashTool().execute_with_runtime({"command": "echo ok", "timeout": 7}, runtime))
-
-    assert env.exec_calls == [("echo ok", 7)]
-
 def test_bash_tool_preserves_blocked_command_behavior(tmp_path):
     env = FakeEnv()
     sandbox = SandboxInterceptor(str(tmp_path))

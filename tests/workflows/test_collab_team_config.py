@@ -159,12 +159,7 @@ def test_the_runner_seats_the_roster_before_the_first_model_call(monkeypatch, tm
     assert team_call["use_worktrees"] is True
     assert team_call["serialize_turns"] is True
     assert team_call["prompt"] == "fix it"
-
-def test_the_runner_defaults_to_the_reusable_team_file(monkeypatch, tmp_path):
-    module = _runner_module()
-    calls = _record_calls(module, monkeypatch)
-    module.main(["--workspace", str(tmp_path), "--prompt", "fix it"])
-    assert Path(calls[-1]["config"]) == CONFIG
+    assert Path(team_call["config"]) == CONFIG
 
 def test_the_runner_reads_a_task_from_a_file(monkeypatch, tmp_path):
     module = _runner_module()

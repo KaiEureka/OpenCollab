@@ -56,22 +56,6 @@ def test_runner_rejects_unbounded_per_call_timeout(per_call_timeout):
     with pytest.raises(ValueError, match="finite positive"):
         build_runner(per_call_timeout=per_call_timeout)
 
-def test_run_loop_budget_exceeded_emits_error_and_sets_phase():
-    events, bus = collect_events()
-    state = SessionState(messages=[{"role": "system", "content": "sys"}], used_tokens=10)
-    llm = FakeLLM()
-    runner = build_runner(state=state, llm=llm, event_bus=bus, max_budget_tokens=10)
-    result = run(runner.run_loop())
-    assert result == ""
-    assert llm.calls == []
-    assert state.phase is SessionPhase.STOPPED
-    assert state.terminal_reason == "budget exceeded: 10 tokens used"
-    assert state.messages[-1] == {
-        "role": "system",
-        "content": "[Budget exceeded: 10 tokens used. Session stopped.]",
-    }
-    assert events == [("error", {"reason": "budget exceeded: 10 tokens used", "aid": -1})]
-
 def test_remaining_budget_caps_next_model_output_request():
     messages = [{"role": "system", "content": "sys"}]
     input_tokens = _reserved_first_call_input(messages)

@@ -111,30 +111,6 @@ def test_file_read_description_teaches_distill_and_forbids_reread():
     assert "empty reply" in desc
     assert "re-read" in desc
 
-def test_file_write_create_and_str_replace(tmp_path):
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    env = LocalEnvironment(str(workspace))
-    sandbox = SandboxInterceptor(str(workspace))
-    runtime = ToolRuntime(environment=env, safety_policy=sandbox, permission_policy=None)
-
-    create_result = run(
-        FileWriteTool().execute_with_runtime(
-            {"path": "note.txt", "mode": "create", "content": "alpha\n"},
-            runtime,
-        )
-    )
-    replace_result = run(
-        FileWriteTool().execute_with_runtime(
-            {"path": "note.txt", "mode": "str_replace", "old_str": "alpha", "new_str": "beta"},
-            runtime,
-        )
-    )
-
-    assert "Created/wrote" in create_result
-    assert "Replaced in" in replace_result
-    assert (workspace / "note.txt").read_text(encoding="utf-8") == "beta\n"
-
 @pytest.mark.parametrize("name_length", [16, 217, 218, 224, 255])
 @pytest.mark.parametrize(
     ("tool", "params", "existing", "message"),

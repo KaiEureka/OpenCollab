@@ -141,11 +141,10 @@ topology:
         output = await asyncio.wait_for(scheduler.run_turn(0, "Implement 2, adopt it, then ask the coder for 3."), 30)
         assert output == "Delivered and verified both completions."
         assert calls == {"fixture-lead": 8, "fixture-coder": 6}
-        executed = subprocess.run(
+        subprocess.run(
             [sys.executable, "-B", "-c", "from answer import answer; assert answer() == 3"],
             cwd=source, check=True, capture_output=True,
         )
-        assert executed.returncode == 0
     except Exception:
         if provider_errors:
             raise provider_errors[0]

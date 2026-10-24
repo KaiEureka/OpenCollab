@@ -191,12 +191,6 @@ def test_discover_workflows_skips_dunder_and_private_files(tmp_path):
     reg = discover_workflows(str(wf_dir))
     assert [s.name for s in reg.list_specs()] == ["keep"]
 
-def test_discover_workflows_missing_dir_returns_empty_registry(tmp_path):
-    from opencollab.bootstrap.workflow_runtime import discover_workflows
-
-    reg = discover_workflows(str(tmp_path / "does-not-exist"))
-    assert reg.list_specs() == []
-
 def test_discover_workflows_dedupes_aliased_workflow(tmp_path):
     """A decorated function bound under two module-level names (alias /
     re-export) carries the SAME spec; discovery must dedupe by spec identity

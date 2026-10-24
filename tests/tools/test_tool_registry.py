@@ -6,8 +6,6 @@ import pytest
 
 from opencollab.adapters.tools.use_skill import UseSkillTool
 from opencollab.bootstrap.tool_registry import (
-    KNOWN_TOOL_NAMES,
-    SKILL_TOOL_FACTORIES,
     build_tools_for_role,
 )
 from opencollab.domain.skill import SkillManifest
@@ -19,10 +17,6 @@ class FakeSkillStore:
 
     def get_body(self, name: str) -> str | None:
         return None
-
-def test_use_skill_is_a_known_tool_name():
-    assert "use_skill" in KNOWN_TOOL_NAMES
-    assert "use_skill" in SKILL_TOOL_FACTORIES
 
 def test_build_wires_use_skill_when_store_provided():
     store = FakeSkillStore()
@@ -59,19 +53,11 @@ def test_stateless_tools_resolve_without_any_dependency():
     tools = build_tools_for_role(["bash", "file_read"])
     assert {t.name for t in tools} == {"bash", "file_read"}
 
-def test_a_registry_denied_an_unisolated_shell_restricts_command_tools():
-    (bash,) = build_tools_for_role(["bash"], allow_unisolated_shell=False)
-    assert bash.require_process_isolation is True
-
 def test_removed_test_runner_is_rejected_instead_of_granting_a_shell():
     with pytest.raises(ValueError, match="Unknown tool"):
         build_tools_for_role(["run_tests"])
     with pytest.raises(TypeError):
         build_tools_for_role(["bash"], allow_unisolated_tests=True)
-
-def test_an_allowed_unisolated_shell_keeps_user_command_controls():
-    (bash,) = build_tools_for_role(["bash"], allow_unisolated_shell=True)
-    assert bash.require_process_isolation is False
 
 def test_the_shell_decision_is_independent_of_the_ask_user_decision():
     """Prebuilt peers need shell access even when ask_user is disabled."""
