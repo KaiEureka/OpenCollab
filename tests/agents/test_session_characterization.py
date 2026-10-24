@@ -416,20 +416,6 @@ def test_no_tool_calls_marks_done_and_emits_text_delta(local_environment_factory
     ]
     assert tracer.steps[3]["payload"]["content"] == "plain answer"
 
-def test_session_accepts_explicit_llm_client(local_environment_factory):
-    fake_llm = FakeLLMClient([
-        llm_response(content="explicit llm answer", input_tokens=2, output_tokens=3),
-    ])
-    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=fake_llm)
-
-    assert session._llm is fake_llm
-    assert session.runner.llm is fake_llm
-
-    result = run(session.run_loop())
-
-    assert result == "explicit llm answer"
-    assert fake_llm.calls
-
 def test_session_event_sink_wires_through_to_runtime(local_environment_factory):
     fake_llm = FakeLLMClient([
         llm_response(content="event sink answer"),

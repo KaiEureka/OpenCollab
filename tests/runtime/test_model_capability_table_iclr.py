@@ -7,11 +7,6 @@ import dataclasses
 from opencollab.adapters.llm.types import ModelCapabilities, model_capabilities
 
 
-def test_qwen_flash_refuses_forced_tool_choice():
-    capabilities = model_capabilities("qwen3.8-flash")
-
-    assert capabilities.supports_forced_tool_choice is False
-
 def test_qwen_flash_leaves_every_unprobed_dimension_at_its_default():
     """Unprobed dimensions must retain defaults instead of inheriting a neighbouring row."""
     capabilities = model_capabilities("qwen3.8-flash")

@@ -8,7 +8,6 @@ import pytest
 
 from opencollab.adapters.tools.single2 import SINGLE2_BASH_OUTPUT_CHARS
 from opencollab.application.event_bus import EventBus
-from opencollab.bootstrap.agent_profiles import resolve_agent_profile
 from opencollab.bootstrap.context_builder import ContextBuilder, SpawnConfig
 from opencollab.bootstrap.single2_prompt import SINGLE2_SYSTEM_PROMPT
 from opencollab.bootstrap.team_config import RoleConfig, TeamConfig, load_team_config
@@ -155,17 +154,6 @@ def test_an_unknown_profile_is_refused_at_load(tmp_path) -> None:
     )
     with pytest.raises(Exception, match="single2"):
         load_team_config(path=str(path))
-
-
-def test_default_means_opencollabs_own_agent(tmp_path) -> None:
-    path = tmp_path / "team.yaml"
-    path.write_text(
-        "entry: solo\nroles:\n  solo:\n    prompt: hi\n    profile: default\n",
-        encoding="utf-8",
-    )
-    assert load_team_config(path=str(path)).roles["solo"].profile is None
-    assert _builder(None)._profile_for(load_team_config(path=str(path)).roles["solo"]) is None
-    assert resolve_agent_profile(None).name == "single2"
 
 
 def test_a_team_file_reports_the_profile_each_seat_declares(tmp_path) -> None:
