@@ -15,6 +15,7 @@ from opencollab.adapters._env_base import Environment, ExecResult, TextFileRange
 from opencollab.adapters.llm import errors as llm_errors
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage, to_plain_data
+from opencollab.application._session_run_usage import _normalize_completion_usage
 from opencollab.application.async_timeout import await_owned_operation
 
 _METADATA = {"context_window", "estimate_request_tokens", "estimate_context_tokens", "minimum_output_tokens"}
@@ -55,7 +56,9 @@ class AuthoredWorkflowBridge:
         self._allow_unisolated_shell = allow_unisolated_shell
         self._environments = {0: environment}
         self._next_environment = 0
+        self.tokens = 0
         self._tasks: dict[str, asyncio.Task] = {}
+        self._handles: dict[str, int] = {}
 
     def _model(self) -> Any:
         if self._llm is None:
@@ -85,14 +88,19 @@ class AuthoredWorkflowBridge:
         for identity, request in requests.items():
             if not identity.isdecimal() or len(identity) > 12 or not isinstance(request, dict):
                 raise ValueError("invalid child bridge request identity")
+            handle = request.get("environment", 0)
+            if isinstance(handle, bool) or not isinstance(handle, int):
+                raise ValueError("invalid child bridge environment handle")
             if identity not in self._tasks:
                 self._tasks[identity] = asyncio.create_task(self._respond(identity, request))
-            if request.get("cancel"):
+                self._handles[identity] = handle
+            if request.get("cancel") and not self._tasks[identity].cancelling():
                 self._tasks[identity].cancel()
         for identity, task in tuple(self._tasks.items()):
             if identity not in requests and task.done():
                 task.result()
                 del self._tasks[identity]
+                del self._handles[identity]
 
     async def _respond(self, identity: str, request: dict[str, Any]) -> None:
         try:
@@ -112,6 +120,10 @@ class AuthoredWorkflowBridge:
         action, arguments = request["action"], request.get("arguments", {})
         if not isinstance(arguments, dict):
             raise ValueError("bridge arguments must be an object")
+        handle = request.get("environment", 0)
+        if isinstance(handle, bool) or not isinstance(handle, int) or handle not in self._environments:
+            raise ValueError("unknown environment for this authored run")
+        environment = self._environments[handle]
         if action == "metadata":
             name = arguments["name"]
             if name == "requires_thinking_prefix":
@@ -130,14 +142,17 @@ class AuthoredWorkflowBridge:
                     )))
                 arguments["on_admitted"] = admitted
             try:
-                return to_plain_data(await self._model().complete(**arguments))
+                try:
+                    response = await self._model().complete(**arguments)
+                except BaseException as exc:
+                    if getattr(exc, "usage", None) is not None:
+                        self.tokens += _normalize_completion_usage(exc.usage)[1]
+                    raise
+                self.tokens += _normalize_completion_usage(response.usage)[1]
+                return to_plain_data(response)
             finally:
                 if notifications:
                     await await_owned_operation(asyncio.gather(*notifications), propagate_cancellation=True)
-        handle = request.get("environment", 0)
-        if isinstance(handle, bool) or not isinstance(handle, int) or handle not in self._environments:
-            raise ValueError("unknown environment for this authored run")
-        environment = self._environments[handle]
         if action == "acquire":
             if set(arguments) != {"strategy", "label"}:
                 raise ValueError("acquire accepts a strategy and label")
@@ -150,6 +165,12 @@ class AuthoredWorkflowBridge:
         if action == "release":
             if arguments or handle == 0:
                 raise ValueError("release needs an owned child environment")
+            pending = [task for key, task in self._tasks.items() if key != identity and not task.done()
+                       and self._environments.get(self._handles[key]) is environment]
+            for task in pending:
+                if not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
             await self._pool.release_env(environment)
             del self._environments[handle]
             return None
@@ -175,14 +196,15 @@ class AuthoredWorkflowBridge:
 
     async def aclose(self) -> None:
         for task in self._tasks.values():
-            task.cancel()
+            if not task.done() and not task.cancelling():
+                task.cancel()
         results = await asyncio.gather(*self._tasks.values(), return_exceptions=True)
-        await self._pool.release()
         if self._llm is not None:
             await self._llm.close()
+        await self._pool.release()
         failures = [item for item in results if isinstance(item, Exception)]
         if failures:
-            raise OSError("child bridge response persistence failed") from failures[0]
+            raise OSError(f"child bridge response persistence failed: {failures[0]}") from failures[0]
 
 
 class BridgeClient:
@@ -209,7 +231,6 @@ class BridgeClient:
         reply = json.loads(path.read_text(encoding="utf-8"))
         del self._pending[identity]
         self._publish()
-        path.unlink()
         if "error" in reply:
             raise _restore_error(reply["error"])
         return reply["value"]
@@ -230,9 +251,23 @@ class BridgeClient:
                     on_admitted = None
                 await asyncio.sleep(0.01)
             return self._result(identity)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as cancellation:
             self._pending[identity]["cancel"] = True
             self._publish()
+
+            async def acknowledged() -> Any:
+                while not (self.directory / f"{identity}.json").exists():
+                    await asyncio.sleep(0.01)
+                return self._result(identity)
+
+            try:
+                value = await await_owned_operation(acknowledged(), propagate_cancellation=False)
+            except Exception as exc:
+                usage = getattr(exc, "usage", None)
+            else:
+                usage = Usage(**value["usage"]) if action == "complete" and isinstance(value, dict) else None
+            if usage is not None:
+                cancellation.usage = usage
             raise
 
     def provider(self, strategy: str, **_kwargs: Any) -> Any:
@@ -259,13 +294,6 @@ class BridgeEnvironment(Environment):
         self.client, self.handle = client, options["handle"]
         self.workspace, self.process_isolated = options["workspace"], options["process_isolated"]
         self._released = False
-
-    def __getattr__(self, name: str) -> Any:
-        if name not in _ENVIRONMENT:
-            raise AttributeError(name)
-        async def invoke(**kwargs: Any) -> Any:
-            return await self.client.call(name, kwargs, self.handle)
-        return invoke
 
     async def exec_cmd(self, cmd: str, timeout: float = 120.0, *, input_bytes: bytes | None = None) -> ExecResult:
         arguments: dict[str, Any] = {"cmd": cmd, "timeout": timeout if math.isfinite(timeout) else None}
@@ -294,13 +322,16 @@ class BridgeEnvironment(Environment):
 
     async def cleanup(self) -> None:
         if not self._released:
-            await self.client.call("release", {}, self.handle)
-            self._released = True
+            async def release() -> None:
+                await self.client.call("release", {}, self.handle)
+                self._released = True
+            await await_owned_operation(release(), propagate_cancellation=True)
 
 
 class BridgeLLM:
-    def __init__(self, client: BridgeClient) -> None:
+    def __init__(self, client: BridgeClient, environment: Any) -> None:
         self.client = client
+        self.handle = environment.handle if isinstance(environment, BridgeEnvironment) else 0
         self.supports_response_session_identity = client.options["supports_response_session_identity"]
         self.supports_request_admission = client.options["supports_request_admission"]
 
@@ -314,7 +345,9 @@ class BridgeLLM:
         return lambda *args, **kwargs: self.client.metadata(name, *args, **kwargs)
 
     async def complete(self, messages: list[dict[str, Any]], *, on_admitted: Any = None, **kwargs: Any) -> LLMResponse:
-        result = await self.client.call("complete", {"messages": messages, **kwargs}, on_admitted=on_admitted)
+        result = await self.client.call(
+            "complete", {"messages": messages, **kwargs}, self.handle, on_admitted=on_admitted,
+        )
         result["usage"] = Usage(**result["usage"])
         return LLMResponse(**result)
 

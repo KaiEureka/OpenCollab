@@ -32,6 +32,8 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
     artifacts = Path(request["artifacts"])
     artifacts.mkdir(parents=True, exist_ok=True)
     tokens = 0
+    artifact_files = ["workflow.json"]
+    _write_json(artifacts / "artifact_files.json", artifact_files)
     bridge = BridgeClient(artifacts, request["bridge"]) if "bridge" in request else None
 
     def build_child(**kwargs: Any) -> Any:
@@ -63,8 +65,13 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
 
         kwargs["run_control"] = replace(control, on_event=on_event)
         if bridge is not None:
-            kwargs["llm"] = BridgeLLM(bridge)
-        return build_session(**kwargs)
+            kwargs["llm"] = BridgeLLM(bridge, kwargs["env"])
+        session = build_session(**kwargs)
+        if session.auto_save_path is not None:
+            name = Path(session.auto_save_path).name
+            artifact_files.extend((name, name + ".journal", name + ".journal.lock"))
+            _write_json(artifacts / "artifact_files.json", artifact_files)
+        return session
 
     async def execute() -> Any:
         workspace = Path.cwd().resolve()
@@ -72,6 +79,7 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
         source.relative_to(workspace)
         if source.suffix != ".py":
             raise ValueError("workflow source must be a Python file")
+        sys.dont_write_bytecode = True
         spec = importlib.util.spec_from_file_location(f"_oc_child_{request['id']}", source)
         if spec is None or spec.loader is None:
             raise ValueError("workflow source cannot be loaded")
@@ -133,7 +141,7 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
             loop.remove_signal_handler(sig)
     result["tokens"] = tokens
     result["artifact_files"] = [item.name for item in artifacts.iterdir() if item.is_file() and re.fullmatch(
-        r"(?:workflow\.json|\d+_[^/\n]+\.json)(?:\.journal(?:\.lock)?)?", item.name,
+        r"(?:workflow\.json|\d+(?:_[^/\n]+)?\.json)(?:\.journal(?:\.lock)?)?", item.name,
     )]
     try:
         _write_json(artifacts / "result.json", result)

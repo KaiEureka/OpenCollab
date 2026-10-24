@@ -251,23 +251,35 @@ class AuthoredWorkflowTool(Tool):
                 assert child.bridge is not None
                 await await_owned_operation(child.bridge.aclose(), propagate_cancellation=False)
                 await self._refresh_usage(child)
+                self._account_usage(child, max(child.tokens, child.bridge.tokens))
             except Exception as exc:
                 status = "failed"
                 child.cleanup_error = exc
                 child.result = {"status": "failed", "output": None,
-                                "reason": f"child accounting failed: {exc}"}
+                                "reason": f"{(child.result or {}).get('reason', '')}; child accounting failed: {exc}"}
             if child.result is not None:
                 child.result["tokens"] = child.tokens
             child.status = status
             if self._save_dir is not None:
                 try:
                     directory = Path(tempfile.mkdtemp(prefix=f"{child.id}-", dir=self._save_dir))
-                    for name in (child.result or {}).get("artifact_files", []):
+                    native_files = (child.result or {}).get("artifact_files")
+                    if native_files is None:
+                        try:
+                            native_files = json.loads(await child.environment.read_file(
+                                posixpath.join(child.artifacts, "artifact_files.json"),
+                            ))
+                        except FileNotFoundError:
+                            native_files = []
+                    for name in native_files:
                         if not isinstance(name, str) or not re.fullmatch(
-                            r"(?:workflow\.json|\d+_[^/\n]+\.json)(?:\.journal(?:\.lock)?)?", name,
+                            r"(?:workflow\.json|\d+(?:_[^/\n]+)?\.json)(?:\.journal(?:\.lock)?)?", name,
                         ):
                             raise ValueError("invalid child artifact name")
-                        content = await child.environment.read_file(posixpath.join(child.artifacts, name))
+                        try:
+                            content = await child.environment.read_file(posixpath.join(child.artifacts, name))
+                        except FileNotFoundError:
+                            continue
                         (directory / name).write_text(content, encoding="utf-8")
                     child.saved_artifacts = str(directory)
                     (directory / "result.json").write_text(json.dumps(self._snapshot(child, include_result=True)),
