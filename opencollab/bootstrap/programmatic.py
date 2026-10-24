@@ -62,6 +62,7 @@ from opencollab.bootstrap.workflow_runtime import (
     run_workflow as _run_workflow,
 )
 from opencollab.domain.agent import Agent
+from opencollab.domain.docker import DockerOptions
 
 DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS = 10.0
 
@@ -176,11 +177,14 @@ def worktree_environment(
 def docker_environment(
     image: str,
     backing_environment: EnvironmentPort | None = None,
+    *,
+    options: DockerOptions | None = None,
 ) -> EnvironmentPort:
     """Create an uninitialized image-backed Docker environment."""
     return DockerEnvironment(
         image=image,
         backing_environment=backing_environment,
+        options=options,
     )
 
 def _claim_artifacts(path: Path | None) -> None:

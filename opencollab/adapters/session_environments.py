@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
+from functools import partial
 from typing import Any
 
+from opencollab.adapters.docker_isolation import DockerIsolationPool
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.worktree_pool import WorktreePool
 from opencollab.application.async_timeout import await_owned_operation
@@ -26,7 +28,11 @@ class SessionEnvironmentPool:
     ) -> None:
         self._workspace = workspace
         self._default = isolation_name(isolation)
-        self._providers = dict(providers or {})
+        self._providers = {
+            "docker-group": partial(DockerIsolationPool, scope="group"),
+            "docker-session": partial(DockerIsolationPool, scope="session"),
+            **dict(providers or {}),
+        }
         self._roles = dict(roles or {})
         self._options = dict(owned_save_dir=owned_save_dir, enable_adoption=enable_adoption,
                              owned_output_paths=owned_output_paths)

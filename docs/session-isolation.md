@@ -82,3 +82,45 @@ existing permission and workspace checks.
 Unknown strategies report an error instead of selecting a different execution
 environment. Model endpoints and request concurrency are configured separately
 from workspace isolation.
+
+## Docker strategies
+
+`docker-group` allocates one container for each run using that strategy. Every
+session receives a private worktree in that container, including the Team entry
+agent. `docker-session` allocates a container and private workspace for each
+session. Python orchestration stays in the caller process while tools execute
+inside the selected container. The default image is `python:3.11` and requires
+a working Docker daemon. Custom images need Bash, Git, and an entrypoint that
+accepts the container's `sleep infinity` command.
+
+```python
+from opencollab import OpenCollab
+from opencollab.environments import DockerMount, DockerOptions, docker_isolation_provider
+
+options = DockerOptions(
+    image="python:3.11",
+    cpus=2,
+    memory="2g",
+    pids_limit=256,
+    mounts=(DockerMount("/path/to/read-only-assets", "/assets"),),
+)
+client = OpenCollab(".", environment_providers={
+    "docker-session": docker_isolation_provider(options, scope="session"),
+})
+result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="docker-session")
+```
+
+Container networking defaults to `none`. The `network` option accepts `bridge`
+or a named Docker network when the task needs network access. Additional mounts
+are read-only and reject host sockets. Workspace data is copied into private
+container storage. Existing worktree and submodule capture preserves physical
+file contents while portable Git metadata lets the container operate
+independently from the source checkout. The source may be local or an existing
+Docker environment and remains owned by its caller.
+
+Full patches are captured before owned containers are removed. A failed or
+truncated export retains its workspace and container for recovery and cleanup
+retry. Recovery locations include the full container ID. The runtime's existing
+process cancellation and environment revocation behavior continues to apply.
+The Docker adapter tests can execute these paths against a local image through
+`OPENCOLLAB_DOCKER_TEST_IMAGE`.
