@@ -60,6 +60,8 @@ before the workspace is reclaimed. The SDK returns its path in
 an artifact directory, OC creates a recovery directory. Applying the patch to
 the caller's source remains an explicit operation.
 
+The Workflow CLI accepts `--isolation shared` or `--isolation worktree`.
+
 ## Custom environment providers
 
 Pass `environment_providers={"custom": factory}` to `OpenCollab`, then select

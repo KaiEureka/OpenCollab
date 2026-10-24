@@ -203,6 +203,11 @@ def install_cli_fakes(monkeypatch, scheduler, tracer):
     monkeypatch.setattr(tui_mod, "TuiEventSink", lambda tui: object())
     monkeypatch.setattr(bootstrap, "build_runtime_context", lambda *a, **k: ctx)
     monkeypatch.setattr(bootstrap, "build_scheduler", lambda *a, **k: scheduler)
+
+    async def prepare(ctx, *, builder, **kwargs):
+        return builder(ctx, **kwargs)
+
+    monkeypatch.setattr(bootstrap, "prepare_scheduler", prepare)
     return ctx
 
 def config():

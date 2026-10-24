@@ -96,6 +96,7 @@ def run_cmd(
         "--task-concurrency",
         help="Max active parallel/pipeline units (defaults to --concurrency)",
     ),
+    isolation: Optional[str] = typer.Option(None, "--isolation", help="Default agent environment strategy"),
     agent_profile: Optional[str] = typer.Option(
         None,
         "--agent-profile",
@@ -167,6 +168,7 @@ def run_cmd(
             max_concurrency=concurrency,
             task_concurrency=task_concurrency,
             agent_profile=agent_profile,
+            **({"isolation": isolation} if isolation is not None else {}),
             save_dir=save_dir,
             trace=trace,
             return_details=True,

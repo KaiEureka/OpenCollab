@@ -44,6 +44,8 @@ topology:
 
 显式隔离的入口 Agent 在工作区回收前保存完整补丁。SDK 通过 `result.metrics["entry_patch"]` 返回补丁位置。关闭轨迹记录时也会保存补丁，调用方省略产物目录时则创建恢复目录。调用方可以显式将补丁应用到源仓库。
 
+Workflow CLI 支持 `--isolation shared` 和 `--isolation worktree`。
+
 ## 自定义环境提供器
 
 向 `OpenCollab` 传入 `environment_providers={"custom": factory}`，随后使用 `isolation="custom"`。每个工厂通过关键字参数接收 `workspace`、`base_environment`、`owned_save_dir`、`enable_adoption` 和 `owned_output_paths`。
