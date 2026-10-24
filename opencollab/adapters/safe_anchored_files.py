@@ -429,6 +429,8 @@ def unlink_regular_file_durable_at(
     root_fd: int,
     root_path: str | os.PathLike[str],
     path: str | os.PathLike[str],
+    *,
+    expected_identity: tuple[int, int] | None = None,
 ) -> bool:
     parent_fd, name = _open_parent_beneath(
         root_fd,
@@ -440,6 +442,8 @@ def unlink_regular_file_durable_at(
         current = _current_regular_at(parent_fd, name, context="owned file")
         if current is None:
             return False
+        if expected_identity is not None and (current.st_dev, current.st_ino) != expected_identity:
+            raise OSError(f"owned file was replaced: {path}")
         os.unlink(name, dir_fd=parent_fd)
         os.fsync(parent_fd)
         return True
