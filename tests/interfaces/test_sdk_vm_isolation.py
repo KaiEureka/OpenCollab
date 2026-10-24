@@ -187,6 +187,8 @@ async def main(ctx, args):
                                 ctx.agent("second worker", tools=tools, isolation="vm-session"))
 '''
     children = []
+    pid_receipt = {"targets": []}
+    pid_receipt_path = tmp_path / "cancel-ready.json"
     launch = AuthoredWorkflowTool._launch
 
     async def remember(tool, params, runtime):
@@ -228,8 +230,12 @@ async def main(ctx, args):
         processes = []
         for environment in environments:
             pid = int(await environment.read_file("command.pid"))
-            assert (await environment.exec_cmd(f"kill -0 {pid}")).returncode == 0
+            outcome = await environment.exec_cmd(f"kill -0 {pid}")
+            assert outcome.returncode == 0
+            pid_receipt["targets"].append({"host": environment.connection.host, "port": environment.connection.port,
+                                           "pid": pid, "before_cancel_returncode": outcome.returncode})
             processes.append((environment.connection, pid))
+        pid_receipt_path.write_text(json.dumps(pid_receipt, indent=2))
         return processes
 
     with _serve_model(respond) as (endpoint, _requests):
@@ -258,6 +264,10 @@ async def main(ctx, args):
         try:
             outcome = await control.exec_cmd(f"test ! -e /proc/{pid}")
             assert outcome.returncode == 0
+            target = next(target for target in pid_receipt["targets"]
+                          if target["port"] == connection.port and target["pid"] == pid)
+            target["after_cancel_returncode"] = outcome.returncode
+            pid_receipt_path.write_text(json.dumps(pid_receipt, indent=2))
         finally:
             await control.cleanup()
 

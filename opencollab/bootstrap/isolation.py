@@ -27,11 +27,12 @@ async def prepare_scheduler(ctx: Any, *, builder: Any, isolation=None,
     )
     try:
         # An unset strategy keeps the historical entry workspace even when a child overrides it.
-        entry = await pool.acquire(team.entry, isolation=roles.get(team.entry) or selected or "shared")
-        pool.set_source(entry)
+        entry_isolation = roles.get(team.entry) or selected or "shared"
+        entry = await pool.acquire(team.entry, isolation=entry_isolation)
+        pool.set_source(entry, isolation=entry_isolation)
         scheduler = builder(ctx, **{**kwargs, "environment": entry, "worktree_pool": pool,
                                     "resolved_team_config": team})
-        scheduler.preserve_entry_changes = (roles.get(team.entry) or selected or "shared") != "shared"
+        scheduler.preserve_entry_changes = entry_isolation != "shared"
         return scheduler
     except BaseException:
         await pool.release()

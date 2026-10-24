@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -292,3 +293,81 @@ async def main(ctx, args):
             assert parent.used_tokens == result["tokens"] == 5
         finally:
             await parent.aclose()
+
+
+@pytest.mark.parametrize("with_vm", [False, True])
+async def test_unused_vm_profile_preserves_legacy_authored_shared_workspace(tmp_path, with_vm):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _repo(workspace, dirty=False)
+    team = tmp_path / "team.yaml"
+    team.write_text("entry: author\nroles:\n  author:\n    prompt: Profile author\n"
+                    "    tools: [file_write, bash, manage_workflow]\n")
+    source = '''from opencollab.tools import builtin_tools
+async def main(ctx, args):
+    return await ctx.agent("deliver", tools=builtin_tools("file_write"))
+'''
+    observed = {}
+
+    def respond(body):
+        replies = [message for message in body["messages"] if message["role"] == "tool"]
+        author = body["messages"][0]["content"].startswith("Profile author")
+        if author:
+            if not replies:
+                call = _call("file_write", {"path": "authored.py", "mode": "create", "content": source})
+            elif len(replies) == 1:
+                call = _call("manage_workflow", {"action": "launch", "source": "authored.py", "python": sys.executable})
+            elif len(replies) == 2:
+                call = _call("manage_workflow", {"action": "wait", "id": json.loads(replies[-1]["content"])["id"]})
+            else:
+                observed.update(json.loads(replies[-1]["content"]))
+                return {"role": "assistant", "content": "collected"}, {"prompt_tokens": 3, "completion_tokens": 2}
+        elif not replies:
+            call = _call("file_write", {"path": "delivered.txt", "mode": "create", "content": "kept"})
+        else:
+            return {"role": "assistant", "content": "done"}, {"prompt_tokens": 3, "completion_tokens": 2}
+        return {"role": "assistant", "tool_calls": [call]}, {"prompt_tokens": 3, "completion_tokens": 2}
+
+    profile = _profile(tmp_path)
+    with _serve_model(respond) as (endpoint, requests):
+        result = await OpenCollab(
+            workspace, api_key="offline-test", base_url=endpoint,  # pragma: allowlist secret
+            config={"vm": profile} if with_vm else {},
+        ).team("run", config=team, trace=False, allow_unisolated_shell=True)
+    assert result.ok and result.output == "collected", result
+    assert observed["status"] == "completed", observed
+    assert (workspace / "delivered.txt").read_text() == "kept"
+    assert len(requests) == 6
+    assert not Path(profile["lease_database"]).exists()
+
+
+async def test_entry_source_policy_keeps_same_role_spawned_candidates_isolated(tmp_path, local_environment_factory):
+    _repo(tmp_path, dirty=False)
+    base = local_environment_factory(str(tmp_path))
+    parent = SessionEnvironmentPool(str(tmp_path), isolation="worktree", base_environment=base,
+                                    roles={"borrower": "shared"})
+    children = []
+    try:
+        entry = await parent.acquire("author", isolation="shared")
+        parent.set_source(entry, isolation="shared")
+        shared = parent.child_pool(entry, role="author")
+        children.append(shared)
+        assert await shared.acquire("worker") is entry
+        candidate = await parent.acquire("author")
+        assert candidate.workspace != entry.workspace
+        private = parent.child_pool(candidate, role="author")
+        children.append(private)
+        nested = await private.acquire("worker")
+        assert nested.workspace not in {candidate.workspace, entry.workspace}
+        parent.set_source(entry, isolation="vm-group")
+        borrowed = parent.child_pool(entry, role="borrower")
+        children.append(borrowed)
+        assert await borrowed.acquire("worker") is entry
+        parent.set_source(entry)
+        legacy = parent.child_pool(entry, role="author")
+        children.append(legacy)
+        assert legacy.default_isolation == "worktree"
+    finally:
+        for child in reversed(children):
+            await child.release()
+        await parent.release()
