@@ -35,6 +35,7 @@ from opencollab.bootstrap.agent_profiles import (
     resolve_agent_profile,
 )
 from opencollab.bootstrap.agent_runtime import revoke_and_abort_environment
+from opencollab.bootstrap.environment_profiles import environment_cleanup_timeout
 from opencollab.bootstrap.session_factory import build_session
 
 # The integrity runtime's own bounded cleanup can legitimately span several
@@ -85,7 +86,7 @@ async def run_workflow(
     save_dir: str | None = None,
     trace: bool = True,
     env: Any | None = None,
-    cleanup_timeout: float = DEFAULT_WORKFLOW_CLEANUP_TIMEOUT_SECONDS,
+    cleanup_timeout: float | None = None,
     source_root: str | None = None,
     deadline_monotonic: float | None = None,
     deadline_margin_seconds: float = 120.0,
@@ -101,6 +102,9 @@ async def run_workflow(
     environment_providers: Any | None = None,
 ) -> Any:
     """Run through one owned lifecycle with an optional wall-clock deadline."""
+    cleanup_timeout = environment_cleanup_timeout(
+        cfg, cleanup_timeout, default=DEFAULT_WORKFLOW_CLEANUP_TIMEOUT_SECONDS,
+    )
     if isinstance(agent_profile, str):
         agent_profile = resolve_agent_profile(agent_profile)
     if cleanup_environment is None:

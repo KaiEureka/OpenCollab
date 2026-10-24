@@ -46,6 +46,7 @@ class SessionEnvironmentPool:
             if name is not None:
                 self._validate(name)
         self._source = base_environment or LocalEnvironment(workspace)
+        self._source_isolation: str | None = None
         self._owned_source = self._source if base_environment is None else None
 
     @property
@@ -56,15 +57,27 @@ class SessionEnvironmentPool:
     def strategy_names(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(("shared", "worktree", *self._providers)))
 
+    def _child_isolation(self, environment: EnvironmentPort, role: str) -> str:
+        source_isolation = self._source_isolation if environment is self._source else None
+        return self._roles.get(role) or source_isolation or self._default
+
+    def describe(self, environment: EnvironmentPort, *, role: str) -> dict[str, Any]:
+        return {"default_isolation": self._child_isolation(environment, role),
+                "strategies": self.strategy_names}
+
     def child_pool(self, environment: EnvironmentPort, *, role: str) -> SessionEnvironmentPool:
         return SessionEnvironmentPool(
-            self._workspace, isolation=self._roles.get(role) or self._default,
+            self._workspace, isolation=self._child_isolation(environment, role),
             base_environment=environment, providers=self._providers,
         )
 
     def _validate(self, name: str) -> None:
         isolation_name(name)
         if name not in {"shared", "worktree"} and name not in self._providers:
+            if name in {"vm-group", "vm-session"}:
+                raise ValueError(
+                    f"isolation strategy {name!r} requires VM resources in config.vm or an environment provider"
+                )
             raise ValueError(f"isolation strategy {name!r} needs an environment provider")
 
     def _pool(self, name: str, source: EnvironmentPort) -> WorktreePoolPort:
@@ -103,8 +116,9 @@ class SessionEnvironmentPool:
                 self._inflight -= 1
                 self._lifecycle.notify_all()
 
-    def set_source(self, environment: EnvironmentPort) -> None:
+    def set_source(self, environment: EnvironmentPort, *, isolation: str | None = None) -> None:
         self._source = environment
+        self._source_isolation = isolation_name(isolation)
 
     async def adopt(self, patch: str) -> None:
         pool = self._delivery_pool()

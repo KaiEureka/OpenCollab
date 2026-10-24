@@ -266,7 +266,7 @@ def test_cli_forwards_explicit_team_config(monkeypatch, tmp_path, allow_child_sh
     monkeypatch.setattr(
         cli_main,
         "run_with_bounded_shutdown",
-        lambda coroutine: asyncio.run(coroutine),
+        lambda coroutine, **_kwargs: asyncio.run(coroutine),
     )
 
     result = CliRunner().invoke(

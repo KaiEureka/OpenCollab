@@ -71,6 +71,8 @@ def test_workflow_run_prints_result_as_json(tmp_path, monkeypatch):
             "2",
             "--task-concurrency",
             "5",
+            "--cleanup-timeout",
+            "7.5",
             "--workspace",
             str(workspace),
         ],
@@ -83,6 +85,7 @@ def test_workflow_run_prints_result_as_json(tmp_path, monkeypatch):
     assert captured["kwargs"]["budget"] == 50000
     assert captured["kwargs"]["max_concurrency"] == 2
     assert captured["kwargs"]["task_concurrency"] == 5
+    assert captured["kwargs"]["cleanup_timeout"] == 7.5
     assert captured["kwargs"]["return_details"] is True
     assert captured["registry_workspace"] == str(workspace)
 

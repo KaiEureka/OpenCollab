@@ -51,7 +51,7 @@ def test_single2_prompt_obeys_task_permissions_and_preserves_validation():
     assert "Keep existing tests unchanged unless the task explicitly requests a test change" in SINGLE2_SYSTEM_PROMPT
     assert "Do not alter protected validation or obtain withheld reference answers" in SINGLE2_SYSTEM_PROMPT
     assert "Do not weaken checks to manufacture success" in SINGLE2_SYSTEM_PROMPT
-    assert "Run project tests through `bash`." in SINGLE2_SYSTEM_PROMPT
+    assert "When `bash` is available, run project tests through it." in SINGLE2_SYSTEM_PROMPT
     assert "Follow the runtime's tool and network permissions" in SINGLE2_SYSTEM_PROMPT
     assert "A final response without tool calls ends the agent session." in SINGLE2_SYSTEM_PROMPT
 

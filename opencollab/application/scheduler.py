@@ -11,6 +11,7 @@ import contextvars
 from typing import Any, Awaitable, Callable, Mapping
 
 from opencollab.application._scheduler_cleanup import SchedulerCleanupMixin
+from opencollab.application._scheduler_constants import DEFAULT_SCHEDULER_CLEANUP_TIMEOUT
 from opencollab.application._scheduler_delivery_tree import SchedulerDeliveryTreeMixin
 from opencollab.application._scheduler_persistence import SchedulerPersistenceMixin
 from opencollab.application._scheduler_review import SchedulerReviewMixin
@@ -81,8 +82,10 @@ class Scheduler(
         role_budgets: Mapping[str, int] | None = None,
         entry_role: str | None = None,
         candidate_diff_writer: Callable[[int, str, str], Awaitable[str]] | None = None,
+        cleanup_timeout: float = DEFAULT_SCHEDULER_CLEANUP_TIMEOUT,
     ):
         self.preserve_entry_changes = False
+        self._cleanup_timeout = self._validate_cleanup_timeout(cleanup_timeout)
         self.entry_patch_path: str | None = None
         self._session_factory = session_factory
         self._worktree_pool = worktree_pool

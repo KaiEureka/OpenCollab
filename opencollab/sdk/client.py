@@ -14,8 +14,8 @@ from typing import Any
 from opencollab.application.isolation import isolation_name
 from opencollab.application.run_control import RunControl
 from opencollab.bootstrap.config import _optional_string, build_config, resolve_provider_base_url
+from opencollab.bootstrap.environment_profiles import environment_cleanup_timeout
 from opencollab.bootstrap.programmatic import (
-    DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS,
     ProgrammaticLifecycleError,
     ProgrammaticResult,
     run_agent,
@@ -322,7 +322,7 @@ class OpenCollab:
         config: str | os.PathLike[str] | None = None,
         budget: int | None = None,
         timeout: float | None = None,
-        cleanup_timeout: float = DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS,
+        cleanup_timeout: float | None = None,
         artifacts: str | os.PathLike[str] | None = None,
         trace: bool = True,
         use_worktrees: bool = True,
@@ -382,10 +382,8 @@ class OpenCollab:
                     "budget",
                 ),
                 timeout=_positive_timeout(timeout, "timeout"),
-                cleanup_timeout=_required_positive_timeout(
-                    cleanup_timeout,
-                    "cleanup_timeout",
-                ),
+                cleanup_timeout=(None if cleanup_timeout is None else
+                                 _required_positive_timeout(cleanup_timeout, "cleanup_timeout")),
                 artifacts=_path(artifacts, "artifacts"),
                 trace=trace,
                 use_worktrees=use_worktrees,
@@ -417,7 +415,7 @@ class OpenCollab:
         max_steps: int | None = 100,
         system_prompt: str | None = None,
         agent_profile: str | None = None,
-        cleanup_timeout: float = 2.0,
+        cleanup_timeout: float | None = None,
         artifacts: str | os.PathLike[str] | None = None,
         trace: bool = True,
         candidate_workspace: Any | None = None,
@@ -514,7 +512,7 @@ class OpenCollab:
                     "environment_providers": self._environment_providers}
                    if isolation is not None or self._environment_providers else {}),
                 cleanup_timeout=_required_positive_timeout(
-                    cleanup_timeout,
+                    environment_cleanup_timeout(self._config, cleanup_timeout, default=2.0),
                     "cleanup_timeout",
                 ),
                 artifacts=_path(artifacts, "artifacts"),

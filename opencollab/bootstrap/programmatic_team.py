@@ -14,6 +14,7 @@ from opencollab.adapters.trace import Tracer
 from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.scheduler_types import SchedulerTurnError
 from opencollab.bootstrap import programmatic as _programmatic
+from opencollab.bootstrap.environment_profiles import environment_cleanup_timeout
 from opencollab.bootstrap.isolation import prepare_scheduler
 from opencollab.bootstrap.programmatic import (
     DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS,
@@ -33,7 +34,7 @@ async def run_team(
     team_config_path: str | os.PathLike[str] | None,
     max_tokens: int,
     timeout: float | None,
-    cleanup_timeout: float = DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS,
+    cleanup_timeout: float | None = None,
     artifacts: Path | None,
     trace: bool,
     use_worktrees: bool,
@@ -57,6 +58,8 @@ async def run_team(
     ``environment`` supplies the agents' execution workspace. ``workspace``
     anchors local configuration, skills, the repository map and session storage.
     """
+    workflow_cleanup_timeout = environment_cleanup_timeout(config, cleanup_timeout, default=2.0)
+    cleanup_timeout = environment_cleanup_timeout(config, cleanup_timeout, default=DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS)
     team_config = load_team_config(workspace, path=team_config_path)
     if team_config.role_budgets and budget_explicit:
         raise ValueError(
@@ -81,6 +84,8 @@ async def run_team(
         scheduler = await prepare_scheduler(
             context, builder=_programmatic.build_scheduler, isolation=isolation,
             environment_providers=environment_providers,
+            workflow_cleanup_timeout=workflow_cleanup_timeout,
+            cleanup_timeout=cleanup_timeout,
             use_worktrees=use_worktrees,
             # Programmatic runs cannot answer ``ask_user``. The caller separately
             # chooses whether to allow an unsandboxed shell.

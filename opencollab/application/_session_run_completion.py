@@ -242,7 +242,20 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
         self.state.pending_step_latency = None
 
     def build_tool_schemas(self) -> list[dict] | None:
-        return self.agent.tool_schemas() or None
+        schemas = self.agent.tool_schemas()
+        environment = getattr(self.tool_execution, "environment", None)
+        if environment is not None and not getattr(environment, "process_isolated", False):
+            blocked = {tool.name for tool in self.agent.tools
+                       if getattr(tool, "require_process_isolation", False) is True}
+            schemas = [
+                {**schema, "function": {**schema["function"], "description": (
+                    "Unavailable in the current execution environment: this tool requires an OS process sandbox. "
+                    "Use another available tool or report that an isolated execution environment is required. "
+                    + schema["function"].get("description", "")
+                )}} if schema["function"]["name"] in blocked else schema
+                for schema in schemas
+            ]
+        return schemas or None
 
     def _write_only_tool_schemas(self, tools: list[dict] | None) -> list[dict] | None:
         return self._tool_schemas_with_names(tools, _WRITE_TOOLS)

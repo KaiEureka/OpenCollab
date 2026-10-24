@@ -87,7 +87,8 @@ async def test_message_feedback_matches_serialized_mode(serialized):
 
     if serialized:
         assert "cannot start until you end your turn" in output
-        assert "call submit now" in output.lower()
+        assert "final response without tool calls" in output
+        assert "If the submit tool is available" in output
         assert "reopens your turn" in output
     else:
         assert output == f"Message queued to aid 1. {_DELIVERY_NOTE}"

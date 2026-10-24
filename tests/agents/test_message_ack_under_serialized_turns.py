@@ -26,12 +26,13 @@ def _send(team) -> str:
     params = {"to_role": "coder_a", "summary": "fix", "content": "please fix it"}
     return asyncio.run(tool.execute_with_runtime(params, runtime=SimpleNamespace(aid=0)))
 
-def test_a_serialized_sender_is_told_to_submit_now():
+def test_a_serialized_sender_is_told_how_to_end_its_turn():
     out = _send(_Team(serialized=True))
 
     assert out.startswith(ACK)
     assert "cannot start until you end your turn" in out
-    assert "call submit now" in out.lower()
+    assert "final response without tool calls" in out
+    assert "If the submit tool is available" in out
     assert "reopens your turn" in out
     assert "meanwhile" not in out
 

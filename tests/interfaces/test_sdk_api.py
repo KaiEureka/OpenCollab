@@ -72,7 +72,7 @@ def test_public_class_and_method_shapes_stay_lean() -> None:
             positional: {"self": required, "prompt": required},
             keyword: {
                 "config": None, "budget": None, "timeout": None,
-                "cleanup_timeout": 10.0, "artifacts": None, "trace": True,
+                "cleanup_timeout": None, "artifacts": None, "trace": True,
                 "use_worktrees": True, "prebuild_team": False, "isolation": None,
                 "allow_unisolated_shell": None, "max_steps": 100,
                 "serialize_turns": False, "record_delivery_tree": False,
@@ -84,7 +84,7 @@ def test_public_class_and_method_shapes_stay_lean() -> None:
             keyword: {
                 "budget": None, "concurrency": 4, "task_concurrency": None,
                 "timeout": None, "max_steps": 100, "system_prompt": None,
-                "agent_profile": None, "cleanup_timeout": 2.0,
+                "agent_profile": None, "cleanup_timeout": None,
                 "artifacts": None, "trace": True, "candidate_workspace": None,
                 "run_id": None, "llm": None, "limit_mode": "environment", "isolation": None,
             },
@@ -167,6 +167,7 @@ def test_advanced_capabilities_live_in_small_opt_in_modules() -> None:
     ]
     assert environments.__all__ == [
         "Environment", "EnvironmentPool", "DockerMount", "DockerOptions",
+        "VMConnection", "VMEnvironment", "VMResource",
         "attach_container",
         # A workspace an agent reads is not always on this host, so the listing
         # of it is asked of the environment rather than walked here.
@@ -175,6 +176,7 @@ def test_advanced_capabilities_live_in_small_opt_in_modules() -> None:
         "docker_isolation_provider",
         "local_environment",
         "worktree_environment",
+        "vm_isolation_provider",
     ]
     assert models.__all__ == ["inspect_model_runtime"]
     assert workflows.__all__ == ["CandidateRun", "WorkflowAgentResult", "WorkflowContext", "workflow"]

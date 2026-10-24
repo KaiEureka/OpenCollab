@@ -11,14 +11,16 @@ import shlex
 import tempfile
 import uuid
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_args
 
 from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.tools._paths import checked_path
 from opencollab.adapters.tools.base import Tool
 from opencollab.application.async_timeout import await_owned_operation
+from opencollab.application.isolation import isolation_name
 from opencollab.application.tool_execution import ToolRuntime
 from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge
 from opencollab.bootstrap.tool_registry import TOOL_LIMIT_FIELDS
@@ -29,6 +31,14 @@ if TYPE_CHECKING:
     from opencollab.bootstrap.context_builder import SpawnConfig
 
 _RUNNER_STOP_GRACE_SECONDS = 5.0
+_ISOLATION_DESCRIPTIONS = {
+    "shared": "Share the member's execution environment and workspace.",
+    "worktree": "Use separate worktrees inside the inherited execution environment.",
+    "docker-group": "Share a dedicated container with separate worktrees for child agents.",
+    "docker-session": "Use a dedicated container and workspace for each child agent.",
+    "vm-group": "Lease one configured Linux VM with separate worktrees for child agents.",
+    "vm-session": "Lease a separate configured Linux VM for each child agent.",
+}
 
 
 @dataclass
@@ -37,6 +47,7 @@ class _Child:
     environment: EnvironmentPort
     artifacts: str
     budget: int | None
+    cleanup_timeout: float = 2.0
     task: asyncio.Task[None] | None = None
     execution: asyncio.Task[Any] | None = None
     stop_requested: bool = False
@@ -53,6 +64,8 @@ class AuthoredWorkflowTool(Tool):
     name = "manage_workflow"
     description = (
         "Execute a Workflow you wrote in a Python source file in your execution environment. "
+        "Before authoring source, call describe for the configured isolation strategies, inherited tool permissions "
+        "and a minimal authoring example. "
         "launch returns a child id immediately. Use status, wait, stop or result with that id. "
         "entry defaults to main and accepts (ctx, args). Tokens share your Team budget. "
         "The environment's Python must have OpenCollab installed."
@@ -61,16 +74,23 @@ class AuthoredWorkflowTool(Tool):
     parameters = {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["launch", "status", "wait", "stop", "result"]},
-            "id": {"type": "string"},
-            "source": {"type": "string", "description": "Python file inside your workspace."},
+            "action": {"type": "string", "enum": ["describe", "launch", "status", "wait", "stop", "result"]},
+            "id": {"type": "string", "description": "Required for status, wait, stop and result. "
+                                                     "Use the id from launch."},
+            "source": {"type": "string", "description": "Required for launch. Python file inside your workspace."},
             "entry": {"type": "string", "default": "main"},
             "args": {"type": "object"},
             "python": {"type": "string", "default": "python3"},
             "budget": {"type": "integer", "minimum": 1},
             "concurrency": {"type": "integer", "minimum": 1, "default": 4},
+            "cleanup_timeout": {"type": "number", "minimum": 0,
+                                "description": "launch only. Positive cleanup grace in seconds. "
+                                               "Omitted inherits the parent."},
+            "isolation": {"type": "string", "description": "launch only. Default strategy for child agents. "
+                          "Omitted inherits the member strategy."},
             "timeout": {"type": "number", "minimum": 0,
-                        "description": "Optional wait duration. Expiry leaves the child running."},
+                        "description": "Positive wait duration in seconds. Expiry leaves the child running. "
+                                       "Use status for an immediate observation."},
         },
         "required": ["action"],
         "additionalProperties": False,
@@ -80,22 +100,80 @@ class AuthoredWorkflowTool(Tool):
         self, get_session: Callable[[], Session], config: SpawnConfig,
         save_dir: str | None, *, allow_unisolated_shell: bool = False,
         environment_pool_factory: Callable[..., Any] | None = None,
+        environment_catalog: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self._get_session = get_session
         self._config = config
         self._save_dir = save_dir
         self._allow_unisolated_shell = allow_unisolated_shell
         self._environment_pool_factory = environment_pool_factory
+        self._environment_catalog = environment_catalog
+        self.parameters = deepcopy(type(self).parameters)
         self._children: dict[str, _Child] = {}
         self._registered = False
         self._launch_lock = asyncio.Lock()
 
+    def _catalog(self) -> dict[str, Any]:
+        if self._environment_catalog is not None:
+            return self._environment_catalog()
+        return {"default_isolation": "shared",
+                "strategies": ("shared", "worktree", "docker-group", "docker-session")}
+
+    def to_openai_schema(self) -> dict[str, Any]:
+        catalog = self._catalog()
+        self.parameters["properties"]["isolation"].update(
+            enum=list(catalog["strategies"]), default=catalog["default_isolation"],
+            description="launch only. Default strategy for child agents. Configured strategies are listed; "
+                        "resources are checked on allocation. Omitted inherits " + catalog["default_isolation"] + ".",
+        )
+        return super().to_openai_schema()
+
+    def _describe(self, runtime: ToolRuntime) -> str:
+        from opencollab.tools import BuiltinToolName
+
+        parent = self._get_session()
+        catalog = self._catalog()
+        shell = parent.agent.find_tool("bash")
+        isolated = bool(getattr(runtime.environment, "process_isolated", False))
+        launch_allowed = runtime.environment is not None and not runtime.environment.revoked and shell is not None and (
+            isolated or (self._allow_unisolated_shell and not getattr(shell, "require_process_isolation", False))
+        )
+        allowed = [tool.name for tool in parent.agent.tools]
+        return json.dumps({
+            "default_isolation": catalog["default_isolation"],
+            "strategies": [{"name": name,
+                            "description": _ISOLATION_DESCRIPTIONS.get(name, "Configured custom environment provider."),
+                            "availability": "checked_on_allocation"}
+                           for name in catalog["strategies"]],
+            "launch_allowed_in_current_environment": launch_allowed,
+            "launch_requirements": "The member needs bash permission and an OS process sandbox or explicit "
+                                   "host-shell permission. Its Python must have OpenCollab installed.",
+            "allowed_child_tools": allowed,
+            "builtin_child_tools": [name for name in allowed if name in get_args(BuiltinToolName)],
+            "entry": "An async function main(ctx, args), or a named entry, returning a JSON-serializable value.",
+            "example": "async def main(ctx, args):\n"
+                       "    return await ctx.parallel([\n"
+                       "        lambda task=task: ctx.agent(task, tools=[])\n"
+                       "        for task in args['tasks']\n"
+                       "    ])\n",
+            "tools": "Import builtin_tools from opencollab.tools to construct names from builtin_child_tools. "
+                     "Child tool names "
+                     "must come from allowed_child_tools and retain the member's limits. Individual "
+                     "ctx.agent calls can select isolation from the configured strategies.",
+            "lifecycle": "launch returns an id. Use wait or result with that id to collect the output. "
+                         "status observes progress; stop cancels the owned run. Tokens share the Team budget.",
+        }, ensure_ascii=False)
+
     async def execute_with_runtime(self, params: dict[str, Any], runtime: ToolRuntime) -> str:
+        if params["action"] == "describe":
+            return self._describe(runtime)
         parent = self._get_session()
         if not self._registered:
             parent.own_runtime(self.aclose, reserve_tokens=self._reserved_tokens)
             self._registered = True
         action = params["action"]
+        if action != "launch" and (extra := {"isolation", "cleanup_timeout"} & params.keys()):
+            raise ValueError(f"{' and '.join(sorted(extra))} is only supported by the launch action")
         if action == "launch":
             async with self._launch_lock:
                 child = await self._launch(params, runtime)
@@ -156,9 +234,28 @@ class AuthoredWorkflowTool(Tool):
             if remaining <= 0:
                 raise ValueError("Team session token budget is exhausted or reserved by child runs")
             budget = max(1, remaining // 2) if budget is None else min(budget, remaining)
+        cleanup_timeout = params.get("cleanup_timeout", self._config.workflow_cleanup_timeout)
+        if (
+            isinstance(cleanup_timeout, bool) or not isinstance(cleanup_timeout, (int, float))
+            or not math.isfinite(cleanup_timeout) or cleanup_timeout <= 0
+        ):
+            raise ValueError("cleanup_timeout must be finite and positive")
+        pool = (self._environment_pool_factory(environment, role=parent.agent.name)
+                if self._environment_pool_factory is not None else SessionEnvironmentPool(
+                    environment.workspace, isolation="shared", base_environment=environment,
+                ))
+        strategy = None
+        try:
+            if "isolation" in params:
+                strategy = isolation_name(params["isolation"])
+                if strategy not in pool.strategy_names:
+                    raise ValueError(f"isolation strategy {strategy!r} needs an environment provider")
+        except BaseException:
+            await pool.release()
+            raise
         child_id = f"child-{uuid.uuid4().hex}"
         artifacts = posixpath.join(environment.workspace, ".opencollab", "child-runs", child_id)
-        child = _Child(child_id, environment, artifacts, budget)
+        child = _Child(child_id, environment, artifacts, budget, cleanup_timeout=cleanup_timeout)
         config = {key: value for key, value in {**vars(self._config), **vars(parent.agent)}.items()
                   if key in {"model", "provider", "wire_protocol", "api_key", "auth_token", "base_url",
                              "temperature", "top_p", "thinking", "thinking_params", "reasoning_effort",
@@ -176,6 +273,7 @@ class AuthoredWorkflowTool(Tool):
         request = {"id": child_id, "source": source, "entry": params.get("entry", "main"),
                    "args": params.get("args", {}), "config": config, "budget": budget,
                    "max_steps": parent.max_steps, "concurrency": params.get("concurrency", 4),
+                   "cleanup_timeout": cleanup_timeout,
                    "allowed_tools": [tool.name for tool in parent.agent.tools],
                    "tool_limits": tool_limits,
                    "process_isolated": isolated,
@@ -184,16 +282,21 @@ class AuthoredWorkflowTool(Tool):
                             "opencollab.bootstrap.authored_workflow_runner"])
         if runtime.safety_policy is not None:
             await runtime.safety_policy.check_cmd_interactive(command, runtime.confirm_fn())
-        pool = (self._environment_pool_factory(environment, role=parent.agent.name)
-                if self._environment_pool_factory is not None else SessionEnvironmentPool(
-                    environment.workspace, isolation="shared", base_environment=environment,
-                ))
         child.bridge = AuthoredWorkflowBridge(
             environment, artifacts, pool, config, runtime,
             allow_unisolated_shell=self._allow_unisolated_shell
             and not getattr(shell, "require_process_isolation", False),
         )
         request["bridge"] = child.bridge.options()
+        if strategy is not None:
+            request["bridge"]["isolation"] = strategy
+        request["config"] = {key: value for key, value in config.items() if key in {
+            "model", "logical_model", "provider", "wire_protocol", "temperature", "top_p",
+            "thinking", "thinking_params", "thinking_params_explicit", "reasoning_effort",
+            "context_window", "max_output_tokens", "llm_timeout", "llm_max_retries",
+            "llm_connect_timeout", "llm_first_event_timeout", "llm_stream_idle_timeout",
+            "llm_stream_chat", "provider_error_time_budget",
+        }}
         request_bytes = json.dumps(request, allow_nan=False).encode("utf-8")
         self._children[child_id] = child
         child.task = asyncio.create_task(self._execute(child, command, request_bytes))
@@ -305,7 +408,8 @@ class AuthoredWorkflowTool(Tool):
         child.stop_requested = True
         try:
             await child.environment.write_file(posixpath.join(child.artifacts, "stop"), "stop")
-            await asyncio.wait_for(asyncio.shield(child.task), timeout=_RUNNER_STOP_GRACE_SECONDS)
+            await asyncio.wait_for(asyncio.shield(child.task),
+                                   timeout=max(_RUNNER_STOP_GRACE_SECONDS, child.cleanup_timeout))
         except (OSError, RuntimeError, asyncio.TimeoutError):
             if child.execution is not None and not child.execution.done():
                 child.execution.cancel()

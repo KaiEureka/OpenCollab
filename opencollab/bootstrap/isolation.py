@@ -4,6 +4,7 @@ from typing import Any
 
 from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.application.isolation import isolation_name
+from opencollab.bootstrap.environment_profiles import configured_environment_providers
 from opencollab.bootstrap.team_config import load_team_config
 
 
@@ -14,7 +15,8 @@ async def prepare_scheduler(ctx: Any, *, builder: Any, isolation=None,
     )
     selected = isolation_name(isolation, default=team.isolation)
     roles = {name: role.isolation for name, role in team.roles.items() if role.isolation is not None}
-    if selected is None and not roles:
+    environment_providers = configured_environment_providers(ctx.config, environment_providers)
+    if selected is None and not roles and not environment_providers:
         return builder(ctx, **kwargs)
     pool = SessionEnvironmentPool(
         ctx.workspace, isolation=selected or ("worktree" if kwargs["use_worktrees"] else "shared"),
@@ -25,11 +27,12 @@ async def prepare_scheduler(ctx: Any, *, builder: Any, isolation=None,
     )
     try:
         # An unset strategy keeps the historical entry workspace even when a child overrides it.
-        entry = await pool.acquire(team.entry, isolation=roles.get(team.entry) or selected or "shared")
-        pool.set_source(entry)
+        entry_isolation = roles.get(team.entry) or selected or "shared"
+        entry = await pool.acquire(team.entry, isolation=entry_isolation)
+        pool.set_source(entry, isolation=entry_isolation)
         scheduler = builder(ctx, **{**kwargs, "environment": entry, "worktree_pool": pool,
                                     "resolved_team_config": team})
-        scheduler.preserve_entry_changes = (roles.get(team.entry) or selected or "shared") != "shared"
+        scheduler.preserve_entry_changes = entry_isolation != "shared"
         return scheduler
     except BaseException:
         await pool.release()
