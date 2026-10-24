@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -12,6 +13,8 @@ from opencollab.application.ports import EnvironmentPort, WorktreePoolPort
 
 class SessionEnvironmentPool:
     """Own per-run strategy pools; injected factories create a fresh pool per strategy."""
+
+    inherit_parent_environment = True
 
     def __init__(
         self, workspace: str, *, isolation: str = "worktree",
@@ -27,14 +30,17 @@ class SessionEnvironmentPool:
         self._roles = dict(roles or {})
         self._options = dict(owned_save_dir=owned_save_dir, enable_adoption=enable_adoption,
                              owned_output_paths=owned_output_paths)
-        self._source = base_environment or LocalEnvironment(workspace)
-        self._owned_source = self._source if base_environment is None else None
         self._pools: dict[str, WorktreePoolPort] = {}
-        self._owners: dict[int, WorktreePoolPort] = {}
+        self._owners: dict[int, tuple[EnvironmentPort, WorktreePoolPort]] = {}
+        self._references: dict[int, int] = {}
+        self._lifecycle = asyncio.Condition()
+        self._inflight = 0
         self._closed = False
         for name in (self._default, *self._roles.values()):
             if name is not None:
                 self._validate(name)
+        self._source = base_environment or LocalEnvironment(workspace)
+        self._owned_source = self._source if base_environment is None else None
 
     def _validate(self, name: str) -> None:
         isolation_name(name)
@@ -56,14 +62,26 @@ class SessionEnvironmentPool:
         self, role: str, *, source: EnvironmentPort | None = None,
         isolation: str | bool | None = None,
     ) -> Any:
-        if self._closed:
-            raise RuntimeError("session environment pool is closed")
-        name = isolation_name(isolation, default=self._roles.get(role) or self._default)
-        base = self._source if source is None else source
-        pool = self._pool(name, base)
-        env = await pool.acquire(role, source=base)
-        self._owners[id(env)] = pool
-        return env
+        async with self._lifecycle:
+            if self._closed:
+                raise RuntimeError("session environment pool is closed")
+            self._inflight += 1
+        try:
+            name = isolation_name(isolation, default=self._roles.get(role) or self._default)
+            base = self._source if source is None else source
+            pool = self._pool(name, base)
+            env = await pool.acquire(role, source=base)
+            if env is not base or id(env) in self._owners:
+                self._owners.setdefault(id(env), (env, pool))
+                self._references[id(env)] = self._references.get(id(env), 0) + 1
+            if self._closed:
+                await self.release_env(env)
+                raise RuntimeError("session environment pool closed during acquisition")
+            return env
+        finally:
+            async with self._lifecycle:
+                self._inflight -= 1
+                self._lifecycle.notify_all()
 
     def set_source(self, environment: EnvironmentPort) -> None:
         self._source = environment
@@ -84,16 +102,27 @@ class SessionEnvironmentPool:
         await self._delivery_pool().adopt_captured(patch, physical_paths)
 
     async def release_env(self, env: EnvironmentPort) -> None:
-        pool = self._owners.get(id(env))
-        if pool is not None:
-            await pool.release_env(env)
+        owner = self._owners.get(id(env))
+        if owner is not None:
+            if self._references[id(env)] > 1:
+                self._references[id(env)] -= 1
+                return
+            await owner[1].release_env(env)
             self._owners.pop(id(env), None)
+            self._references.pop(id(env), None)
 
     async def release(self) -> None:
         self._closed = True
         await await_owned_operation(self._release(), propagate_cancellation=True)
 
     async def _release(self) -> None:
+        async with self._lifecycle:
+            while self._inflight:
+                await self._lifecycle.wait()
+        # A later environment may use an earlier strategy's workspace as its source.
+        for env, _pool in reversed(tuple(self._owners.values())):
+            self._references[id(env)] = 1
+            await self.release_env(env)
         failures = []
         for key, pool in reversed(tuple(self._pools.items())):
             try:
