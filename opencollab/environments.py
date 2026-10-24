@@ -10,16 +10,21 @@ from opencollab.bootstrap.programmatic import (
     local_environment,
     worktree_environment,
 )
+from opencollab.bootstrap.vm import VMConnection, VMEnvironment, VMResource, vm_isolation_provider
 
 __all__ = [
     "Environment",
     "EnvironmentPool",
     "DockerMount",
     "DockerOptions",
+    "VMConnection",
+    "VMEnvironment",
+    "VMResource",
     "attach_container",
     "build_repo_map_via_env",
     "docker_environment",
     "docker_isolation_provider",
     "local_environment",
     "worktree_environment",
+    "vm_isolation_provider",
 ]

@@ -19,6 +19,7 @@ from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.tools._paths import checked_path
 from opencollab.adapters.tools.base import Tool
 from opencollab.application.async_timeout import await_owned_operation
+from opencollab.application.isolation import isolation_name
 from opencollab.application.tool_execution import ToolRuntime
 from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge
 from opencollab.bootstrap.tool_registry import TOOL_LIMIT_FIELDS
@@ -69,6 +70,7 @@ class AuthoredWorkflowTool(Tool):
             "python": {"type": "string", "default": "python3"},
             "budget": {"type": "integer", "minimum": 1},
             "concurrency": {"type": "integer", "minimum": 1, "default": 4},
+            "isolation": {"type": "string", "description": "launch only. Default environment strategy for child agents. Omitted inherits the member strategy."},
             "timeout": {"type": "number", "minimum": 0,
                         "description": "Optional wait duration. Expiry leaves the child running."},
         },
@@ -96,6 +98,8 @@ class AuthoredWorkflowTool(Tool):
             parent.own_runtime(self.aclose, reserve_tokens=self._reserved_tokens)
             self._registered = True
         action = params["action"]
+        if action != "launch" and "isolation" in params:
+            raise ValueError("isolation is only supported by the launch action")
         if action == "launch":
             async with self._launch_lock:
                 child = await self._launch(params, runtime)
@@ -156,6 +160,19 @@ class AuthoredWorkflowTool(Tool):
             if remaining <= 0:
                 raise ValueError("Team session token budget is exhausted or reserved by child runs")
             budget = max(1, remaining // 2) if budget is None else min(budget, remaining)
+        pool = (self._environment_pool_factory(environment, role=parent.agent.name)
+                if self._environment_pool_factory is not None else SessionEnvironmentPool(
+                    environment.workspace, isolation="shared", base_environment=environment,
+                ))
+        strategy = None
+        try:
+            if "isolation" in params:
+                strategy = isolation_name(params["isolation"])
+                if strategy not in pool.strategy_names:
+                    raise ValueError(f"isolation strategy {strategy!r} needs an environment provider")
+        except BaseException:
+            await pool.release()
+            raise
         child_id = f"child-{uuid.uuid4().hex}"
         artifacts = posixpath.join(environment.workspace, ".opencollab", "child-runs", child_id)
         child = _Child(child_id, environment, artifacts, budget)
@@ -184,16 +201,21 @@ class AuthoredWorkflowTool(Tool):
                             "opencollab.bootstrap.authored_workflow_runner"])
         if runtime.safety_policy is not None:
             await runtime.safety_policy.check_cmd_interactive(command, runtime.confirm_fn())
-        pool = (self._environment_pool_factory(environment, role=parent.agent.name)
-                if self._environment_pool_factory is not None else SessionEnvironmentPool(
-                    environment.workspace, isolation="shared", base_environment=environment,
-                ))
         child.bridge = AuthoredWorkflowBridge(
             environment, artifacts, pool, config, runtime,
             allow_unisolated_shell=self._allow_unisolated_shell
             and not getattr(shell, "require_process_isolation", False),
         )
         request["bridge"] = child.bridge.options()
+        if strategy is not None:
+            request["bridge"]["isolation"] = strategy
+        request["config"] = {key: value for key, value in config.items() if key in {
+            "model", "logical_model", "provider", "wire_protocol", "temperature", "top_p",
+            "thinking", "thinking_params", "thinking_params_explicit", "reasoning_effort",
+            "context_window", "max_output_tokens", "llm_timeout", "llm_max_retries",
+            "llm_connect_timeout", "llm_first_event_timeout", "llm_stream_idle_timeout",
+            "llm_stream_chat", "provider_error_time_budget",
+        }}
         request_bytes = json.dumps(request, allow_nan=False).encode("utf-8")
         self._children[child_id] = child
         child.task = asyncio.create_task(self._execute(child, command, request_bytes))

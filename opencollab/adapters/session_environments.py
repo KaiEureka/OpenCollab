@@ -65,6 +65,8 @@ class SessionEnvironmentPool:
     def _validate(self, name: str) -> None:
         isolation_name(name)
         if name not in {"shared", "worktree"} and name not in self._providers:
+            if name in {"vm-group", "vm-session"}:
+                raise ValueError(f"isolation strategy {name!r} requires VM resources in config.vm or an environment provider")
             raise ValueError(f"isolation strategy {name!r} needs an environment provider")
 
     def _pool(self, name: str, source: EnvironmentPort) -> WorktreePoolPort:

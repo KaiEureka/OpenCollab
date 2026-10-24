@@ -47,6 +47,7 @@ from opencollab.adapters.llm.providers import (
 )
 from opencollab.adapters.llm.types import DEFAULT_MAX_OUTPUT_TOKENS
 from opencollab.adapters.safe_files import read_regular_text
+from opencollab.bootstrap.environment_profiles import VMProfile
 
 MAX_DOTENV_BYTES = 1024 * 1024
 
@@ -186,6 +187,7 @@ class OpenCollabConfig(BaseModel):
     auth_token: str | None = Field(default=None, repr=False)
     base_url: str | None = None
     model_routes: dict[str, ModelRoute] = Field(default_factory=dict, repr=False)
+    vm: VMProfile | None = Field(default=None, repr=False)
     request_pool: str | None = None
     request_capacity: int | None = Field(default=None, ge=1)
     budget: int = Field(default=1_000_000, ge=1)
@@ -205,6 +207,11 @@ class OpenCollabConfig(BaseModel):
     llm_stream_chat: bool = Field(default=False)
     provider_error_time_budget: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     filter_messages: bool = Field(default=False)
+
+    @field_validator("vm", mode="before")
+    @classmethod
+    def _vm_profile(cls, value: Any) -> Any:
+        return json.loads(value) if isinstance(value, str) else value
 
     @model_validator(mode="before")
     @classmethod
@@ -522,6 +529,7 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
         "model_routes": None,
         "request_pool": None,
         "request_capacity": None,
+        "vm": None,
         "wire_protocol": "chat_completions",
         "budget": "1000000",
         "temperature": str(DEFAULT_TEMPERATURE),
