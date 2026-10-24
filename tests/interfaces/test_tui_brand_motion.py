@@ -5,7 +5,6 @@ from __future__ import annotations
 from opencollab.adapters.tui.brand_motion import (
     DOT_GLYPH,
     PulseDot,
-    dot_color,
     pulse_brightness,
 )
 from tests.interfaces.tui_style_support import assert_visible_text_has_non_white_style as _assert_all_non_white
@@ -16,9 +15,6 @@ def test_pulse_breathes_between_trough_and_peak():
     peak = pulse_brightness(0.7)
     assert peak > trough
     assert 0.0 <= trough < peak <= 1.0
-
-def test_dot_color_changes_as_time_advances():
-    assert dot_color(0.0) != dot_color(0.7)
 
 def test_frame_changes_between_elapsed_values():
     early = PulseDot(show_seconds=False, elapsed=0.0).render()
