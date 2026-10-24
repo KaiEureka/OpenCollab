@@ -479,7 +479,7 @@ class DefaultSessionFactory:
         *,
         team_cfg: TeamConfig | None = None,
         environment_pool_factory: Callable[..., Any] | None = None,
-        environment_catalog: Callable[[str], dict[str, Any]] | None = None,
+        environment_catalog: Callable[..., dict[str, Any]] | None = None,
         lead_workspace: str | None = None,
         lead_environment: Environment | None = None,
         interactive: bool = False,
@@ -702,7 +702,7 @@ class DefaultSessionFactory:
             get_session, self._cfg, self._save_dir,
             environment_pool_factory=self._environment_pool_factory,
             environment_catalog=(
-                lambda: self._environment_catalog(get_session().agent.name)
+                lambda: self._environment_catalog(get_session().env, role=get_session().agent.name)
             ) if self._environment_catalog is not None else None,
             allow_unisolated_shell=self._unisolated_shell_allowed(seated_at_start=seated_at_start),
         )

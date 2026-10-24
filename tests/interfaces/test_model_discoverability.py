@@ -224,7 +224,10 @@ async def multiply(ctx, args):
 
 
 @pytest.mark.parametrize("configured", [False, True])
-async def test_team_describes_configured_vm_strategies_without_allocating_them(tmp_path, monkeypatch, configured):
+@pytest.mark.parametrize("isolation", [None, "shared"])
+async def test_team_describes_configured_vm_strategies_without_allocating_them(
+    tmp_path, monkeypatch, configured, isolation,
+):
     from opencollab.bootstrap import container
 
     team = tmp_path / "team.yaml"
@@ -254,7 +257,7 @@ async def test_team_describes_configured_vm_strategies_without_allocating_them(t
     monkeypatch.setattr(container, "LLMClient", Model)
     result = await OpenCollab(tmp_path, model="gpt-4o", environment_providers=(
         {"vm-session": provider} if configured else {}
-    )).team("Describe the configured execution environment", config=team, trace=False, isolation="shared")
+    )).team("Describe the configured execution environment", config=team, trace=False, isolation=isolation)
     assert result.output == "Inspected"
     assert len(descriptions) == 1
 

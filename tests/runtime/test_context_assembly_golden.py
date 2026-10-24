@@ -49,11 +49,11 @@ def _team() -> TeamConfig:
 _TEAM_SECTION = (
     "## Your team\n"
     "\n"
-    "Roles you may spawn or message:\n"
+    "Configured roles you may address:\n"
     "- coder\n"
-    "\n"
-    "Use `team_status` to list live agents (with their ids) and "
-    "`message_agent` to send an async message to one."
+    "Use `spawn_agent` to delegate to a role; include the task and relevant context.\n"
+    "Use `message_agent` with to_role to contact an existing teammate asynchronously.\n"
+    "Use `team_status` to inspect the live roster, agent ids and execution states."
 )
 _SKILLS_SECTION = (
     "## Skills\n"
