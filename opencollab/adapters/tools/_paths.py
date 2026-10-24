@@ -25,9 +25,10 @@ def checked_path(runtime: ToolRuntime, path: str) -> str:
     policy = runtime.safety_policy
     checked = policy.check_path(path) if policy else path
     environment = runtime.environment
-    if policy and environment is not None and not getattr(environment, "local_filesystem", False):
+    workspace = getattr(environment, "workspace", None)
+    if policy and workspace is not None and not getattr(environment, "local_filesystem", False):
         # Keep a remote workspace in its own namespace after host policy validation.
-        host_root = os.path.realpath(environment.workspace)
+        host_root = os.path.realpath(workspace)
         if os.path.isabs(checked) and os.path.commonpath((host_root, checked)) == host_root:
-            checked = posixpath.join(environment.workspace, os.path.relpath(checked, host_root))
+            checked = posixpath.join(workspace, os.path.relpath(checked, host_root))
     return checked
