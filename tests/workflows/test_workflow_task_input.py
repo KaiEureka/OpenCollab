@@ -89,6 +89,7 @@ def test_duo_task_forwards_goal_and_explicit_shell_choice(tmp_path, monkeypatch)
         workflow_cli,
         "resolve_config",
         lambda *args: {
+            "model": "fixture-model",
             "provider": "openai",
             "api_key": "fixture-key",  # pragma: allowlist secret
             "base_url": None,
