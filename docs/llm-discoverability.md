@@ -7,7 +7,7 @@ the role configuration, model-visible instructions, tool schema, execution, and
 returned observations. It covers the runtime features already merged through
 PR 244 and the VM execution series through PR 247.
 
-The audit identifies eight families of defects. They include missing discovery
+The audit identifies nine families of defects. They include missing discovery
 information and instructions that advertise operations unavailable in the current
 configuration. Fixes derive model-facing information from the configuration that
 actually supplies the tools and execution environments.
@@ -24,6 +24,7 @@ actually supplies the tools and execution environments.
 | D6 | Base/Single2's fixed prompt claims six tools and a shell even for `tools="read"` or caller-supplied tool sets. | The profile refers to the supplied tool definitions, makes shell instructions conditional, and preserves its task, safety, and delivery instructions. | A public read-only Agent request contains the actual read tools and no unconditional claim of shell availability. |
 | D7 | A headless Analyst is told to call `ask_user` before planning, although that tool is removed when there is no human input channel. | Clarification guidance uses the tool when available and describes how to report a required unresolved decision. | A headless default Analyst has conditional instructions and no unavailable question tool. |
 | D8 | A serialized Team's message acknowledgement requires `submit`, even when the sender has no such tool. The sender needs to finish its turn before the recipient can run. | The acknowledgement explains that a final response without tool calls yields the turn, with `submit` as an available-tool alternative. | Message execution returns an actionable instruction for a sender with no submit tool. Existing serialized scheduler tests continue to exercise delivery after the sender yields. |
+| D9 | A headless local session advertises a Bash or adoption tool as executable even when that tool requires an OS process sandbox and the current environment has none. | The outgoing tool description states the current execution restriction. The execution check remains authoritative, and the tool instance is unchanged. | A public Agent avoids the blocked operation after reading the actual schema. The authorized local-shell control runs a real command; a direct blocked call still refuses execution. |
 
 ## Audited surfaces
 
@@ -33,7 +34,7 @@ delegation boundary.
 
 | Surface | Scope and outcome |
 | --- | --- |
-| Workspace tools | Bash, file reads, file edits, patch application, Git diff, and commit adoption. Parameter names were compared with the arguments consumed by execution. D5 covers configured edit permissions. |
+| Workspace tools | Bash, file reads, file edits, patch application, Git diff, and commit adoption. Parameter names were compared with the arguments consumed by execution. D5 and D9 cover configured edit and execution permissions. |
 | Team coordination | Spawn, spawn with review, messages, roster lookup, child adoption, and submit. D3 and D8 cover runtime-specific guidance. Existing topology enforcement and asynchronous result delivery are retained. |
 | Human input and skills | Question-tool availability and skill catalog delivery. D4 and D7 cover the gaps. Skill bodies continue to be returned unchanged. |
 | Workflow entry points | Registered and member-authored Workflows, discovery, input guidance, isolation selection, lifecycle actions, and result collection. D1 and D2 cover the gaps. |

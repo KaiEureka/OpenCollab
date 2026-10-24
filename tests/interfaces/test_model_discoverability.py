@@ -362,3 +362,35 @@ def test_skill_catalog_refresh_preserves_existing_schema_constraints():
     assert tool.to_openai_schema()["function"]["parameters"]["additionalProperties"] is False
     store.list_manifests = lambda: (SkillManifest(name="new-skill", description="A new operation."),)
     assert tool.to_openai_schema()["function"]["parameters"]["properties"]["name"]["enum"] == ["new-skill"]
+
+
+@pytest.mark.parametrize("requires_sandbox", [True, False])
+async def test_model_is_told_when_shell_policy_blocks_the_current_environment(
+    tmp_path, local_environment_factory, requires_sandbox,
+):
+    from opencollab.adapters.tools.bash import BashTool
+
+    env = local_environment_factory(str(tmp_path))
+    tool = BashTool(require_process_isolation=requires_sandbox)
+    original = tool.to_openai_schema()
+
+    class Model(_Model):
+        async def complete(self, messages, **kwargs):
+            description = kwargs["tools"][0]["function"]["description"]
+            assert ("Unavailable in the current execution environment" in description) is requires_sandbox
+            if requires_sandbox:
+                return _reply("An isolated execution environment is required")
+            replies = [item["content"] for item in messages if item["role"] == "tool"]
+            if not replies:
+                return _reply(tool=_call("bash", {"command": "printf ready"}))
+            assert "ready" in replies[-1]
+            return _reply("Executed")
+
+    result = await OpenCollab(tmp_path, model="gpt-4o", environment=env).agent(
+        "Run the shell probe if available", tools=[tool], llm=Model(), trace=False,
+    )
+    assert result.output == ("An isolated execution environment is required" if requires_sandbox else "Executed")
+    assert tool.to_openai_schema() == original
+    if requires_sandbox:
+        refusal = await tool.execute_with_runtime({"command": "printf forbidden"}, ToolRuntime(env, None, None))
+        assert "does not provide an OS process sandbox" in refusal
