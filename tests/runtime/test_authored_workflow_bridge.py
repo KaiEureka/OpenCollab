@@ -299,7 +299,7 @@ async def test_bridge_reads_concurrent_large_request_payloads_independently(tmp_
 
     bridge._llm = Model()
     client = BridgeClient(artifacts, bridge.options())
-    prompts = ["x" * (1536 * 1024), "x" * (1536 * 1024), "中" * (512 * 1024)]
+    prompts = ["x" * (1536 * 1024), "x" * (1536 * 1024), "\u4e2d" * (512 * 1024)]
     identities = [client._begin("complete", {"messages": [{"role": "user", "content": prompt}]}, 0)
                   for prompt in prompts]
     payload_reads = []
