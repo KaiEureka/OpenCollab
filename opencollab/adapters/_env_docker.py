@@ -10,6 +10,7 @@ import os
 import posixpath
 import re
 import shlex
+import stat
 import threading
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -31,6 +32,7 @@ from opencollab.adapters._env_process import (
 from opencollab.adapters._safe_file_common import _normalize_newlines, _split_lines
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.application.exception_notes import add_exception_note
+from opencollab.domain.docker import DockerOptions
 
 DOCKER_OWNER_LABEL = "opencollab.owner"
 DOCKER_SETUP_TIMEOUT_SECONDS = 120.0
@@ -169,7 +171,7 @@ class DockerEnvironment(Environment):
 
     def __init__(
         self,
-        image: str = "python:3.11-slim",
+        image: str | None = None,
         workspace: str = "/workspace",
         *,
         container_id: str | None = None,
@@ -177,8 +179,12 @@ class DockerEnvironment(Environment):
         command_prefix: Callable[[str], str] | str | None = None,
         timeout_returncode: int = -1,
         backing_environment: Environment | None = None,
+        options: DockerOptions | None = None,
     ) -> None:
         super().__init__()
+        self._options = options or DockerOptions()
+        if container_id is not None and options is not None:
+            raise ValueError("Docker options apply only to newly owned containers")
         if container_id is not None and backing_environment is not None:
             raise ValueError("an attached Docker environment cannot own a backing environment")
         if (
@@ -187,7 +193,9 @@ class DockerEnvironment(Environment):
             or timeout_returncode == 0
         ):
             raise ValueError("timeout_returncode must be a non-zero integer")
-        self._image = _validate_image(image)
+        self._image = _validate_image(
+            image if image is not None else options.image if options is not None else "python:3.11-slim"
+        )
         self.workspace = workspace
         self._attached = container_id is not None
         self._attached_reference = (
@@ -205,9 +213,18 @@ class DockerEnvironment(Environment):
         self._command_prefix = command_prefix
         self._timeout_returncode = timeout_returncode
         self._backing_environment = backing_environment
+        self._execution_owner: DockerEnvironment | None = None
         self.source_workspace = getattr(backing_environment, "source_workspace", None)
         self.host_workspace = None
         self._temporary_files: set[str] = set()
+
+    @property
+    def revoked(self) -> bool:
+        return self._aborted or (self._execution_owner is not None and self._execution_owner.revoked)
+
+    def _ensure_active(self) -> None:
+        if self.revoked:
+            raise RuntimeError("Execution environment has been aborted.")
 
     @property
     def container_reference(self) -> str | None:
@@ -291,20 +308,40 @@ class DockerEnvironment(Environment):
             host_mount = os.path.realpath(os.path.abspath(mount_dir))
             if not os.path.isdir(host_mount):
                 raise NotADirectoryError(host_mount)
-        self._container_name = f"opencollab-{uuid.uuid4().hex[:16]}"
+        container_name = f"opencollab-{uuid.uuid4().hex[:16]}"
         args = [
             "run",
             "-d",
             "--network",
-            "none",
+            self._options.network,
             "--name",
-            self._container_name,
+            container_name,
             "--label",
             f"{DOCKER_OWNER_LABEL}={self._owner_token}",
         ]
+        for flag, value in (
+            ("--cpus", self._options.cpus), ("--memory", self._options.memory),
+            ("--pids-limit", self._options.pids_limit),
+        ):
+            if value is not None:
+                args.extend((flag, str(value)))
+        for mount in self._options.mounts:
+            source = os.path.realpath(os.path.abspath(mount.source))
+            if not os.path.exists(source):
+                raise FileNotFoundError(source)
+            paths = (
+                (os.path.join(directory, name) for directory, _dirs, files in os.walk(source) for name in files)
+                if os.path.isdir(source) else (source,)
+            )
+            if any(stat.S_ISSOCK(os.stat(path).st_mode) for path in paths):
+                raise ValueError("Docker mounts cannot expose host sockets")
+            if "," in source:
+                raise ValueError("Docker mount source cannot contain commas")
+            args.extend(("--mount", f"type=bind,source={source},target={mount.target},readonly"))
         if host_mount is not None:
             args.extend(("-v", f"{host_mount}:{self.workspace}"))
         args.extend(("-w", self.workspace, self._image, "sleep", "infinity"))
+        self._container_name = container_name
         try:
             result = await self._docker(*args, timeout=DOCKER_SETUP_TIMEOUT_SECONDS)
         except BaseException as exc:
@@ -433,6 +470,9 @@ class DockerEnvironment(Environment):
             return True
         if self._attached:
             self.revoke()
+            if self._execution_owner is not None:
+                self._execution_owner.revoke()
+                await self._execution_owner._stop_owned_container()
             return False
         # Losing the command group must not discard the caller's workspace or
         # masquerade as a recoverable tool timeout. Retain it until cleanup().
@@ -890,6 +930,9 @@ class DockerEnvironment(Environment):
             for result, task in zip(cancelled, active.values())
         )
         if failed_cancellations or pending:
+            if self._execution_owner is not None:
+                self._execution_owner.revoke()
+                await self._execution_owner._stop_owned_container()
             raise ProcessCleanupError(
                 "attached container commands did not quiesce during abort"
             )

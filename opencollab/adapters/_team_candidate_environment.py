@@ -47,11 +47,14 @@ class _TeamCandidateEnvironment:
 
     def retain_changes(self) -> str:
         self._delivery_pending = True
-        return self.workspace
+        return self.recovery_location or self.workspace
 
     @property
     def recovery_location(self) -> str | None:
-        return self.workspace if self._delivery_pending else None
+        if not self._delivery_pending:
+            return None
+        container = getattr(self._delegate, "container_reference", None)
+        return f"{container}:{self.workspace}" if container is not None else self.workspace
 
     def _capture_environment(self, *, allow_delivered: bool = False) -> Any:
         delegate = self._delegate
