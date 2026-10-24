@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from opencollab import OpenCollab
+from opencollab.adapters.env import DockerEnvironment
 from opencollab.environments import DockerMount, DockerOptions, docker_isolation_provider
 from tests.interfaces.test_member_authored_workflow import _call, _serve_model
 from tests.support.paths import REPO_ROOT
@@ -17,7 +18,7 @@ from tests.support.paths import REPO_ROOT
 
 def _containers():
     return set(subprocess.check_output([
-        "docker", "ps", "-aq", "--filter", "label=opencollab.owner",
+        "docker", "ps", "--no-trunc", "-aq", "--filter", "label=opencollab.owner",
     ], text=True).split())
 
 
@@ -50,7 +51,16 @@ async def main(ctx, args):
 '''
     observed = {}
     workers = []
-    owner_ids = _containers()
+    owner_ids = set()
+    setup = DockerEnvironment.setup
+
+    async def remember_owner(environment, *args, **kwargs):
+        identity = await setup(environment, *args, **kwargs)
+        if not environment._attached:
+            owner_ids.add(identity)
+        return identity
+
+    monkeypatch.setattr(DockerEnvironment, "setup", remember_owner)
     provider = docker_isolation_provider(DockerOptions(image=image, mounts=(
         DockerMount(str(REPO_ROOT), "/oc-source"), DockerMount(str(Path(wheels).resolve()), "/oc-wheels"),
     )), scope="group")
@@ -157,7 +167,7 @@ async def main(ctx, args):
             assert "child-runs" not in patch and "__pycache__" not in patch
             assert all("api_key" not in path.read_text() for path in saved.glob("*.json"))
         assert len(requests) >= 4
-    assert _containers() == owner_ids
+    assert owner_ids and owner_ids.isdisjoint(_containers())
 
 
 async def test_authored_worker_keeps_resolved_model_when_physical_name_is_an_alias(tmp_path, monkeypatch):
