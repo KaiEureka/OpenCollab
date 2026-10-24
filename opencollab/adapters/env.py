@@ -9,6 +9,7 @@ from opencollab.adapters._env_container_worktree import ContainerWorktreeEnviron
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import PROCESS_OUTPUT_CAPTURE_BYTES
+from opencollab.adapters._env_vm import VMEnvironment, VMOperationError, VMTransportError
 from opencollab.adapters._env_worktree import WorktreeEnvironment
 
 
@@ -40,4 +41,7 @@ __all__ = [
     "LocalEnvironment",
     "PROCESS_OUTPUT_CAPTURE_BYTES",
     "WorktreeEnvironment",
+    "VMEnvironment",
+    "VMOperationError",
+    "VMTransportError",
 ]

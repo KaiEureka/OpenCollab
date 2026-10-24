@@ -54,7 +54,7 @@ class ProcessResult:
             stdout_bytes=self.stdout,
         )
 
-async def _read_bounded(
+async def read_bounded_output(
     stream: asyncio.StreamReader | None,
     limit: int,
 ) -> tuple[bytes, int]:
@@ -479,8 +479,8 @@ async def run_process(
         registry=registry,
     )
 
-    stdout_task = asyncio.create_task(_read_bounded(process.stdout, output_limit))
-    stderr_task = asyncio.create_task(_read_bounded(process.stderr, output_limit))
+    stdout_task = asyncio.create_task(read_bounded_output(process.stdout, output_limit))
+    stderr_task = asyncio.create_task(read_bounded_output(process.stderr, output_limit))
     quiesced = False
 
     async def write_input_and_wait() -> None:
@@ -556,5 +556,6 @@ __all__ = [
     "ProcessRegistry",
     "ProcessResult",
     "run_process",
+    "read_bounded_output",
     "terminate_process",
 ]

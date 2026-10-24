@@ -78,7 +78,7 @@ def _relative_components(
         raise PermissionError(f"path escapes anchored directory: {value}")
     return parts[:-1], parts[-1]
 
-def _open_parent_beneath(
+def open_parent_beneath(
     root_fd: int,
     root_path: str | os.PathLike[str],
     path: str | os.PathLike[str],
@@ -125,7 +125,7 @@ def read_regular_bytes_at(
 ) -> bytes:
     """Read a bounded regular file beneath a pinned directory descriptor."""
     limit = _require_limit(max_bytes)
-    parent_fd, name = _open_parent_beneath(
+    parent_fd, name = open_parent_beneath(
         root_fd,
         root_path,
         path,
@@ -183,7 +183,7 @@ def read_regular_text_range_at(
         or max_chars < 1
     ):
         raise ValueError("offset, limit, and max_chars must be positive integers")
-    parent_fd, name = _open_parent_beneath(
+    parent_fd, name = open_parent_beneath(
         root_fd,
         root_path,
         path,
@@ -307,7 +307,7 @@ def write_regular_file_atomic_at(
 ) -> bool | None:
     """Atomically publish one file beneath a pinned directory descriptor."""
     limit = _require_limit(max_bytes)
-    parent_fd, name = _open_parent_beneath(
+    parent_fd, name = open_parent_beneath(
         root_fd,
         root_path,
         path,
@@ -429,8 +429,10 @@ def unlink_regular_file_durable_at(
     root_fd: int,
     root_path: str | os.PathLike[str],
     path: str | os.PathLike[str],
+    *,
+    expected_identity: tuple[int, int] | None = None,
 ) -> bool:
-    parent_fd, name = _open_parent_beneath(
+    parent_fd, name = open_parent_beneath(
         root_fd,
         root_path,
         path,
@@ -440,6 +442,8 @@ def unlink_regular_file_durable_at(
         current = _current_regular_at(parent_fd, name, context="owned file")
         if current is None:
             return False
+        if expected_identity is not None and (current.st_dev, current.st_ino) != expected_identity:
+            raise OSError(f"owned file was replaced: {path}")
         os.unlink(name, dir_fd=parent_fd)
         os.fsync(parent_fd)
         return True
@@ -449,6 +453,7 @@ def unlink_regular_file_durable_at(
 __all__ = [
     "create_regular_bytes_atomic_at",
     "open_directory_anchor",
+    "open_parent_beneath",
     "read_regular_bytes_at",
     "read_regular_text_range_at",
     "unlink_regular_file_durable_at",
