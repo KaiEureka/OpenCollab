@@ -1,6 +1,6 @@
 # Shared model routing and request capacity
 
-[中文](model-routing.zh-CN.md)
+[Chinese](model-routing.zh-CN.md)
 
 A logical model name selects an explicit backend through `model_routes`. Each
 route supplies the physical model identifier, provider, endpoint and credentials.
