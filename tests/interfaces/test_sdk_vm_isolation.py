@@ -166,7 +166,7 @@ async def test_vm_member_authors_workflow_and_collects_two_guest_results(tmp_pat
     saved = Path(child["artifacts"])
     assert json.loads((saved / "workflow.json").read_text())["sessions"] == 2
     assert len(list(saved.glob("[0-9]*.json"))) == 2
-    assert all("host-offline" not in path.read_text() for path in saved.glob("*.json"))
+    assert all("offline-model" not in path.read_text() for path in saved.glob("*.json"))
 
 
 async def test_vm_parent_cancellation_stops_authored_agents_and_preserves_native_records(

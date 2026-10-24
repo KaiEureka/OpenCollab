@@ -180,7 +180,9 @@ def run_cmd(
             save_dir=save_dir,
             trace=trace,
             return_details=True,
-        )
+        ),
+        shutdown_timeout=(cleanup_timeout if cleanup_timeout is not None else
+                          (cfg.get("vm") or {}).get("cleanup_timeout", 2.0)),
     )
     if save_dir is not None:
         console.print(f"[dim]== sessions saved to {save_dir}[/dim]")

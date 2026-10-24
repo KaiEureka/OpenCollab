@@ -134,7 +134,8 @@ def main_callback(
             team_config_path=team_config,
             one_shot_prompt=one_shot,
             hold_after_run=hold,
-        )
+        ),
+        shutdown_timeout=(cfg.get("vm") or {}).get("cleanup_timeout", 2.0),
     )
 
 def _initial_model_config(cfg: dict[str, Any], team_config_path: str | None) -> dict[str, Any]:
@@ -474,8 +475,9 @@ async def _run(
         primary_failure = exc
     if scheduler is not None:
         try:
+            cleanup_grace = (cfg.get("vm") or {}).get("cleanup_timeout")
             repeated_cancellation = await _await_scheduler_cleanup(
-                scheduler, cleanup_timeout=(cfg.get("vm") or {}).get("cleanup_timeout"),
+                scheduler, **({"cleanup_timeout": cleanup_grace} if cleanup_grace is not None else {}),
             )
         except BaseException as exc:
             cleanup_failure = exc
