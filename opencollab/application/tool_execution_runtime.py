@@ -291,6 +291,14 @@ class ToolExecutionRuntimeMixin:
             if execution_task is not None and not execution_task.done():
                 cleanup_task = asyncio.create_task(self._cleanup_caller_cancelled_execution(execution_task))
                 await self._await_owned_cleanup_despite_cancellation(cleanup_task)
+            # The tool can finish before this waiter resumes, including during cleanup.
+            if execution_task is not None and execution_task.done() and not execution_task.cancelled():
+                try:
+                    outcome = execution_task.result()
+                except Exception:
+                    pass
+                else:
+                    self._remember_deferred_outcome(outcome)
             raise
         except PermissionError as e:
             result = f"Permission denied: {e}"
@@ -498,10 +506,7 @@ class ToolExecutionRuntimeMixin:
         finally:
             # Publish the outcome before tool_end. That event can await a sink,
             # and cancellation there must not lose a child ref or a sync error.
-            if isinstance(outcome, DeferredCall):
-                self._pending_deferred_result = (outcome.ref, None)
-            elif outcome is not None:
-                self._pending_deferred_result = (None, str(outcome))
+            self._remember_deferred_outcome(outcome)
             await self._emit_observation(
                 lambda: self.event_factory.tool_end(tool.name, latency, tc["id"]),
                 label="tool_end",
@@ -510,6 +515,12 @@ class ToolExecutionRuntimeMixin:
         if isinstance(outcome, DeferredCall):
             return outcome.ref, None
         return None, str(outcome)
+
+    def _remember_deferred_outcome(self, outcome: Any) -> None:
+        if isinstance(outcome, DeferredCall):
+            self._pending_deferred_result = (outcome.ref, None)
+        elif outcome is not None:
+            self._pending_deferred_result = (None, str(outcome))
 
     def _trace_short_circuit(self, step_type: str, tool_name: str, detail: dict[str, Any]) -> None:
         """Record a tracer step for a pre-execution short-circuit.

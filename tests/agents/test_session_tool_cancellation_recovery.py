@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from opencollab.adapters.llm.openai_provider import _build_request_kwargs
+from opencollab.adapters.tools.spawn import SpawnAgentTool
 from opencollab.application.tool_execution import DeferredCall
 from opencollab.bootstrap import build_session
 from opencollab.domain.pending import RowStatus
@@ -236,3 +237,163 @@ async def test_cancellation_after_deferred_error_keeps_the_error(local_environme
     assert row.result == "Not spawned: invalid role."
     await session.add_user_message("continue")
     assert await session.run_loop() == "continued answer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancellation", [None, "before_waiter", "cleanup"])
+async def test_completed_spawn_survives_cancellation_at_the_execution_boundary(
+    local_environment_factory, cancellation,
+):
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class Scheduler:
+        producer = None
+
+        async def spawn(self, parent_aid, role, task, context, tool_call_id=None):
+            async def produce():
+                await release.wait()
+                session.state.pending_events.fill(tool_call_id, result="real child result")
+
+            self.producer = asyncio.create_task(produce())
+            started.set()
+            if cancellation == "cleanup":
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    pass
+            elif cancellation == "before_waiter":
+                asyncio.get_running_loop().call_soon(active.cancel)
+            return 7
+
+    scheduler = Scheduler()
+    llm = FakeLLMClient([
+        llm_response(tool_calls=[tool_call(
+            "child", "spawn_agent", '{"role":"coder","task":"work"}',
+        )], finish_reason="tool_calls"),
+        llm_response(content="continued answer"),
+    ])
+    session = build_session(
+        env=local_environment_factory(),
+        agent=FakeAgent(tools=[SpawnAgentTool(scheduler)]),
+        llm=llm,
+    )
+    await session.add_user_message("spawn")
+    active = asyncio.create_task(session.run_loop())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+        if cancellation == "cleanup":
+            active.cancel()
+        if cancellation is None:
+            await asyncio.wait_for(active, timeout=0.5)
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(active, timeout=0.5)
+
+        row = session.state.pending_events.rows["child"]
+        assert row.status is RowStatus.PENDING
+        assert row.ref == 7
+        assert scheduler.producer is not None and not scheduler.producer.done()
+        release.set()
+        await asyncio.wait_for(scheduler.producer, timeout=0.5)
+        assert await session.run_loop() == "continued answer"
+        assert [message for message in llm.calls[-1]["messages"] if message["role"] == "tool"] == [
+            {"role": "tool", "tool_call_id": "child", "content": "real child result"},
+        ]
+    finally:
+        release.set()
+        if not active.done():
+            active.cancel()
+        await asyncio.gather(active, return_exceptions=True)
+        if scheduler.producer is not None:
+            await asyncio.gather(scheduler.producer, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancellation", ["before_waiter", "cleanup"])
+async def test_deferred_rejection_survives_cancellation_at_the_execution_boundary(
+    local_environment_factory, cancellation,
+):
+    started = asyncio.Event()
+
+    class RejectingSpawn(FakeTool):
+        def __init__(self):
+            super().__init__(name="spawn_agent")
+
+        async def execute_with_runtime(self, args, runtime):
+            started.set()
+            if cancellation == "cleanup":
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    pass
+            else:
+                asyncio.get_running_loop().call_soon(active.cancel)
+            return "Not spawned: invalid role."
+
+    llm = FakeLLMClient([
+        llm_response(tool_calls=[tool_call("child", "spawn_agent", "{}")], finish_reason="tool_calls"),
+        llm_response(content="continued answer"),
+    ])
+    session = build_session(
+        env=local_environment_factory(), agent=FakeAgent(tools=[RejectingSpawn()]), llm=llm,
+    )
+    active = asyncio.create_task(session.run_loop())
+    await asyncio.wait_for(started.wait(), timeout=0.5)
+    if cancellation == "cleanup":
+        active.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(active, timeout=0.5)
+
+    row = session.state.pending_events.rows["child"]
+    assert row.status is RowStatus.FAILED
+    assert row.result == "Not spawned: invalid role."
+    assert row.ref is None
+    await session.add_user_message("continue")
+    assert await session.run_loop() == "continued answer"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_before_second_spawn_does_not_reuse_the_first_child(
+    local_environment_factory,
+):
+    started = asyncio.Event()
+
+    async def block_second_start(event):
+        if event.type == "tool_start" and event.data.get("tool_call_id") == "second":
+            started.set()
+            await asyncio.Event().wait()
+
+    class Scheduler:
+        async def spawn(self, parent_aid, role, task, context, tool_call_id=None):
+            assert tool_call_id == "first"
+            return 7
+
+    llm = FakeLLMClient([
+        llm_response(tool_calls=[
+            tool_call("first", "spawn_agent", '{"role":"coder","task":"first"}'),
+            tool_call("second", "spawn_agent", '{"role":"coder","task":"second"}'),
+        ], finish_reason="tool_calls"),
+        llm_response(content="continued answer"),
+    ])
+    session = build_session(
+        env=local_environment_factory(), agent=FakeAgent(tools=[SpawnAgentTool(Scheduler())]),
+        llm=llm, event_sink=block_second_start,
+    )
+    active = asyncio.create_task(session.run_loop())
+    await asyncio.wait_for(started.wait(), timeout=0.5)
+    active.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(active, timeout=0.5)
+
+    first = session.state.pending_events.rows["first"]
+    second = session.state.pending_events.rows["second"]
+    assert first.status is RowStatus.PENDING
+    assert first.ref == 7
+    assert second.status is RowStatus.FAILED
+    assert second.ref is None
+    session.state.pending_events.fill("first", result="real first result")
+    assert await session.run_loop() == "continued answer"
+    tool_messages = [message for message in llm.calls[-1]["messages"] if message["role"] == "tool"]
+    assert tool_messages[0]["content"] == "real first result"
+    assert "outcome is unknown" in tool_messages[1]["content"]
