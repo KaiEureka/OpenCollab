@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>配置从哪里读取以及哪一项生效 · OpenCollab Wiki</title>
-<meta name="description" content="解释某项配置为什么生效，并稳定地让 CLI 或 SDK 读取选定配置。">
+<meta name="description" content="改了配置却没生效时，看这篇弄清 OpenCollab 按什么顺序读取设置。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/configuration-precedence/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,51 +35,125 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">Wiki 首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details open><summary>模型接入与配置 <small>6</small></summary><a href="index.html" aria-current="page">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details open><summary>模型接入与配置 <small>6</small></summary><a href="index.html" aria-current="page">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="../weave-workflow/index.html">用 Weave 分组接力完成任务并检查交付</a><a href="../reconstruct-workflow/index.html">用 Reconstruct 从输入输出反推程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="../report-problem-and-request-help/index.html">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">模型接入与配置</p>
 <h1 id="配置从哪里读取以及哪一项生效">配置从哪里读取以及哪一项生效</h1>
-<p>显式 CLI 选项和 SDK 构造参数优先，随后依次使用进程环境变量、配置文件值和内置默认值。定位某项设置为什么生效时，先核对启动方式，再核对每个变量的来源。<code>OpenCollab(...)</code> 在构造时解析配置，修改环境或文件后需要重新构造客户端。</p>
+<p>OC 的客户端配置可以来自 CLI 选项、SDK 构造参数、进程环境变量和 env 文件，最终每项只取一个值。这篇说明取值顺序、默认会搜索哪些 env 文件，以及怎样用 <code>OPENCOLLAB_CONFIG_FILE</code> 锁定单个文件。和很多工具不同的是，OC 默认会把多个 env 文件按变量逐个合并，所以“改了 <code>configs/.env</code> 却没生效”通常是别处有同名变量。</p>
+<h2 id="优先顺序一览">优先顺序一览</h2>
+<p>从高到低：</p>
+<table>
+<thead>
+<tr>
+<th>顺序</th>
+<th>来源</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>显式 CLI 选项、SDK 构造参数</td>
+<td><code>--model</code>、<code>OpenCollab(model=...)</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>进程环境变量（shell 里 <code>export</code> 的变量）</td>
+<td><code>export OPENCOLLAB_MODEL=...</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>配置文件里的值</td>
+<td><code>configs/.env</code> 中的 <code>OPENCOLLAB_MODEL=...</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>内置默认值</td>
+<td>见 <a href="../configuration-reference/index.html">配置参数与环境变量速查</a></td>
+</tr>
+</tbody>
+</table>
+<p>排查时先确认你是怎么启动的（CLI 还是 SDK、带了哪些选项），再逐个变量看它来自哪一层。</p>
+<p>注意：<code>OpenCollab(...)</code> 在创建客户端那一刻读取配置。之后再改环境变量或文件，已有的客户端不会变，需要重新创建一个。</p>
+<h2 id="改了配置没生效按这几步查">改了配置没生效，按这几步查</h2>
+<ol>
+<li>如果 shell 里导出过同名变量（例如 <code>echo $OPENCOLLAB_MODEL</code> 有输出），它会压过文件里的值。先 <code>unset</code> 掉，或者直接改它。</li>
+<li>如果你用的是 SDK，检查代码里是否给 <code>OpenCollab(...)</code> 传了同名参数。</li>
+<li>检查是不是有多个配置文件同时参与（见下一节）。</li>
+<li>打印最终结果核对（见 <a href="#%E6%9F%A5%E7%9C%8B%E6%9C%80%E7%BB%88%E7%BB%93%E6%9E%9C">查看最终结果</a>）。</li>
+</ol>
 <h2 id="工作区和当前目录共同参与搜索">工作区和当前目录共同参与搜索</h2>
-<p>常规文件搜索先看工作区的 <code>configs/.env</code>，再看工作区的兼容 <code>.env</code>。当前目录与工作区不同时，继续按相同顺序检查当前目录中的两个文件。每个变量由首次出现的非空值提供，后续文件补齐尚未设置的变量，因此一次运行可能组合多个文件中的不同设置。</p>
-<p>例如从 OpenCollab 源码目录执行 <code>opencollab --workspace /path/to/application</code> 时，项目中的模型名可以与源码目录文件中的超时配置同时生效。shell 中已经导出的同名变量又有更高优先级。若修改文件后仍看到旧模型，先检查当前 shell 是否仍设置 <code>OPENCOLLAB_MODEL</code>。</p>
-<p>需要明确选择单一文件时，指定一个已经存在的普通 UTF-8 文件。</p>
-<pre><code class="language-bash">OPENCOLLAB_CONFIG_FILE=/absolute/path/project.env \
+<p>工作区（workspace）：OC 运行时操作的项目目录，CLI 用 <code>--workspace</code> 指定，SDK 是 <code>OpenCollab(...)</code> 的第一个参数。它可以和进程当前目录不同。</p>
+<p>没有指定配置文件时，OpenCollab 按下面的顺序找文件：</p>
+<ol>
+<li>工作区的 <code>configs/.env</code></li>
+<li>工作区的 <code>.env</code>（兼容旧写法）</li>
+<li>如果当前目录与工作区不同：当前目录的 <code>configs/.env</code></li>
+<li>再然后：当前目录的 <code>.env</code></li>
+</ol>
+<p>每个变量取第一次出现的非空值。后面的文件只补充前面没设置过的变量。所以一次运行可能把几个文件里的设置拼在一起用。</p>
+<p>举例：在 OpenCollab 源码目录执行 <code>opencollab --workspace /path/to/application</code>。项目里的模型名，可以和源码目录文件里的超时设置同时生效。shell 里已经导出的同名变量优先级更高。</p>
+<h3 id="只读一个指定的文件">只读一个指定的文件</h3>
+<p>如果想避免多个文件混在一起，就用 <code>OPENCOLLAB_CONFIG_FILE</code> 指定一个文件。这个文件必须已经存在，是普通的 UTF-8 文本文件。</p>
+<pre><code class="language-bash"># 只读取这一个 env 文件，跳过默认的文件搜索
+OPENCOLLAB_CONFIG_FILE=/absolute/path/project.env \
   opencollab --workspace /path/to/application
 </code></pre>
-<p>该设置替代默认文件搜索，进程变量和显式调用设置仍按各自优先级参与解析。相对文件路径按进程当前目录解释，自动化程序使用绝对路径更容易核对。</p>
+<p>这样设置后，默认的文件搜索就不再进行。进程环境变量和显式参数仍按各自的优先级生效。相对路径会按进程的当前目录来解释，自动化脚本里建议写绝对路径，方便核对。</p>
 <h2 id="在-sdk-中明确覆盖">在 SDK 中明确覆盖</h2>
-<p><code>OpenCollab</code> 构造参数中的 <code>model</code>、<code>provider</code>、<code>api_key</code> 和 <code>base_url</code> 会覆盖对应的 <code>config</code> 值。其余运行设置通过 <code>config</code> 映射传入。下面的代码构造客户端并打印有效配置，将占位模型名替换为所用服务支持的名称。</p>
+<p><code>OpenCollab</code> 构造参数中的 <code>model</code>、<code>provider</code>、<code>api_key</code> 和 <code>base_url</code> 会覆盖 <code>config</code> 里的同名值。其余运行设置放进 <code>config</code> 字典传入。</p>
+<p>下面的代码创建一个客户端并打印最终配置。把占位模型名换成你所用服务支持的名称。</p>
 <pre><code class="language-python">from opencollab import OpenCollab
 
 client = OpenCollab(
     &quot;.&quot;,
-    model=&quot;your-model-id&quot;,
+    model=&quot;your-model-id&quot;,  # 覆盖 env 文件和环境变量里的模型
     config={
-        &quot;temperature&quot;: 0.0,
+        &quot;temperature&quot;: 0.0,  # 0 也是有效值，会正常覆盖
         &quot;budget&quot;: 100_000,
         &quot;llm_timeout&quot;: 300,
     },
 )
 print(dict(client.configuration))
 </code></pre>
-<p>零温度是有效覆盖值。SDK 的 <code>config</code> 使用字段名，例如 <code>llm_timeout</code>，env 文件使用 <code>OPENCOLLAB_LLM_TIMEOUT</code>。把环境变量名直接放进 <code>config</code> 会触发未知字段错误。构造客户端会校验本地配置，调用运行入口时才向端点发送请求。</p>
+<p>几点要注意：</p>
+<ul>
+<li><code>config</code> 里用的是字段名（小写），比如 <code>llm_timeout</code>。env 文件里用的是环境变量名，比如 <code>OPENCOLLAB_LLM_TIMEOUT</code>。</li>
+<li>如果把环境变量名直接写进 <code>config</code>，会报未知字段错误。</li>
+<li>创建客户端时只检查本地配置。真正调用运行入口时，才会向模型端点发请求。</li>
+</ul>
 <h2 id="空值类型和认证的特殊情况">空值、类型和认证的特殊情况</h2>
-<p>空白凭据和空白 base URL 被视为未设置，文件中的空白变量也会跳过。<code>budget</code> 必须为正整数，模型请求超时为有限正数，<code>temperature</code> 范围为 0 到 2。SDK 配置和团队 YAML 拒绝未知字段，env 文件可以包含其它应用的变量，这些变量会被忽略。</p>
-<p>认证有额外的 provider 专用顺序。普通 OpenAI 兼容端点依次选择通用 key 和 <code>OPENAI_API_KEY</code>，DashScope 优先 <code>DASHSCOPE_API_KEY</code>，原生 Anthropic 优先自己的 key 或 bearer token。专用凭据的变量顺序跨进程和文件来源生效，例如文件中的 <code>DASHSCOPE_API_KEY</code> 优先于 shell 中导出的通用 key。显式 <code>api_key</code> 的优先级最高，完整选择规则见端点认证指南。</p>
+<h3 id="空值和取值范围">空值和取值范围</h3>
+<ul>
+<li>空白的凭据、空白的 base URL 都当作没设置。</li>
+<li>文件里值为空白的变量会被跳过，继续往后找。</li>
+<li><code>budget</code> 必须是正整数。</li>
+<li>模型请求超时必须是有限的正数。</li>
+<li><code>temperature</code> 范围是 0 到 2。</li>
+<li>SDK 的 <code>config</code> 和团队 YAML 遇到未知字段会报错。env 文件里可以有其它程序的变量，OpenCollab 会忽略它们。</li>
+</ul>
+<h3 id="认证凭据有自己的顺序">认证凭据有自己的顺序</h3>
+<p>API key 还会按 provider 走一套专门的顺序：</p>
+<ul>
+<li>普通 OpenAI 兼容端点：先通用 key，再 <code>OPENAI_API_KEY</code>。</li>
+<li>DashScope：优先 <code>DASHSCOPE_API_KEY</code>。</li>
+<li>原生 Anthropic：优先它自己的 key 或 bearer token。</li>
+</ul>
+<p>这个变量顺序跨来源生效。例如文件里的 <code>DASHSCOPE_API_KEY</code>，会优先于 shell 里导出的通用 key。显式传入的 <code>api_key</code> 优先级最高。完整规则见 <a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>。</p>
 <h2 id="查找参数名与默认值">查找参数名与默认值</h2>
-<p><a href="../configuration-reference/index.html">配置参数与环境变量速查</a> 对照列出环境变量、SDK 字段和内置默认值，并指向对应运行入口的详细指南。设置角色工具、Team 上下文或一次任务期限时，从表中的具体入口继续配置。</p>
+<p><a href="../configuration-reference/index.html">配置参数与环境变量速查</a> 对照列出了环境变量、SDK 字段和内置默认值，并指向各运行入口的详细指南。要设置角色工具、Team 上下文或一次任务的期限，从那张表里找到对应入口继续配置。</p>
 <h2 id="查看最终结果">查看最终结果</h2>
-<p><code>configuration</code> 是只读元数据，嵌套值与客户端内部配置隔离。它显示模型、provider、协议、预算、窗口、采样和传输设置，凭据被筛除，端点用 <code>base_url_sha256</code> 标识。打印需要比较的字段，可以查看新客户端采用了哪些设置。逻辑路由存在时，还能看到逻辑名称到物理模型的公开映射。</p>
+<p><code>client.configuration</code> 显示客户端最终采用的设置。它是只读的，改它不会影响客户端内部配置。</p>
+<p>它包含模型、provider、协议、预算、窗口、采样和传输设置。凭据会被去掉，不会打印出来。端点地址用 <code>base_url_sha256</code>（地址的哈希值）表示。打印你关心的字段，就能看到新客户端用了哪些值。如果配置了逻辑路由，还能看到逻辑名称对应哪个实际模型。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L19">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L47">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L367">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L110">opencollab/sdk/client.py</a></p>
 <h2 id="相关指南">相关指南</h2>
-<p><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></p>
+<p><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a>　<a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/configuration-precedence.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%B7%A5%E4%BD%9C%E5%8C%BA%E5%92%8C%E5%BD%93%E5%89%8D%E7%9B%AE%E5%BD%95%E5%85%B1%E5%90%8C%E5%8F%82%E4%B8%8E%E6%90%9C%E7%B4%A2">工作区和当前目录共同参与搜索</a><a href="#%E5%9C%A8-sdk-%E4%B8%AD%E6%98%8E%E7%A1%AE%E8%A6%86%E7%9B%96">在 SDK 中明确覆盖</a><a href="#%E7%A9%BA%E5%80%BC%E7%B1%BB%E5%9E%8B%E5%92%8C%E8%AE%A4%E8%AF%81%E7%9A%84%E7%89%B9%E6%AE%8A%E6%83%85%E5%86%B5">空值、类型和认证的特殊情况</a><a href="#%E6%9F%A5%E6%89%BE%E5%8F%82%E6%95%B0%E5%90%8D%E4%B8%8E%E9%BB%98%E8%AE%A4%E5%80%BC">查找参数名与默认值</a><a href="#%E6%9F%A5%E7%9C%8B%E6%9C%80%E7%BB%88%E7%BB%93%E6%9E%9C">查看最终结果</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BC%98%E5%85%88%E9%A1%BA%E5%BA%8F%E4%B8%80%E8%A7%88">优先顺序一览</a><a href="#%E6%94%B9%E4%BA%86%E9%85%8D%E7%BD%AE%E6%B2%A1%E7%94%9F%E6%95%88%E6%8C%89%E8%BF%99%E5%87%A0%E6%AD%A5%E6%9F%A5">改了配置没生效，按这几步查</a><a href="#%E5%B7%A5%E4%BD%9C%E5%8C%BA%E5%92%8C%E5%BD%93%E5%89%8D%E7%9B%AE%E5%BD%95%E5%85%B1%E5%90%8C%E5%8F%82%E4%B8%8E%E6%90%9C%E7%B4%A2">工作区和当前目录共同参与搜索</a><a href="#%E5%8F%AA%E8%AF%BB%E4%B8%80%E4%B8%AA%E6%8C%87%E5%AE%9A%E7%9A%84%E6%96%87%E4%BB%B6">只读一个指定的文件</a><a href="#%E5%9C%A8-sdk-%E4%B8%AD%E6%98%8E%E7%A1%AE%E8%A6%86%E7%9B%96">在 SDK 中明确覆盖</a><a href="#%E7%A9%BA%E5%80%BC%E7%B1%BB%E5%9E%8B%E5%92%8C%E8%AE%A4%E8%AF%81%E7%9A%84%E7%89%B9%E6%AE%8A%E6%83%85%E5%86%B5">空值、类型和认证的特殊情况</a><a href="#%E7%A9%BA%E5%80%BC%E5%92%8C%E5%8F%96%E5%80%BC%E8%8C%83%E5%9B%B4">空值和取值范围</a><a href="#%E8%AE%A4%E8%AF%81%E5%87%AD%E6%8D%AE%E6%9C%89%E8%87%AA%E5%B7%B1%E7%9A%84%E9%A1%BA%E5%BA%8F">认证凭据有自己的顺序</a><a href="#%E6%9F%A5%E6%89%BE%E5%8F%82%E6%95%B0%E5%90%8D%E4%B8%8E%E9%BB%98%E8%AE%A4%E5%80%BC">查找参数名与默认值</a><a href="#%E6%9F%A5%E7%9C%8B%E6%9C%80%E7%BB%88%E7%BB%93%E6%9E%9C">查看最终结果</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>
 </body>
 </html>

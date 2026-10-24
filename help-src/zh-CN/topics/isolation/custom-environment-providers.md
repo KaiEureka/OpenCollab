@@ -3,7 +3,7 @@
   "id": "custom-environment-providers",
   "title": "接入自己的执行环境",
   "category": "isolation",
-  "summary": "使用已有环境提供器扩展隔离策略并让资源分配、交付和清理保持一致。",
+  "summary": "注册一个自己的隔离策略名，让 Agent 跑在你提供的环境里，并负责好分配和清理。",
   "aliases": [
     "custom",
     "EnvironmentPool",
@@ -16,10 +16,14 @@
   "keywords": [
     "自定义环境",
     "环境提供器",
-    "environment_providers"
+    "environment_providers",
+    "自定义隔离"
   ],
   "questions": [
-    "使用已有环境提供器扩展隔离策略并让资源分配、交付和清理保持一致？"
+    "使用已有环境提供器扩展隔离策略并让资源分配、交付和清理保持一致？",
+    "怎么让 isolation 用我自己的环境？",
+    "提示策略需要 environment provider 是什么意思？",
+    "自己写环境池要实现哪些方法？"
   ],
   "related": [
     "execution-environments",
@@ -31,11 +35,17 @@
 
 # 接入自己的执行环境
 
-自定义执行环境通过 `environment_providers` 注册。键名成为可选的 `isolation` 策略，值是每次运行创建环境池的工厂。这样可以把现有容器配置或专用执行服务接到 Team 和 Workflow，同时沿用它们的环境申请、交付与清理过程。
+内置策略不够用时（例如自有容器配置或远程执行服务），可以通过 `OpenCollab(..., environment_providers={"名字": 工厂})` 注册新的策略名，之后 `isolation="名字"` 就会使用它。OC 仍负责申请环境、交付改动和清理的调度，你的提供器负责实际资源。
 
-## 从一个可工作的提供器开始
+OC 名词：
 
-下面将已有 Docker 提供器注册为业务自己的策略名。镜像、网络与隔离能力仍来自这份 Docker 配置。
+- 环境提供器（environment provider）：一个工厂函数，每次运行时创建一个环境池。
+- 环境池（environment pool）：负责给每个会话发放环境、回收环境。
+- 环境（Environment）：OC 工具实际读写文件、执行命令的对象。
+
+## 最小示例：把 Docker 提供器包一层
+
+通过 `environment_providers` 注册：键名就是新的策略名，值是工厂。下面把现成的 Docker 提供器注册成 `custom`，镜像、网络和隔离能力都来自这份 Docker 配置。
 
 ```python
 from opencollab import OpenCollab
@@ -45,6 +55,7 @@ container_factory = docker_isolation_provider(
     DockerOptions(image="python:3.11", network="none"), scope="session"
 )
 
+# 工厂接收运行信息，返回一个环境池
 def project_environment_factory(
     *, workspace, base_environment, owned_save_dir,
     enable_adoption, owned_output_paths,
@@ -62,24 +73,67 @@ client = OpenCollab(".", environment_providers={
 })
 ```
 
-之后在运行中写 `await client.workflow(flow, inputs, isolation="custom")`。`flow` 是调用方自己的异步工作流，`inputs` 是它的输入字典。也可以在 Team 文件或角色中写 `isolation: custom`。策略名需要合法，并且与注册键保持一致。
+使用：
 
-## 工厂如何使用运行信息
+- Workflow：`await client.workflow(flow, inputs, isolation="custom")`。`flow` 是你自己的异步工作流，`inputs` 是它的输入字典。
+- Team：在团队文件或角色里写 `isolation: custom`。
 
-`workspace` 是调用方项目位置，`base_environment` 是真实来源环境。`owned_save_dir` 指向当前运行产物目录，`owned_output_paths` 帮助环境区分运行自己写出的记录与任务源内容。`enable_adoption` 表示运行需要采纳能力，这会影响候选准备和交付方式。
+策略名要合法，并且和注册的键一致。
 
-环境池需要实现公开的 `opencollab.environments.EnvironmentPool` 接口。`acquire(role, source=...)` 接收角色和实际父环境或审阅源，返回已经准备好执行工具的 Environment。审阅源可能来自另一策略，也可能位于容器中，工厂应按环境操作读取其内容。直接从宿主同名目录复制，会让审阅任务读到错误版本。
+## 工厂收到的参数
 
-## 为新后端实现同一组操作
+| 参数 | 含义 |
+| --- | --- |
+| `workspace` | 调用方项目的位置 |
+| `base_environment` | 真实的来源环境 |
+| `owned_save_dir` | 当前运行的产物目录 |
+| `owned_output_paths` | 帮环境区分“运行自己写出的记录”和“任务源内容” |
+| `enable_adoption` | 运行是否需要采纳能力，会影响候选准备和交付方式 |
 
-接入远端执行服务时，先在一个环境中写入并读取文件，执行短命令并查看退出码。再申请两份环境，分别写入同名文件，观察内容是否独立。这样可以直接检查文件操作、命令执行和隔离是否可用。
+## 自己写环境池要实现什么
 
-明确环境对象与底层资源的关系。例如，环境对象可以代表一份会话租约，底层容器由池统一管理。多个环境视图引用同一资源时，归还其中一个视图后，资源仍需保留到其他使用者结束。审阅和清理都应遵循这一所有权关系。
+环境池要实现公开接口 `opencollab.environments.EnvironmentPool`：
 
-## 把分配、交付与释放一起实现
+| 方法 | 作用 |
+| --- | --- |
+| `acquire(role, source=...)` | 接收角色和实际父环境或审阅源，返回已经能执行工具的 Environment |
+| `adopt(patch)` | 把改动应用到交付工作区 |
+| `release_env(environment)` | 归还一次分配 |
+| `release()` | 结束池拥有的全部资源 |
 
-`adopt(patch)` 将增量应用到交付工作区。`release_env(environment)` 归还一次分配，`release()` 结束池拥有的资源。传入的源环境保持借用关系，释放应针对池分配的资源。Environment 需要提供准备、文件读写、命令执行、撤销、停止和清理操作，详细签名见[公开端口](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/ports.py)。
+Environment 需要提供：准备、文件读写、命令执行、撤销、停止、清理。详细签名见[公开端口](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/ports.py)。
 
-取消可能发生在资源申请途中。提供器需要追踪尚未结束的申请，等它得到明确结果再完成撤销。补丁导出失败时，应保留可恢复的文件与资源信息，并让同一个池能够再次清理。接入时实际执行文件写入、命令取消和导出失败恢复，检查这些操作是否符合资源的所有权和清理要求。
+几条要注意的规则：
 
-为使用者说明提供器的文件共享范围、进程与网络隔离方式，以及权限限制。VM 专用后端仍处于[扩展规划](../../reserved/vm-environment-extension.md)。实现自己的 VM 环境时，上述生命周期同样需要完成。环境池组合行为见[策略池实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/session_environments.py)，已有环境的所有权见 [让任务在指定目录或现有容器里执行](execution-environments.md)。
+- 审阅源可能来自另一种策略，也可能在容器里。要通过环境操作读取它的内容。如果直接从宿主机同名目录复制，审阅任务会读到错误版本。
+- 传进来的源环境是借来的。释放时只释放池自己分配的资源。
+- 想清楚环境对象和底层资源的关系。例如一个环境对象代表一份会话租约，底层容器由池统一管理。多个环境引用同一个资源时，归还其中一个，资源还要留到其他使用者都结束。审阅和清理都要按这个关系来。
+
+## 接入新后端时怎样测试
+
+1. 在一个环境里写入一个文件，再读回来。
+2. 执行一条短命令，看退出码。
+3. 申请两份环境，分别写入同名文件，确认内容互不影响。
+4. 实际试一下文件写入、命令取消和导出失败后的恢复，确认资源能被正确清理。
+
+## 进阶：取消和失败
+
+- 取消可能发生在申请资源的途中。提供器要跟踪还没结束的申请，等它有了明确结果再完成撤销。
+- 补丁导出失败时，保留可恢复的文件和资源信息，并让同一个池能再次清理。
+
+## 写给使用者的说明
+
+为你的提供器写清楚三件事：
+
+1. 文件共享到什么程度。
+2. 进程和网络怎么隔离。
+3. 权限有哪些限制。
+
+## 常见问题
+
+- 如果提示该策略需要 environment provider：说明这个策略名还没注册。检查 `environment_providers` 的键和 `isolation` 写的名字是否一致。
+- 如果想用虚拟机：VM 专用后端仍在[扩展规划](../../reserved/vm-environment-extension.md)里。自己实现 VM 环境时，上面的生命周期同样要完成。
+
+## 参考
+
+环境池的组合方式见[策略池实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/session_environments.py)。已有环境由谁负责清理，见 [让任务在指定目录或现有容器里执行](execution-environments.md)。

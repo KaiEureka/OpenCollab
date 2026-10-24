@@ -1,9 +1,9 @@
 ---
 {
   "id": "runtime-execution-model",
-  "title": "一次任务如何从输入走到工具执行",
+  "title": "一次任务是怎么跑起来的",
   "category": "architecture",
-  "summary": "理解模型、Session、调度器和执行环境怎样合作，并找到实际行为由谁控制。",
+  "summary": "跟着一次任务走一遍：OpenCollab 怎样把消息发给模型、执行模型要求的工具，并把结果送回模型，直到任务结束。",
   "aliases": [
     "Harness",
     "Agent loop",
@@ -16,10 +16,15 @@
   "keywords": [
     "执行原理",
     "运行时",
-    "runtime"
+    "runtime",
+    "工具调用",
+    "执行流程"
   ],
   "questions": [
-    "理解模型、Session、调度器和执行环境怎样合作，并找到实际行为由谁控制？"
+    "理解模型、Session、调度器和执行环境怎样合作，并找到实际行为由谁控制？",
+    "模型是怎么真正读文件、跑命令的？",
+    "Agent 能做什么由谁决定？",
+    "任务什么时候算结束？"
   ],
   "related": [
     "session-state-lifecycle",
@@ -31,21 +36,25 @@
 }
 ---
 
-# 一次任务如何从输入走到工具执行
+# 一次任务是怎么跑起来的
 
-一次 OpenCollab 任务会先组装配置、会话与执行环境，再把消息和工具说明发给模型。模型返回工具调用后，运行时校验参数、检查权限并执行工具，工具结果随后进入会话，供下一次模型请求使用。运行记录可用于查看最终回答与实际工具执行过程。
+OC 的 agent loop 是标准的"模型请求 → 工具调用 → 结果回填"循环，状态都放在 Session 里。和常见实现相比，OC 多做了几件事：按 schema 校验参数，只在当前角色的工具集合里查实现，执行前做权限检查，工具真正跑在你指定的 environment 里。这篇讲一次任务的完整路径，以及某个行为该去哪里调整。
 
-## 从入口到模型请求
+## 整体流程
 
-`OpenCollab.agent` 运行单个 Agent，`team` 建立成员和调度关系，`workflow` 运行调用方定义的 Python 编排。三种入口都围绕 Session 执行模型与工具交互。Session 持有消息、计数与阶段，environment 指向工具操作的真实工作区。
+1. 组装配置、会话（Session）和执行环境。
+2. 把消息和工具说明发给模型。
+3. 模型返回普通回答，或者返回工具调用。
+4. 如果是工具调用：校验参数、检查权限、执行工具。
+5. 工具结果放回会话，进入下一次模型请求，回到第 2 步。
+6. 模型给出最终回答，或触发限制时结束。
 
-上下文由有序片段构成。角色采用 profile 时，先加入 profile 的基础提示词，再加入角色职责。团队信息、技能目录和项目概览按适用条件加入，派发任务作为启动用户内容。工具 schema 单独传给模型服务，其中描述工具名称、参数与用途。保存的完整会话与经过长度处理的请求视图承担不同职责。
+OC 名词：
 
-## 模型怎样发起真实操作
+- Session：一次 Agent 对话的状态对象，持有消息、计数和阶段，可保存和恢复。见 [Session 怎样保存进度和继续执行](session-state-lifecycle.md)。
+- environment：工具操作的真实工作区，比如本机目录或容器。文件工具和 Bash 都在这里执行，不一定是宿主机。
 
-模型可以返回普通内容，也可以返回工具调用。收到调用后，运行时先解析名称和 JSON 参数，按工具 schema 校验，再从当前角色可用工具中查找实现。执行时传入带 Agent 身份与环境的运行信息，文件工具读取对应工作区，Bash 在对应环境中启动进程。
-
-提示词说明任务与约束，`tool_choice` 引导当前请求选择工具。配置的工具集合决定可调用能力，运行时检查操作权限，执行环境决定文件、进程和网络的实际范围。只读分析任务可以直接使用读取工具。
+## 动手看一次：只读分析 README
 
 ```python
 import asyncio
@@ -55,9 +64,9 @@ from opencollab.tools import builtin_tools
 async def main():
     result = await OpenCollab(".").agent(
         "读取 README.md，概括项目目标，并引用文件中的一段短句。",
-        tools=builtin_tools("file_read"),
+        tools=builtin_tools("file_read"),  # 只给读取工具
         budget=30_000,
-        artifacts="artifacts/readme-inspection-001",
+        artifacts="artifacts/readme-inspection-001",  # 需要新建或为空
     )
     print(result.status, result.reason)
     print(result.output)
@@ -66,12 +75,77 @@ async def main():
 asyncio.run(main())
 ```
 
-示例中的产物目录需要新建或为空。运行后可以在轨迹中确认模型请求提供了 `file_read`，随后查找工具调用及实际返回片段，再对应最终回答中的引用。这些记录展示了模型选择工具、读取内容和组织回答的过程。项目里没有该文件时，读取结果也会为模型提供可见的错误。
+运行后，打开产物目录里的轨迹，按顺序检查：
 
-## 工具结果与任务结束
+1. 模型请求里提供了 `file_read`。
+2. 找到对应的工具调用和实际返回的片段。
+3. 对照最终回答里的引用，确认来自这个片段。
 
-工具输出与原工具调用配对保存，然后进入后续请求。派发子成员会产生延迟结果，Session 等整批关联事件的结果到齐后继续。消息交接则会在接收方后续回合加入用户消息，具体见 [Session 如何保存进度并继续执行](session-state-lifecycle.md)。
+这样就能看到"模型选工具、读内容、组织回答"的全过程。如果项目里没有 README.md，读取结果会返回一个模型能看到的错误。
 
-模型给出最终回答时，Session 可以进入 `DONE`。受预算、步数或其他运行限制影响时，会进入 `STOPPED` 并保留原因。未处理故障进入 `ERROR`。SDK 再将这些状态整理为运行结果。验收任务时，查看实际文件、命令结果或外部系统状态。修改交付见 [把候选结果采纳到交付目录](../isolation/candidate-delivery.md)，执行权限见 [管理终端权限并确认命令结果](../extensions/shell-permissions-execution.md)。
+## 三种入口
 
-实现路径见[会话执行](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/session_run.py)、[工具执行](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution.py)和[上下文设计](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md)。
+| 入口 | 适合 |
+| --- | --- |
+| `OpenCollab.agent` | 运行单个 Agent |
+| `team` | 建立多个成员和调度关系 |
+| `workflow` | 运行你自己定义的 Python 编排 |
+
+三种入口都是围绕 Session 执行模型和工具的交互。
+
+## 发给模型的内容由什么组成
+
+上下文由几段内容按顺序拼起来：
+
+1. 如果角色用了 profile，先加 profile 的基础提示词。
+2. 再加角色职责。
+3. 团队信息、技能目录和项目概览，满足条件时才加入。
+4. 派发来的任务，作为开头的用户内容。
+
+工具 schema 单独传给模型服务，不拼进提示词。
+
+会话里保存的是完整记录。发给模型的请求是经过长度处理的版本。两者用途不同。
+
+## 模型怎样发起真实操作
+
+收到工具调用后，运行时依次做这些事：
+
+1. 解析工具名称和 JSON 参数。
+2. 按工具 schema 校验参数。
+3. 在当前角色可用的工具里找到对应实现。
+4. 执行，并传入带 Agent 身份和环境的运行信息。文件工具读取对应工作区，Bash 在对应环境里启动进程。
+
+## Agent 能做什么，由谁决定
+
+| 控制点 | 决定什么 |
+| --- | --- |
+| 提示词 | 说明任务和约束 |
+| `tool_choice` | 引导本次请求选择工具 |
+| 配置的工具集合 | 能调用哪些能力 |
+| 运行时权限检查 | 操作是否允许 |
+| 执行环境 | 文件、进程和网络的实际范围 |
+
+只读分析任务直接给读取工具就够了。
+
+## 进阶：工具结果怎样回到对话，任务怎样结束
+
+工具输出会和原来的工具调用配对保存，再进入后续请求。
+
+- 派发子成员会产生"延迟结果"。Session 会等这一批关联结果全部到齐再继续。
+- 成员之间的消息交接，会在接收方后面的回合里作为用户消息加入。详见 [Session 怎样保存进度和继续执行](session-state-lifecycle.md)。
+
+结束时 Session 进入以下状态之一，SDK 再把它整理成运行结果：
+
+| 状态 | 什么时候 |
+| --- | --- |
+| `DONE` | 模型给出最终回答 |
+| `STOPPED` | 受预算、步数或其他运行限制影响，保留原因 |
+| `ERROR` | 出现未处理的故障 |
+
+验收任务时，请检查实际文件、命令结果或外部系统状态，不要只看状态。
+
+## 下一步读什么
+
+- 修改怎样交付：[把候选结果采纳到交付目录](../isolation/candidate-delivery.md)
+- 命令权限：[管理终端权限并确认命令结果](../extensions/shell-permissions-execution.md)
+- 源码：[会话执行](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/session_run.py)、[工具执行](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution.py)、[上下文设计](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md)

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>使用 Weave 分组执行并检查交付 · OpenCollab Wiki</title>
-<meta name="description" content="把任务组织为有依赖的工作组，经过实际检查和有限修复后读取交付结果。">
+<title>用 Weave 分组接力完成任务并检查交付 · OpenCollab Wiki</title>
+<meta name="description" content="Weave 是内置 Workflow：把任务拆成有依赖的组，每组开一个新会话在同一工作区接力，用真实检查命令判定交付，失败时做有限轮修复。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/weave-workflow/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,14 +35,15 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">Wiki 首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details open><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="index.html" aria-current="page">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details open><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="index.html" aria-current="page">用 Weave 分组接力完成任务并检查交付</a><a href="../reconstruct-workflow/index.html">用 Reconstruct 从输入输出反推程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="../report-problem-and-request-help/index.html">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
-<h1 id="使用-weave-分组执行并检查交付">使用 Weave 分组执行并检查交付</h1>
-<p>Weave 把任务分成有顺序关系的组，每组使用新 Agent 会话，在同一个工作区继续工作。后续组能读取前组的文件改动，会话历史则重新开始。每组获得一定的 token、步数与时间份额，实际执行的检查决定交接和最终交付结果，失败检查可以触发有限轮修复。</p>
-<h2 id="从可执行检查开始">从可执行检查开始</h2>
-<p>以下完整 SDK 脚本准备一个真实检查文件，再让 Weave 创建 <code>greeting.py</code>。把工作区和产物目录改成自己的路径，工作区会由脚本创建。</p>
+<h1 id="用-weave-分组接力完成任务并检查交付">用 Weave 分组接力完成任务并检查交付</h1>
+<p>Weave 是 OC 内置的 Workflow，名称 <code>weave</code>。它把任务拆成有先后依赖的组（group），每组开一个全新的 Agent 会话，在同一个工作区里接着干：后面的组能看到前面组改过的文件，但不继承会话历史。每组按权重分到一份 token、步数和时间。</p>
+<p>是否交付成功不看模型自己的报告，而看你给的检查命令实际执行的结果。检查失败时，Weave 会做有限轮修复。适合任务能拆成几段、并且有可执行检查的场景。</p>
+<h2 id="最小可运行例子">最小可运行例子</h2>
+<p>下面的 SDK 脚本先写好一个检查文件，再让 Weave 分两组创建 <code>greeting.py</code>。把工作区和产物目录换成你自己的路径即可，工作区由脚本创建。</p>
 <pre><code class="language-python">import asyncio
 import shlex
 import sys
@@ -95,17 +96,112 @@ async def main():
 
 asyncio.run(main())
 </code></pre>
-<p>CLI 可以把同样的对象写入 <code>flow.json</code>，再传入 <code>--args</code>。shell 中可用 <code>--args &quot;$(cat flow.json)&quot;</code> 读取文件内容，命令本身从 <code>--workspace</code> 指定的目录执行。检查命令应使用具备任务运行依赖的解释器。</p>
-<h2 id="组依赖与资源">组、依赖与资源</h2>
-<p>每组必填唯一的 <code>id</code> 和非空 <code>prompt</code>。<code>weight</code> 默认 1，影响份额分配。<code>dependencies</code> 引用前置组 id 或 target id，<code>resources</code> 描述共享文件或其他受影响资源。<code>targets</code> 默认使用组 id，用于检查与修复定位。</p>
-<p><code>plan_weave_groups</code> 可按依赖安排组，把依赖环中的组并入同一个会话，再将依赖表示为 target id。需要同时考虑几处相互关联改动时，可以通过这些字段表达关系。工作流按规划后的组顺序运行，新会话从工作区读取前组成果。</p>
-<h2 id="检查和有限修复">检查和有限修复</h2>
-<p>原生检查可识别 pytest、Go 与 Django 的解析式测试结果。命令探测可像示例一样指定 <code>expected_output</code>，并把断言放在成功标记之前。Weave 同时要求检查 <code>ok</code> 与 <code>executed</code>，<code>delivery_ok</code> 反映最终执行的检查是否通过。</p>
-<p><code>check_commands</code> 的每项可以是测试命令字符串，也可以是含 <code>command</code> 与 <code>expected_output</code> 的对象。后一种方式按输出子串匹配，还要求退出码为零、执行完成且输出捕获完整。检查为空、只显示帮助、只收集测试或普通命令缺少解析式测试证据时，结果保留为未验证。默认命令适配器在每次组检查和最终检查时执行所列的全部命令，自定义适配器可以使用传入的 <code>targets</code> 缩小验证范围。</p>
-<p><code>max_repair_rounds</code> 限制修复轮数，默认 3，<code>stagnant_round_limit</code> 默认 2。检查返回的 <code>repair_targets</code> 标明后续修复对象，<code>progress_markers</code> 表达可观察进展。共享额度、时间和实际授权也会限制能继续进行的工作。</p>
-<p>SDK 的 <code>budget</code> 是实际硬额度来源。<code>config.main_budget</code> 可设初始软额度，经过已完成编辑和通过检查的证据，可在授权范围内扩展。<code>config.output_reserve_tokens</code> 为响应保留决策空间，单次模型输出上限通过模型配置的 <code>max_output_tokens</code> 设置。</p>
-<h2 id="配置资源分配">配置资源分配</h2>
-<p>CLI 的 JSON <code>config</code> 字段与 Python <code>WeaveConfig(...)</code> 采用相同字段。可选上限默认 <code>None</code>，运行时结合 SDK 剩余额度和期限计算实际份额。先设置总预算与完成期限，再按任务耗时为检查和修复留下空间。</p>
+<p>要点：</p>
+<ul>
+<li>第二组的 <code>dependencies</code> 写了 <code>function</code>，所以排在第一组之后。</li>
+<li>两条检查命令都要通过，<code>delivery_ok</code> 才为真。</li>
+<li>检查命令要用装好任务运行依赖的解释器，示例用的是 <code>sys.executable</code>。</li>
+</ul>
+<p>用 CLI 运行：把同样的对象写进 <code>flow.json</code>，用 <code>--args &quot;$(cat flow.json)&quot;</code> 传入。检查命令在 <code>--workspace</code> 指定的目录下执行。</p>
+<h2 id="定义组">定义组</h2>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>必填</th>
+<th>默认值</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>是</td>
+<td>无</td>
+<td>组的唯一标识</td>
+</tr>
+<tr>
+<td><code>prompt</code></td>
+<td>是，非空</td>
+<td>无</td>
+<td>这一组的任务说明</td>
+</tr>
+<tr>
+<td><code>weight</code></td>
+<td>否</td>
+<td>1</td>
+<td>分配份额时的权重</td>
+</tr>
+<tr>
+<td><code>dependencies</code></td>
+<td>否</td>
+<td>无</td>
+<td>前置组 id 或 target id</td>
+</tr>
+<tr>
+<td><code>resources</code></td>
+<td>否</td>
+<td>无</td>
+<td>会被影响的共享文件或其他资源</td>
+</tr>
+<tr>
+<td><code>targets</code></td>
+<td>否</td>
+<td>组 id</td>
+<td>检查和修复时用来定位</td>
+</tr>
+</tbody>
+</table>
+<p><code>plan_weave_groups</code> 可以按依赖安排组的顺序。如果组之间有依赖环，环里的组会合并到同一个会话里，依赖改用 target id 表示。几处改动相互关联、需要一起考虑时，可以用这些字段表达关系。</p>
+<p>工作流按规划好的顺序运行组。新会话从工作区读取前面组的成果。</p>
+<h2 id="检查与修复">检查与修复</h2>
+<h3 id="检查命令怎么写">检查命令怎么写</h3>
+<p><code>check_commands</code> 每一项可以是：</p>
+<ul>
+<li>一个测试命令字符串。原生能识别 pytest、Go 和 Django 的测试结果。</li>
+<li>一个含 <code>command</code> 和 <code>expected_output</code> 的对象。按输出子串匹配，同时要求退出码为零、执行完成、输出完整捕获。建议像示例那样把断言放在成功标记之前打印。</li>
+</ul>
+<p>以下情况结果会是“未验证”，不算通过：</p>
+<ul>
+<li>检查为空</li>
+<li>命令只显示了帮助</li>
+<li>只收集了测试没有执行</li>
+<li>普通命令缺少可解析的测试证据</li>
+</ul>
+<p>Weave 要求检查同时满足 <code>ok</code> 和 <code>executed</code>。<code>delivery_ok</code> 反映最终执行的检查是否通过。</p>
+<p>默认的命令适配器在每次组检查和最终检查时，都会执行列出的全部命令。自定义适配器可以用传入的 <code>targets</code> 缩小验证范围。</p>
+<h3 id="修复轮数">修复轮数</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>默认值</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>max_repair_rounds</code></td>
+<td>3</td>
+<td>最多修复几轮。设为 0 时跳过修复，但保留最终检查</td>
+</tr>
+<tr>
+<td><code>stagnant_round_limit</code></td>
+<td>2</td>
+<td>连续几轮没有可观察进展就停止</td>
+</tr>
+</tbody>
+</table>
+<p>检查返回的 <code>repair_targets</code> 指明接下来修哪里，<code>progress_markers</code> 表示可观察到的进展。共享额度、时间和实际授权也会限制还能继续多少工作。</p>
+<h2 id="预算">预算</h2>
+<ul>
+<li>SDK 的 <code>budget</code> 是真正的硬上限。</li>
+<li><code>config.main_budget</code> 设一个初始软额度。有已完成的编辑和通过的检查作为证据时，软额度可以在授权范围内扩展。</li>
+<li><code>config.output_reserve_tokens</code> 为模型响应预留决策空间。单次模型输出上限要在模型配置的 <code>max_output_tokens</code> 里设。</li>
+<li><code>config.max_steps</code> 是主阶段各组累计的步数分配；SDK 的 <code>max_steps</code> 是各角色继承的默认步数。两者范围不同，分别设置。</li>
+</ul>
+<h2 id="完整配置">完整配置</h2>
+<p>CLI 的 JSON <code>config</code> 字段和 Python 的 <code>WeaveConfig(...)</code> 字段相同。可选上限默认是 <code>None</code>，运行时会结合 SDK 剩余额度和期限算出实际份额。建议先定总预算和完成期限，再按任务耗时给检查和修复留出空间。</p>
 <pre><code class="language-json">{
   &quot;config&quot;: {
     &quot;main_budget&quot;: 18000,
@@ -214,11 +310,104 @@ asyncio.run(main())
 </tr>
 </tbody>
 </table>
-<p>次数和 token 字段采用整数，比例字段在大于 0 到 1 的范围内，时间采用秒。允许为零的预留和最小时间字段可关闭对应预留，<code>max_repair_rounds=0</code> 会保留最终检查并跳过修复。<code>config.max_steps</code> 分配主阶段累计步数，SDK <code>max_steps</code> 则是各角色继承的默认步数，两者应按各自范围设置。</p>
-<h2 id="应用检查与继续执行">应用检查与继续执行</h2>
-<p>有自己的验证服务时，在包装 Workflow 内调用 <code>run_weave</code>，传入 <code>WeaveGroup</code>、<code>WeaveConfig</code> 和自定义 <code>WeaveAdapter</code>。覆盖 <code>verify(ctx, targets, seconds)</code> 后返回 <code>WeaveCheck</code>，其中保留是否执行、是否通过、报告、修复对象及进展标记。这样的适配器可以把应用的真实行为检查接进分组流程。</p>
-<p><code>save_state(data)</code> 会收到独立的 JSON 状态快照，调用方可以持久化它。继续时把快照作为 JSON 输入 <code>state</code>，或构造 <code>WeaveState(saved_snapshot)</code> 传给 <code>run_weave</code>，并在 SDK 复用保存的 <code>run_id</code>。已生成组从检查处继续，已经检查的组保留生成结果，消耗过的修复轮数继续计数。保存组字段应与本次提供的组保持一致，这套继续能力依靠显式状态和相同的实际工作区成果。</p>
-<p>下面的包装流程沿用原生命令检查，并把状态写到调用方指定的宿主文件。<code>launch</code> 接受与前面示例相同的 <code>groups</code> 和 <code>check_commands</code>，再次传入同一检查点时会恢复原 <code>run_id</code>。</p>
+<p>取值规则：</p>
+<ul>
+<li>次数和 token 字段是整数。</li>
+<li>比例字段取大于 0 且不超过 1 的值。</li>
+<li>时间单位是秒。</li>
+<li>允许为零的预留和最小时间字段，设为 0 就关闭对应预留。</li>
+</ul>
+<h2 id="读取交付结果">读取交付结果</h2>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code></td>
+<td><code>completed</code>、<code>failed</code> 或 <code>unverified</code>，由最终执行的检查决定</td>
+</tr>
+<tr>
+<td><code>delivery_ok</code></td>
+<td>最终执行的检查是否通过</td>
+</tr>
+<tr>
+<td><code>groups</code></td>
+<td>每组的生成和检查结果</td>
+</tr>
+<tr>
+<td><code>verification</code></td>
+<td>最终检查报告</td>
+</tr>
+<tr>
+<td><code>repair_rounds</code></td>
+<td>每轮修复的结果和进展</td>
+</tr>
+<tr>
+<td><code>main_stop_reason</code>、<code>repair_stop_reason</code>、<code>unstarted_ids</code></td>
+<td>资源在哪里耗尽，还有哪些目标没开始</td>
+</tr>
+<tr>
+<td><code>total_tokens</code>、<code>elapsed_seconds</code></td>
+<td>累计值，包含从状态快照继续之前的记录</td>
+</tr>
+<tr>
+<td><code>state</code></td>
+<td>可用于下一次恢复</td>
+</tr>
+</tbody>
+</table>
+<h2 id="进阶接入自己的检查">进阶：接入自己的检查</h2>
+<p>如果你有自己的验证服务，在包装 Workflow 里调用 <code>run_weave</code>，传入 <code>WeaveGroup</code>、<code>WeaveConfig</code> 和自定义的 <code>WeaveAdapter</code>。</p>
+<p>覆盖 <code>verify(ctx, targets, seconds)</code>，返回 <code>WeaveCheck</code>。<code>WeaveCheck</code> 包含：是否执行、是否通过、报告、修复对象和进展标记。这样就能把应用的真实行为检查接进分组流程。</p>
+<p>适配器还有这些可覆盖的钩子：</p>
+<table>
+<thead>
+<tr>
+<th>钩子</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>save_state(data)</code></td>
+<td>收到独立的 JSON 状态快照，可自行持久化</td>
+</tr>
+<tr>
+<td><code>on_update(kind, state, data)</code>、<code>on_event(phase, event)</code></td>
+<td>同步回调，适合保存短记录</td>
+</tr>
+<tr>
+<td><code>source_snapshot()</code>、<code>progress()</code></td>
+<td>用自定义工具时，报告文件变化和通过的检查。Weave 据此重新检查受影响的组并扩展软额度</td>
+</tr>
+<tr>
+<td><code>group_prompt</code>、<code>repair_prompt</code>、<code>improved</code></td>
+<td>调整任务说明、修复说明和进展比较方式</td>
+</tr>
+<tr>
+<td><code>affects_prior_groups</code></td>
+<td>声明某些变化需要扩大对先前组的检查</td>
+</tr>
+</tbody>
+</table>
+<h2 id="进阶中断后继续">进阶：中断后继续</h2>
+<p>Weave 能从显式的状态快照继续，前提是：同一个工作区、相同的组定义、复用原来的 <code>run_id</code>。</p>
+<p>继续的方式有两种：</p>
+<ul>
+<li>把快照作为 JSON 输入 <code>state</code> 传入。</li>
+<li>构造 <code>WeaveState(saved_snapshot)</code> 传给 <code>run_weave</code>，并在 SDK 里复用保存的 <code>run_id</code>。</li>
+</ul>
+<p>继续时的行为：</p>
+<ul>
+<li>已经生成的组，从检查那一步继续。</li>
+<li>已经检查过的组，保留生成结果。</li>
+<li>已用掉的修复轮数继续累计。</li>
+</ul>
+<p>下面的包装流程沿用原生命令检查，把状态写到调用方指定的宿主文件。<code>launch</code> 接受和前面示例相同的 <code>groups</code> 与 <code>check_commands</code>。再次传入同一个检查点时，会恢复原来的 <code>run_id</code>。</p>
 <pre><code class="language-python">import json
 from pathlib import Path
 from opencollab import OpenCollab
@@ -254,18 +443,16 @@ async def launch(workspace, checkpoint, groups, check_commands):
     )
     return result.raise_for_status().output
 </code></pre>
-<p>检查点的父目录应已存在，恢复时使用原工作区中已经生成的文件。同步 <code>save_state</code>、<code>on_update(kind, state, data)</code> 与 <code>on_event(phase, event)</code> 适合保存短记录。提供自定义工具时，通过适配器的 <code>source_snapshot()</code> 和 <code>progress()</code> 报告文件变化及通过的检查，Weave 据此重新检查受影响的组并扩展软额度。<code>group_prompt</code>、<code>repair_prompt</code> 和 <code>improved</code> 可分别调整任务说明、修复说明及进展比较，<code>affects_prior_groups</code> 可声明某些变化需要扩大对先前组的检查。</p>
-<h2 id="读取交付结果">读取交付结果</h2>
-<p><code>output.status</code> 为 <code>completed</code>、<code>failed</code> 或 <code>unverified</code>，由最终执行的检查决定。<code>groups</code> 保存每组生成与检查结果，<code>verification</code> 保存最终报告，<code>repair_rounds</code> 保存各轮结果与进展。<code>main_stop_reason</code>、<code>repair_stop_reason</code> 和 <code>unstarted_ids</code> 说明资源在哪里停止、还有哪些目标尚未启动。<code>total_tokens</code> 与 <code>elapsed_seconds</code> 包含显式状态继续的累计记录，<code>state</code> 可用于下一次恢复。</p>
+<p>检查点的父目录要事先存在。恢复时会用原工作区里已经生成的文件。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/weave.md#L3">docs/weave.md</a>。</p>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/builtin_workflows/weave.py#L76">WeaveConfig 与 WeaveAdapter</a> 给出全部配置字段、验证回调和状态保存方式。<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/builtin_workflows/_weave_execution.py#L87">命令检查实现</a> 定义测试证据、输出匹配和未验证结果。</p>
 <h2 id="相关章节">相关章节</h2>
-<p><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a>、<a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a>、<a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a>、<a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a>、<a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a>、<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a>。</p>
+<p><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a>、<a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a>、<a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a>、<a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a>、<a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a>、<a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a>。</p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/weave-workflow.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E5%8F%AF%E6%89%A7%E8%A1%8C%E6%A3%80%E6%9F%A5%E5%BC%80%E5%A7%8B">从可执行检查开始</a><a href="#%E7%BB%84%E4%BE%9D%E8%B5%96%E4%B8%8E%E8%B5%84%E6%BA%90">组、依赖与资源</a><a href="#%E6%A3%80%E6%9F%A5%E5%92%8C%E6%9C%89%E9%99%90%E4%BF%AE%E5%A4%8D">检查和有限修复</a><a href="#%E9%85%8D%E7%BD%AE%E8%B5%84%E6%BA%90%E5%88%86%E9%85%8D">配置资源分配</a><a href="#%E5%BA%94%E7%94%A8%E6%A3%80%E6%9F%A5%E4%B8%8E%E7%BB%A7%E7%BB%AD%E6%89%A7%E8%A1%8C">应用检查与继续执行</a><a href="#%E8%AF%BB%E5%8F%96%E4%BA%A4%E4%BB%98%E7%BB%93%E6%9E%9C">读取交付结果</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%9C%80%E5%B0%8F%E5%8F%AF%E8%BF%90%E8%A1%8C%E4%BE%8B%E5%AD%90">最小可运行例子</a><a href="#%E5%AE%9A%E4%B9%89%E7%BB%84">定义组</a><a href="#%E6%A3%80%E6%9F%A5%E4%B8%8E%E4%BF%AE%E5%A4%8D">检查与修复</a><a href="#%E6%A3%80%E6%9F%A5%E5%91%BD%E4%BB%A4%E6%80%8E%E4%B9%88%E5%86%99">检查命令怎么写</a><a href="#%E4%BF%AE%E5%A4%8D%E8%BD%AE%E6%95%B0">修复轮数</a><a href="#%E9%A2%84%E7%AE%97">预算</a><a href="#%E5%AE%8C%E6%95%B4%E9%85%8D%E7%BD%AE">完整配置</a><a href="#%E8%AF%BB%E5%8F%96%E4%BA%A4%E4%BB%98%E7%BB%93%E6%9E%9C">读取交付结果</a><a href="#%E8%BF%9B%E9%98%B6%E6%8E%A5%E5%85%A5%E8%87%AA%E5%B7%B1%E7%9A%84%E6%A3%80%E6%9F%A5">进阶：接入自己的检查</a><a href="#%E8%BF%9B%E9%98%B6%E4%B8%AD%E6%96%AD%E5%90%8E%E7%BB%A7%E7%BB%AD">进阶：中断后继续</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>
 </body>
 </html>

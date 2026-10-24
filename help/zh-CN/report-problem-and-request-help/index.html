@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>反馈问题、请求帮助与提交改进建议 · OpenCollab Wiki</title>
-<meta name="description" content="选择正确反馈入口，用最小复现和必要记录让维护者理解遇到的问题。">
+<title>遇到问题怎么反馈、求助或提建议 · OpenCollab Wiki</title>
+<meta name="description" content="选对 GitHub 反馈入口，附上最小复现和脱敏后的记录，让维护者能快速重现你遇到的问题。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/report-problem-and-request-help/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,18 +35,69 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">Wiki 首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details open><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="index.html" aria-current="page">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="../weave-workflow/index.html">用 Weave 分组接力完成任务并检查交付</a><a href="../reconstruct-workflow/index.html">用 Reconstruct 从输入输出反推程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details open><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="index.html" aria-current="page">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">架构、集成与维护</p>
-<h1 id="反馈问题请求帮助与提交改进建议">反馈问题、请求帮助与提交改进建议</h1>
-<p>遇到报错可以提交 Bug report，配置或用法疑问可以选择 Question or support，需要新能力时使用 Feature request。反馈中先写想完成的任务、预期结果和实际观察，再提供足以重复问题的最小命令或 SDK 调用。疑似安全漏洞通过私密安全报告入口提交。</p>
-<h2 id="选择反馈入口">选择反馈入口</h2>
-<p><a href="https://github.com/RISE-X-Lab/OpenCollab/issues/new/choose">GitHub Issues 模板选择页</a>提供这三类入口。Bug report 适合可观察的错误行为，使用问题适合解释目标与卡住的位置，功能建议应描述现有工作中具体遇到的困难，以及建议能力怎样改善它。</p>
-<p>安全问题使用 <a href="https://github.com/RISE-X-Lab/OpenCollab/security/advisories/new">Security Advisories 私密报告</a>。框架涉及模型生成代码执行、凭据和容器资源，报告应说明触发条件、影响范围与复现材料。仓库安全策略中给出的目标是在 72 小时内确认收到。</p>
-<h2 id="让维护者复现同一个问题">让维护者复现同一个问题</h2>
-<p>Bug 模板需要实际行为、复现步骤、编排模式和调用接口。补充模型与 provider、包版本或 Git 提交，能帮助区分配置问题与执行路径差异。命令应包含关键选项，SDK 示例保留触发错误的最小函数及参数，团队文件则保留相关角色、工具与拓扑。</p>
-<p>下面是一份补丁交付问题的英文反馈示例。提交时填写实际版本、任务和观察结果。</p>
+<h1 id="遇到问题怎么反馈求助或提建议">遇到问题怎么反馈、求助或提建议</h1>
+<p>OC 的反馈走 GitHub Issues，有三个模板：Bug report、Question or support、Feature request。安全漏洞走私密的 Security Advisories。写法很简单：先写目标、预期和实际观察，再给最小复现，附上 <code>run_id</code> 等运行记录，提交前脱敏。下面按步骤说明。</p>
+<h2 id="第一步选对入口">第一步：选对入口</h2>
+<table>
+<thead>
+<tr>
+<th>你的情况</th>
+<th>选哪个</th>
+<th>入口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>看到了错误行为或报错</td>
+<td>Bug report</td>
+<td><a href="https://github.com/RISE-X-Lab/OpenCollab/issues/new/choose">Issues 模板选择页</a></td>
+</tr>
+<tr>
+<td>不知道怎么配置、怎么用</td>
+<td>Question or support</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>希望增加新能力</td>
+<td>Feature request</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>疑似安全漏洞</td>
+<td>私密安全报告</td>
+<td><a href="https://github.com/RISE-X-Lab/OpenCollab/security/advisories/new">Security Advisories</a></td>
+</tr>
+</tbody>
+</table>
+<p>各类写法要点：</p>
+<ul>
+<li>Bug report：写清可以观察到的错误行为。</li>
+<li>使用问题：写清你的目标，以及卡在哪一步。</li>
+<li>功能建议：写清你现在工作中遇到的具体困难，以及这个能力会怎样改善它。</li>
+<li>安全问题：不要发公开 issue。框架会执行模型生成的代码，也涉及凭据和容器资源，所以要走私密入口。报告里说明触发条件、影响范围和复现材料。仓库安全策略给出的目标是 72 小时内确认收到。</li>
+</ul>
+<h2 id="第二步按这个顺序写问题">第二步：按这个顺序写问题</h2>
+<ol>
+<li>想完成什么任务（Goal）。</li>
+<li>预期结果（Expected behavior）。</li>
+<li>实际看到了什么（Observed behavior）。</li>
+<li>最小复现：能重复问题的最短命令或 SDK 调用（Reproduction）。</li>
+<li>环境信息：编排模式、调用接口、模型与 provider、包版本或 Git 提交（Environment）。</li>
+<li>证据：脱敏后的工具结果、diff、traceback（Evidence）。</li>
+</ol>
+<p>&quot;最小复现&quot;指去掉无关内容后，仍能触发问题的最小例子。具体来说：</p>
+<ul>
+<li>命令：保留关键选项。</li>
+<li>SDK 示例：保留触发错误的最小函数和参数。</li>
+<li>团队文件：保留相关的角色、工具与拓扑。</li>
+<li>项目：一个小项目加一次工具操作就够，方便维护者直接执行。</li>
+</ul>
+<p>补充模型、provider、包版本或 Git 提交，能帮维护者区分&quot;配置问题&quot;和&quot;执行路径不同&quot;。</p>
+<p>下面是一份补丁交付问题的英文反馈示例。提交时换成你的实际版本、任务和观察结果。</p>
 <pre><code class="language-text">Goal
 Apply a completed coder's changes to the delivery workspace.
 
@@ -66,16 +117,62 @@ Team through Python SDK, with the exact package version and commit attached.
 Evidence
 Include the sanitized tool result, final diff, and relevant traceback.
 </code></pre>
-<p>描述观察时，写明哪个文件保留旧内容、工具返回什么、命令退出码是多少。最小复现可以保留一个小项目和一次工具操作，使维护者直接执行。</p>
-<h2 id="选择并处理相关记录">选择并处理相关记录</h2>
-<p>运行结果中的 <code>status</code>、<code>reason</code>、<code>agent_failures</code> 和 <code>metrics[&quot;run_id&quot;]</code> 可以关联问题。产物目录、清单和轨迹能展示调用顺序，保存会话能帮助理解当时模型看到的任务。配置问题可以附上生效的配置字段和相关 CLI 参数。</p>
-<p>提交前应移除 API key、授权头、带凭据的 URL、私有仓库内容与敏感日志。完整轨迹可能包含任务文件和模型回答，分享时先检查实际内容。保留错误类型、调用顺序、必要参数和相关日志片段，让维护者能够还原失败过程。</p>
-<p>收到修复版本后，用原复现步骤再次执行，检查原先出错的文件或操作，并将观察补充到同一问题。说明使用的修复提交、实际执行命令和最终结果，可以帮助维护者判断问题是否得到解决。</p>
-<p>模板字段见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/bug_report.yml">Bug report</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/question.yml">使用问题</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/feature_request.yml">功能建议</a>。安全处理见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/SECURITY.md">安全策略</a>，相关记录的读取方式见 <a href="../run-results/index.html">读取运行结果与判断任务是否完成</a> 和 <a href="../trace-and-events/index.html">查看 Agent 做了什么</a>。</p>
+<p>描述&quot;实际看到了什么&quot;时要具体：哪个文件还是旧内容，工具返回了什么，命令退出码是多少。</p>
+<h2 id="第三步附上有用的记录">第三步：附上有用的记录</h2>
+<p>这些信息能帮维护者定位问题：</p>
+<table>
+<thead>
+<tr>
+<th>记录</th>
+<th>有什么用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>运行结果里的 <code>status</code>、<code>reason</code>、<code>agent_failures</code>、<code>metrics[&quot;run_id&quot;]</code></td>
+<td>关联到具体的一次运行</td>
+</tr>
+<tr>
+<td>产物目录、清单和轨迹</td>
+<td>展示调用顺序</td>
+</tr>
+<tr>
+<td>保存的会话</td>
+<td>看当时模型收到的任务</td>
+</tr>
+<tr>
+<td>生效的配置字段和相关 CLI 参数</td>
+<td>排查配置问题</td>
+</tr>
+</tbody>
+</table>
+<h2 id="第四步提交前脱敏">第四步：提交前脱敏</h2>
+<p>提交前删掉这些内容：</p>
+<ul>
+<li>API key</li>
+<li>授权头</li>
+<li>带凭据的 URL</li>
+<li>私有仓库内容</li>
+<li>敏感日志</li>
+</ul>
+<p>完整轨迹可能包含任务文件和模型回答，分享前先打开检查一遍。保留错误类型、调用顺序、必要参数和相关日志片段，让维护者仍能还原失败过程。</p>
+<h2 id="收到修复之后">收到修复之后</h2>
+<ol>
+<li>用原来的复现步骤再执行一次。</li>
+<li>检查原先出错的文件或操作。</li>
+<li>在同一个 issue 下补充：用了哪个修复提交、实际执行的命令、最终结果。</li>
+</ol>
+<p>这样维护者能判断问题是否真正解决。</p>
+<h2 id="参考">参考</h2>
+<ul>
+<li>模板字段：<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/bug_report.yml">Bug report</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/question.yml">使用问题</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/feature_request.yml">功能建议</a></li>
+<li>安全处理：<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/SECURITY.md">安全策略</a></li>
+<li>怎么读这些记录：<a href="../run-results/index.html">读取运行结果与判断任务是否完成</a>、<a href="../trace-and-events/index.html">查看 Agent 做了什么</a></li>
+</ul>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/report-problem-and-request-help.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E9%80%89%E6%8B%A9%E5%8F%8D%E9%A6%88%E5%85%A5%E5%8F%A3">选择反馈入口</a><a href="#%E8%AE%A9%E7%BB%B4%E6%8A%A4%E8%80%85%E5%A4%8D%E7%8E%B0%E5%90%8C%E4%B8%80%E4%B8%AA%E9%97%AE%E9%A2%98">让维护者复现同一个问题</a><a href="#%E9%80%89%E6%8B%A9%E5%B9%B6%E5%A4%84%E7%90%86%E7%9B%B8%E5%85%B3%E8%AE%B0%E5%BD%95">选择并处理相关记录</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%AC%AC%E4%B8%80%E6%AD%A5%E9%80%89%E5%AF%B9%E5%85%A5%E5%8F%A3">第一步：选对入口</a><a href="#%E7%AC%AC%E4%BA%8C%E6%AD%A5%E6%8C%89%E8%BF%99%E4%B8%AA%E9%A1%BA%E5%BA%8F%E5%86%99%E9%97%AE%E9%A2%98">第二步：按这个顺序写问题</a><a href="#%E7%AC%AC%E4%B8%89%E6%AD%A5%E9%99%84%E4%B8%8A%E6%9C%89%E7%94%A8%E7%9A%84%E8%AE%B0%E5%BD%95">第三步：附上有用的记录</a><a href="#%E7%AC%AC%E5%9B%9B%E6%AD%A5%E6%8F%90%E4%BA%A4%E5%89%8D%E8%84%B1%E6%95%8F">第四步：提交前脱敏</a><a href="#%E6%94%B6%E5%88%B0%E4%BF%AE%E5%A4%8D%E4%B9%8B%E5%90%8E">收到修复之后</a><a href="#%E5%8F%82%E8%80%83">参考</a></aside>
 </div>
 </body>
 </html>

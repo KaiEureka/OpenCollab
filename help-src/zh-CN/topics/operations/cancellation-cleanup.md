@@ -1,9 +1,9 @@
 ---
 {
   "id": "cancellation-cleanup",
-  "title": "中断任务与检查资源清理",
+  "title": "停止任务并确认清理完成",
   "category": "operations",
-  "summary": "从终端或 Python 中停止正在运行的任务，并确认部分工作、用量和环境的最终状态。",
+  "summary": "用 Ctrl+C、task.cancel() 或 timeout 停止运行，再通过 metrics 中的清理字段确认会话、环境和用量已经收尾。",
   "aliases": [
     "取消任务",
     "停止 agent",
@@ -28,7 +28,10 @@
     "workspace_ready"
   ],
   "questions": [
-    "从终端或 Python 中停止正在运行的任务，并确认部分工作、用量和环境的最终状态？"
+    "怎么在终端或 Python 里停止正在运行的任务？",
+    "取消之后怎么确认环境和会话已经清理干净？",
+    "取消后 token 用量为什么还会变化？",
+    "被停止的 Team 成员改动去哪里找回？"
   ],
   "related": [
     "session-save-resume",
@@ -42,19 +45,20 @@
 }
 ---
 
-# 中断任务与检查资源清理
+# 停止任务并确认清理完成
 
-终端中用 Ctrl+C 中断当前轮次，Python 中取消运行任务，或给 SDK 调用设置 `timeout`，都能让执行进入停止与清理。随后应检查保存记录、最终用量和环境状态，再继续操作同一工作区。SDK 返回的 `metrics` 把会话结束与环境清理分别表示。
+OC 的停止有两条路：终端里按 Ctrl+C，或在 Python 里 `task.cancel()` / 设置 SDK 的 `timeout=`。和多数框架不同，OC 在停止后会先跑一段由框架负责的清理（取消工具协程、中止它创建的执行环境、结算迟到的用量），清理结果分别写进 `result.metrics`。所以停止后别急着复用工作区，先看清理字段。
 
-## 终端怎样中断
+## 最小用法
 
-运行期间 Ctrl+C 会中断当前轮次并清空等待执行的输入，存在待回答问题时也会拒绝该问题。若会话已经空闲，Ctrl+C 退出。普通退出还可使用 `/exit` 或 `/quit`。停止后终端保留可用的部分回答，并显示停止或失败原因。
+| 入口 | 做法 | 结果 |
+| --- | --- | --- |
+| 终端 | 运行中按 Ctrl+C | 中断当前轮次，清空排队输入，拒绝待回答的问题；保留已生成的部分回答并显示原因 |
+| 终端 | 空闲时按 Ctrl+C，或 `/exit`、`/quit` | 退出 |
+| SDK | 传 `timeout=` | 到期返回 `status="stopped"`、`reason="timeout"` |
+| SDK | `task.cancel()` | 框架清理阶段结束后再向外抛 `asyncio.CancelledError` |
 
-需要限制单次运行时间时，可以设置 SDK 的 `timeout=`，并从返回结果读取停止状态。运行期限到达时返回 `status="stopped"` 和 `reason="timeout"`。调用方主动取消则在框架拥有的清理阶段结束后传播 `asyncio.CancelledError`。
-
-## 在 Python 中连接取消操作
-
-下面展示一个由应用主动取消的完整任务。实际界面可以把 `task.cancel()` 接到停止按钮。示例只使用读取工具，模型设置沿用已准备的配置。
+下面是应用主动取消的完整例子。实际界面里可以把 `task.cancel()` 接到停止按钮。示例只用读取工具，模型配置沿用已准备好的设置。
 
 ```python
 import asyncio
@@ -67,9 +71,9 @@ async def main() -> None:
         "阅读项目入口并整理主要模块。",
         tools="read",
         budget=100_000,
-        cleanup_timeout=10,
+        cleanup_timeout=10,  # 限制运行结束后框架清理资源的等待时间（秒）
         artifacts="artifacts/cancel-example",
-        run_control=RunControl(on_event=events.append),
+        run_control=RunControl(on_event=events.append),  # 接收器要快速同步返回
     ))
     await asyncio.sleep(1)
     if not task.done():
@@ -84,27 +88,47 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`cleanup_timeout` 接受有限正数，用于限制执行结束后框架清理自身资源的等待时间。单独的 `RunControl.tool_cancellation_cleanup_timeout` 可以调整工具取消清理等待。事件接收器需要尽快同步返回，可先保存事件，再由应用的其他部分处理。
+- `cleanup_timeout`：有限正数，限制执行结束后框架清理自身资源的等待时间。
+- `RunControl.tool_cancellation_cleanup_timeout`：单独调整工具取消的清理等待。
+- `on_event` 接收器应尽快同步返回。可以先把事件存下来，再交给应用其他部分处理。
 
-## 工具取消怎样等待
+## 停止后核对状态
 
-工具超时或调用方取消后，运行时先请求工具协程取消，并等待 `OPENCOLLAB_TOOL_CANCELLATION_CLEANUP_TIMEOUT`，默认 1 秒。工具仍未停止或清理返回错误时，环境会被撤销，再执行环境中止。`OPENCOLLAB_TOOL_ENVIRONMENT_ABORT_TIMEOUT` 默认给中止操作 1 秒，之后取消中止协程，再由 `OPENCOLLAB_TOOL_CANCELLATION_FORCE_TIMEOUT` 默认等待 0.5 秒。仍在结束的任务继续归该运行追踪，工具结果会带出清理失败信息。
+用 `result.metrics.get(...)` 读这些字段：
 
-这些进程变量在模块导入时读取，调整时在启动 Python 或 CLI 前导出有限正数。单 Agent 或 `ctx.agent_run` 中的 `RunControl.tool_cancellation_cleanup_timeout` 可单独覆盖本次会话第一段工具取消等待。SDK 的 `cleanup_timeout` 限制运行结束后的资源清理时间，调用方应根据返回的清理状态安排下一次操作。具体顺序见[工具取消与环境中止实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution_runtime.py)。
+| 字段 | 含义 |
+| --- | --- |
+| `session_quiesced` | 会话和持久化阶段已确认结束 |
+| `environment_quiesced` | 框架自己创建的执行环境已停止 |
+| `cleanup_quiesced`、`execution_quiesced` | 汇总上面两项 |
 
-## 核对停止后的状态
+如果执行环境是调用方传进来的，OC 不替你管理它。这时 `environment_quiesced`、`cleanup_quiesced`、`execution_quiesced` 都是 `None`。你要在自己清理完环境后，自己检查并记录它是否已停止。再次写入同一工作区前，要同时确认会话已停止、工作区可用。
 
-`session_quiesced` 表示会话及持久化阶段已确认结束。框架创建并拥有执行环境时，还会报告 `environment_quiesced`，并汇总到 `cleanup_quiesced` 与 `execution_quiesced`。通过 `result.metrics.get(...)` 读取这些字段。
+在 Workflow 里，`ctx.agent_run` 返回受控调用结果，直接看其中的 `workspace_ready`，决定共享上下文能否继续。超时后如果还有 provider 或工具工作在清理，这次调用会等待自己的资源。清理没完成就返回失败，并阻止共享上下文继续执行。尚未结束的任务和它保留的预算仍由工作流管理。
 
-调用方传入的环境继续由调用方管理。返回结果中的 `environment_quiesced`、`cleanup_quiesced` 和 `execution_quiesced` 均为 `None`。调用方完成自己的环境清理后，检查并另行记录环境是否已停止。再次写入前，应同时确认会话停止和工作区可用。
+## 用量和部分改动
 
-Workflow 的 `ctx.agent_run` 返回受控调用结果，其中 `workspace_ready` 直接用于决定共享上下文是否可以开始后续工作。超时后仍有 provider 或工具工作在清理时，调用会等待自己的资源，清理未完成时返回失败并阻止共享上下文继续执行。待结束任务及其保留预算继续由工作流管理。
+- 取消时界面上已显示的 token 统计可能还会变。迟到的 provider 成功或错误用量会在框架清理阶段结算一次。
+- `usage` 事件的 `late` 和 `purpose` 字段可以帮你识别这笔用量的来源。`cleanup_completed` 事件表示该接收器对应运行的清理已结束。
+- 最终花费以保存的用量记录为准。
+- 失败或停止的 Team 子成员仍可交回已有改动。如果补丁捕获失败，或返回消息装不下完整补丁，原生工作树会保留完整文件，并报告恢复位置。先导出需要的改动，再按工作区恢复指南释放工作树。
 
-## 保存用量与部分改动
+开始下一次任务前的检查顺序：
 
-取消发生时已经显示的 token 统计可能还会变化。迟到的 provider 成功或错误用量在框架拥有的清理阶段结算一次，`usage` 事件的 `late` 与 `purpose` 可帮助识别来源，`cleanup_completed` 标记该接收器对应运行的清理结束。最终花费从保存的用量记录读取。
+1. 确认会话清理结果（`session_quiesced` 等）。
+2. 确认自己负责的环境已停止。
+3. 检查工作区差异。
 
-失败或停止的 Team 子成员仍可交回已有改动。补丁捕获失败，或返回消息容纳不下完整补丁时，原生工作树会保留完整文件并报告恢复位置。先导出所需改动，再按工作区恢复指南释放工作树。开始下一次任务前，确认会话清理结果以及自己负责的环境状态，随后检查工作区差异。
+## 进阶：工具取消的等待顺序
+
+工具超时或调用方取消后，运行时按下面顺序处理：
+
+1. 请求工具协程取消，等待 `OPENCOLLAB_TOOL_CANCELLATION_CLEANUP_TIMEOUT`（默认 1 秒）。
+2. 工具仍未停止或清理报错时，撤销环境并执行环境中止，等待 `OPENCOLLAB_TOOL_ENVIRONMENT_ABORT_TIMEOUT`（默认 1 秒）。
+3. 中止仍未完成就取消中止协程，再等待 `OPENCOLLAB_TOOL_CANCELLATION_FORCE_TIMEOUT`（默认 0.5 秒）。
+4. 仍在收尾的任务继续由该运行追踪，工具结果会带出清理失败信息。
+
+这三个进程变量在模块导入时读取。要调整，就在启动 Python 或 CLI 之前导出有限正数。单 Agent 或 `ctx.agent_run` 里的 `RunControl.tool_cancellation_cleanup_timeout` 可以只覆盖本次会话的第 1 段等待。SDK 的 `cleanup_timeout` 管的是运行结束后的资源清理，调用方应根据返回的清理状态安排下一步。具体实现见[工具取消与环境中止实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution_runtime.py)。
 
 ## 来源
 

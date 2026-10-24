@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>统计 token、缓存命中和费用 · OpenCollab Wiki</title>
-<meta name="description" content="从实际用量记录计算开销，理解推理、缓存和重试对总量的影响。">
+<meta name="description" content="开启用量账本，正确累加 token、算缓存命中率和估算花费，不重复也不漏算。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/token-cache-cost/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,24 +35,75 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">Wiki 首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details open><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="index.html" aria-current="page">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="../weave-workflow/index.html">用 Weave 分组接力完成任务并检查交付</a><a href="../reconstruct-workflow/index.html">用 Reconstruct 从输入输出反推程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details open><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="index.html" aria-current="page">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="../report-problem-and-request-help/index.html">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">结果、轨迹与评测</p>
 <h1 id="统计-token缓存命中和费用">统计 token、缓存命中和费用</h1>
-<p>token 预算控制是否继续执行，用量记录描述已经发生的调用开销。统计费用时应从提供方返回的输入、输出和缓存字段出发，并保留估算与缺失标志。</p>
-<h2 id="这些计数怎样相加">这些计数怎样相加</h2>
-<p><code>total_tokens</code> 是输入加输出。缓存命中的输入已经包含在输入总量里，推理 token 通常作为输出细分保留。将缓存或推理再加一遍会高估总量。提供方可能只返回部分字段，统计时保留缺失值。</p>
-<p>缓存命中率可以用累计 <code>cached_input_tokens</code> 除以累计 <code>input_tokens</code>。对多个任务求平均开销时，还应写明分母包含哪些任务与尝试。</p>
-<h2 id="开启提供方用量账本">开启提供方用量账本</h2>
-<p>在启动进程前配置写入位置。</p>
+<p>OC 区分两种用量数据：会话指标与预算（决定是否继续执行），以及提供方用量账本（<code>OPENCOLLAB_API_USAGE_LOG</code> 指定的 JSONL，每次提供方调用追加一行，含缓存、推理、估算费用和缺失标志）。统计费用以账本为准。本文给出开启方式、字段表、离线汇总脚本、价格配置变量，以及缓存、推理、重试、摘要和迟到用量的计算口径。</p>
+<h2 id="第一步开启用量账本">第一步：开启用量账本</h2>
+<p>用量账本是一个 JSONL 文件，每次提供方调用追加一行。在启动进程前设置写入位置：</p>
 <pre><code class="language-bash">export OPENCOLLAB_API_USAGE_LOG=/absolute/path/to/usage.jsonl
 </code></pre>
-<p>该文件按提供方调用追加记录，包含模型、协议、用量、<code>estimated</code> 以及可用的 <code>raw_usage</code>。账本与会话指标分别保存不同层面的信息，汇总前先确定选用哪一层，避免把一次请求同时从两处累计。</p>
-<p>账本每行的 <code>usage</code> 保存 <code>input_tokens</code>、<code>output_tokens</code>、<code>total_tokens</code>、<code>cached_input_tokens</code>、<code>cache_creation_tokens</code>、<code>reasoning_tokens</code>、<code>cost_usd</code> 和 <code>pricing</code>。trace 的对应缓存读取字段名为 <code>cache_read_tokens</code>，解析时按各自结构读取。<code>None</code> 表示该项信息缺失，<code>estimated=True</code> 表示记录包含估算。</p>
-<p>命令行批次可以通过 <code>OPENCOLLAB_RUN_ID</code> 或 <code>OPENCOLLAB_USAGE_RUN_ID</code> 标记账本运行，通过 <code>OPENCOLLAB_USAGE_LABEL</code> 追加实验标签。这些字段来自进程环境。并发服务可使用每次 SDK 调用的 <code>run_id</code> 和 <code>RunControl.on_event</code> 关联业务请求，回调会在原运行的迟到用量结算期间继续接收事件，使用方式见 <a href="../trace-and-events/index.html">查看 Agent 做了什么</a>。</p>
-<h2 id="离线汇总一份账本">离线汇总一份账本</h2>
-<p>下面脚本读取指定文件的全部记录，报告记录数、累计 token 和缺失标志。分析某个模型或时间段时，可以先按每行的 <code>model</code>、<code>timestamp</code>、<code>run_id</code> 或 <code>label</code> 筛选。</p>
+<p>每行包含模型、协议、用量、<code>estimated</code>，以及可用时的 <code>raw_usage</code>。</p>
+<p>其中 <code>usage</code> 里有这些字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_tokens</code></td>
+<td>输入 token</td>
+</tr>
+<tr>
+<td><code>output_tokens</code></td>
+<td>输出 token</td>
+</tr>
+<tr>
+<td><code>total_tokens</code></td>
+<td>输入加输出</td>
+</tr>
+<tr>
+<td><code>cached_input_tokens</code></td>
+<td>命中缓存的输入 token</td>
+</tr>
+<tr>
+<td><code>cache_creation_tokens</code></td>
+<td>写入缓存的 token</td>
+</tr>
+<tr>
+<td><code>reasoning_tokens</code></td>
+<td>推理 token</td>
+</tr>
+<tr>
+<td><code>cost_usd</code></td>
+<td>估算费用（美元）</td>
+</tr>
+<tr>
+<td><code>pricing</code></td>
+<td>计价所用的价格</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>值为 <code>None</code> 表示这项信息缺失。</li>
+<li><code>estimated=True</code> 表示这条记录包含估算。</li>
+<li>trace 里对应缓存读取的字段名是 <code>cache_read_tokens</code>，和账本不同，解析时按各自结构读。</li>
+</ul>
+<h2 id="第二步给记录打上标签">第二步：给记录打上标签</h2>
+<p>命令行批次用环境变量标记：</p>
+<ul>
+<li><code>OPENCOLLAB_RUN_ID</code> 或 <code>OPENCOLLAB_USAGE_RUN_ID</code>：标记这次运行。</li>
+<li><code>OPENCOLLAB_USAGE_LABEL</code>：追加实验标签。</li>
+</ul>
+<p>这些值来自进程环境。</p>
+<p>并发服务可以用每次 SDK 调用的 <code>run_id</code> 和 <code>RunControl.on_event</code> 关联业务请求。原运行结束后，迟到用量结算期间，回调仍会继续收到事件。用法见 <a href="../trace-and-events/index.html">查看 Agent 做了什么</a>。</p>
+<h2 id="第三步离线汇总">第三步：离线汇总</h2>
+<p>下面脚本读取一份账本，报告记录数、累计 token 和缺失情况。想只看某个模型或时间段，先按每行的 <code>model</code>、<code>timestamp</code>、<code>run_id</code> 或 <code>label</code> 筛选。</p>
 <pre><code class="language-python">import json
 from pathlib import Path
 
@@ -68,21 +119,67 @@ print(&quot;estimated_records&quot;, sum(usage[&quot;estimated&quot;] for usage 
 print(&quot;missing_cache_records&quot;, sum(usage[&quot;cached_input_tokens&quot;] is None for usage in usages))
 print(&quot;missing_cost_records&quot;, sum(usage[&quot;cost_usd&quot;] is None for usage in usages))
 </code></pre>
-<p>检查每条记录的 <code>pricing</code> 后，再汇总具有完整价格和用量的费用。通用价格默认值为零，零费用需要结合实际配置解释。缓存读取或写入字段缺失时，费用可能为 <code>None</code>。保留缺失记录数，便于判断汇总覆盖了多少调用。</p>
-<h2 id="重试与摘要">重试与摘要</h2>
-<p>内部传输重试可能合并为外层调用的累计用量。上下文压力关注最终请求的输入大小，累计花费关注全部已返回尝试。摘要也会调用模型，因此需要计入真实开销。</p>
-<p>取消发生后，后台请求可能才返回最后用量。应结合 late 与清理完成记录确定最终累计值。实际用量缺失的调用，其费用仍为未知，需要结合服务账单核对。</p>
+<p>汇总费用前：</p>
+<ol>
+<li>检查每条记录的 <code>pricing</code>。</li>
+<li>只汇总价格和用量都完整的记录。</li>
+<li>保留缺失记录数，说明汇总覆盖了多少次调用。</li>
+</ol>
+<p>通用价格默认是零，所以看到零费用，要结合实际配置判断。缓存读取或写入字段缺失时，费用可能是 <code>None</code>。</p>
+<h2 id="这些数怎样相加">这些数怎样相加</h2>
+<p>最容易出错的是重复计算：</p>
+<ul>
+<li><code>total_tokens</code> 就是输入加输出。</li>
+<li>命中缓存的输入已经算在输入里，不要再加一遍。</li>
+<li>推理 token 通常是输出的一部分，也不要再加一遍。</li>
+<li>提供方可能只返回部分字段，统计时保留缺失值。</li>
+</ul>
+<p>缓存命中率 = 累计 <code>cached_input_tokens</code> ÷ 累计 <code>input_tokens</code>。</p>
+<p>求多个任务的平均开销时，写明分母包含哪些任务、哪些尝试。</p>
+<p>账本和会话指标是两个层面的记录。汇总前选定一层，别把同一次请求从两处各算一次。</p>
 <h2 id="配置自己的价格">配置自己的价格</h2>
-<p>账本费用估算使用 <code>OPENCOLLAB_INPUT_USD_PER_MTOK</code>、<code>OPENCOLLAB_CACHED_INPUT_USD_PER_MTOK</code>、<code>OPENCOLLAB_CACHE_CREATION_USD_PER_MTOK</code> 与 <code>OPENCOLLAB_OUTPUT_USD_PER_MTOK</code>。单价单位为每百万 token 美元，填写你实际使用服务的价格。特定模型分支可能有单独的价格配置，应看账本中的 <code>pricing</code>。</p>
-<p>如果服务将输入分为普通、缓存读取与缓存写入，分别乘以各自价格，再加输出费用。准确性取决于字段是否齐全与提供方的计费语义。估算值与实际账单要按相同时间范围核对。</p>
-<h2 id="查找异常增长">查找异常增长</h2>
-<p>先区分请求次数增加、单次输入变长和输出变长，再看缓存比例、重试和摘要次数。加密内容的字符数描述传输长度，计费 token 以提供方返回的用量为准。相关机制见上下文压缩与深度思考指南。</p>
+<p>账本估算费用时用这些环境变量，单位是每百万 token 多少美元。填你实际用的服务的价格：</p>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>对应部分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENCOLLAB_INPUT_USD_PER_MTOK</code></td>
+<td>普通输入</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_CACHED_INPUT_USD_PER_MTOK</code></td>
+<td>缓存读取的输入</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_CACHE_CREATION_USD_PER_MTOK</code></td>
+<td>缓存写入</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_OUTPUT_USD_PER_MTOK</code></td>
+<td>输出</td>
+</tr>
+</tbody>
+</table>
+<p>特定模型可能有单独的价格配置，以账本里的 <code>pricing</code> 为准。</p>
+<p>如果服务把输入分成普通、缓存读取、缓存写入三类，就各乘各的价格，再加上输出费用。准确与否取决于字段是否齐全和提供方怎么计费。拿估算值和实际账单对比时，用相同的时间范围。</p>
+<h2 id="常见问题">常见问题</h2>
+<ul>
+<li>如果总量里有重试：内部传输重试可能合并进外层调用的累计用量。看上下文压力时关注最终请求的输入大小，算花费时关注所有已返回的尝试。</li>
+<li>如果用了上下文摘要：摘要也要调用模型，要算进真实开销。</li>
+<li>如果中途取消了：后台请求可能在取消后才返回最后的用量。结合 late 和清理完成的记录，确定最终累计值。实际用量缺失的调用，费用仍是未知，要对照服务商账单。</li>
+<li>如果用量突然变大：先分清是请求次数变多、单次输入变长，还是输出变长，再看缓存比例、重试和摘要次数。加密内容的字符数只是传输长度，计费 token 以提供方返回的用量为准。相关机制见上下文压缩与深度思考指南。</li>
+</ul>
 <h2 id="源码与进一步阅读">源码与进一步阅读</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md">configs/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/llm/usage_ledger.py">opencollab/adapters/llm/usage_ledger.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/llm/types.py">opencollab/adapters/llm/types.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md">docs/evaluation-runtime.md</a></p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/token-cache-cost.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E8%BF%99%E4%BA%9B%E8%AE%A1%E6%95%B0%E6%80%8E%E6%A0%B7%E7%9B%B8%E5%8A%A0">这些计数怎样相加</a><a href="#%E5%BC%80%E5%90%AF%E6%8F%90%E4%BE%9B%E6%96%B9%E7%94%A8%E9%87%8F%E8%B4%A6%E6%9C%AC">开启提供方用量账本</a><a href="#%E7%A6%BB%E7%BA%BF%E6%B1%87%E6%80%BB%E4%B8%80%E4%BB%BD%E8%B4%A6%E6%9C%AC">离线汇总一份账本</a><a href="#%E9%87%8D%E8%AF%95%E4%B8%8E%E6%91%98%E8%A6%81">重试与摘要</a><a href="#%E9%85%8D%E7%BD%AE%E8%87%AA%E5%B7%B1%E7%9A%84%E4%BB%B7%E6%A0%BC">配置自己的价格</a><a href="#%E6%9F%A5%E6%89%BE%E5%BC%82%E5%B8%B8%E5%A2%9E%E9%95%BF">查找异常增长</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%AC%AC%E4%B8%80%E6%AD%A5%E5%BC%80%E5%90%AF%E7%94%A8%E9%87%8F%E8%B4%A6%E6%9C%AC">第一步：开启用量账本</a><a href="#%E7%AC%AC%E4%BA%8C%E6%AD%A5%E7%BB%99%E8%AE%B0%E5%BD%95%E6%89%93%E4%B8%8A%E6%A0%87%E7%AD%BE">第二步：给记录打上标签</a><a href="#%E7%AC%AC%E4%B8%89%E6%AD%A5%E7%A6%BB%E7%BA%BF%E6%B1%87%E6%80%BB">第三步：离线汇总</a><a href="#%E8%BF%99%E4%BA%9B%E6%95%B0%E6%80%8E%E6%A0%B7%E7%9B%B8%E5%8A%A0">这些数怎样相加</a><a href="#%E9%85%8D%E7%BD%AE%E8%87%AA%E5%B7%B1%E7%9A%84%E4%BB%B7%E6%A0%BC">配置自己的价格</a><a href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98">常见问题</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>
 </body>
 </html>

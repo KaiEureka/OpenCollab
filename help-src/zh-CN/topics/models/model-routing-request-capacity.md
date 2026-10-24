@@ -3,7 +3,7 @@
   "id": "model-routing-request-capacity",
   "title": "逻辑模型路由与共享请求容量",
   "category": "models",
-  "summary": "让不同角色或进程选择明确后端，并协调同一台机器上的模型请求容量。",
+  "summary": "给模型起别名，让不同角色用不同模型，并限制同一台机器上同时发出的模型请求数。",
   "aliases": [
     "模型别名",
     "角色用不同模型",
@@ -13,7 +13,9 @@
     "请求池",
     "多机网关",
     "容量冲突",
-    "容器挂载"
+    "容器挂载",
+    "逻辑模型",
+    "限制并发请求"
   ],
   "keywords": [
     "model_routes",
@@ -26,6 +28,8 @@
     "OPENCOLLAB_REQUEST_CAPACITY"
   ],
   "questions": [
+    "怎样让规划角色和执行角色用不同的模型？",
+    "多个进程同时跑，怎样限制同时打到本地模型的请求数？",
     "让不同角色或进程选择明确后端，并协调同一台机器上的模型请求容量？"
   ],
   "related": [
@@ -40,22 +44,25 @@
 
 # 逻辑模型路由与共享请求容量
 
-`model_routes` 用逻辑名称选择完整的模型后端，适合让不同角色使用不同服务，或让多个独立 Team 和 Workflow 进程共享同一后端的请求容量。每条路由声明物理模型、provider、协议、地址和认证。请求与用量记录保留物理模型名称，便于查看实际调用的模型。
+`model_routes` 是 OC 的逻辑模型表：给一整套后端设置（物理模型、provider、协议、地址、凭据）起个名字，Team 角色或客户端用名字引用它，这样不同角色可以接不同服务。每条路由还能挂一个请求池（`request_pool` + `request_capacity`），让同一台机器上多个独立的 Team / Workflow 进程靠文件锁共享固定数量的并发请求名额，适合保护只能承受少量并发的本地模型服务。
+
+请求记录和用量记录里写的是物理模型名称，方便你看清实际调用了哪个模型。
 
 ## 定义一条逻辑路由
 
-下面的代码构造名为 `worker` 的路由，并准备同机请求池目录。`MODEL_BASE_URL`、`MODEL_NAME` 和 `MODEL_API_KEY` 由调用方提前配置，示例构造客户端时完成凭据解析。
+下面的代码创建一条名为 `worker` 的路由，并准备一个同机请求池目录。`MODEL_BASE_URL`、`MODEL_NAME` 和 `MODEL_API_KEY` 需要你事先设置好。创建客户端时会读取并检查凭据。
 
 ```python
 import os
 from pathlib import Path
 from opencollab import OpenCollab
 
+# 请求池目录：必须是已存在的绝对路径
 pool = Path(".opencollab/request-pool").resolve()
 pool.mkdir(parents=True, exist_ok=True)
 client = OpenCollab(
     ".",
-    model="worker",
+    model="worker",  # 默认使用名为 worker 的逻辑路由
     model_routes={
         "worker": {
             "model": os.environ["MODEL_NAME"],
@@ -65,34 +72,90 @@ client = OpenCollab(
             "api_key_env": "MODEL_API_KEY",  # pragma: allowlist secret
             "context_window": 131072,
             "request_pool": str(pool),
-            "request_capacity": 2,
+            "request_capacity": 2,  # 最多同时 2 个模型请求
         }
     },
 )
 print(client.configuration["model_routes"])
 ```
 
-`context_window` 应填后端实际支持的 token 窗口，示例数值需按服务调整。`api_key_env` 从进程环境或选中的 env 文件读取指定变量，缺失会报错。显式路由 `api_key` 优先于它，原生 Anthropic 路由还可使用 `auth_token`。每条路由独立拥有端点凭据。
+字段说明：
 
-相同映射也可以放进 SDK 构造配置的 `model_routes` 字段，或将 JSON 对象写入 `OPENCOLLAB_MODEL_ROUTES`。构造参数优先。Team 角色的 `model` 可填写逻辑名称，未出现在映射中的名称按普通物理模型处理，使用默认 provider 配置。路由只解析一次，即使其物理名称恰好也是另一条逻辑名称，也保持当前声明。
+| 字段 | 作用 |
+| --- | --- |
+| `model` | 实际发给服务的物理模型名 |
+| `provider`、`wire_protocol`、`base_url` | 这条路由用的服务类型、协议和地址 |
+| `api_key_env` | 从哪个环境变量读 API key。会从进程环境或选中的 env 文件里读，读不到就报错 |
+| `context_window` | 后端实际支持的 token 窗口。示例数值要按你的服务调整 |
+| `request_pool`、`request_capacity` | 请求池目录和容量，见下一节 |
+
+认证补充：
+
+- 路由里直接写的 `api_key` 优先于 `api_key_env`。
+- 原生 Anthropic 路由还可以用 `auth_token`。
+- 每条路由有自己独立的端点和凭据。
+
+### 其它写法和规则
+
+- 同样的映射也可以放在 SDK `config` 的 `model_routes` 字段里，或者把 JSON 对象写进环境变量 `OPENCOLLAB_MODEL_ROUTES`。直接传给构造函数的参数优先。
+- Team 角色的 `model` 可以填逻辑名称。如果名称不在映射里，就当作普通物理模型名处理，使用默认的 provider 配置。
+- 路由只解析一次。即使某条路由的物理模型名恰好和另一条路由的逻辑名相同，也不会再跳转过去。
 
 ## 限制同机后端请求
 
-`request_pool` 与 `request_capacity` 必须成对提供。池目录必须是已存在的绝对本地目录，所有参与进程访问同一个目录，才能共享操作系统文件锁。`request_capacity=2` 允许同时占有两个模型请求槽。等待名额的调用尚未进入后端请求阶段。
+### 怎么设置
 
-请求获得名额后，在 provider 重试期间继续占用，模型请求完成或取消清理结束后释放。执行工具前会释放名额，因此父 Agent 等待子任务时，子任务仍可使用模型容量。进程终止时操作系统释放其锁。
+1. 同时提供 `request_pool` 和 `request_capacity`，两者缺一不可。
+2. `request_pool` 必须是已经存在的本地绝对路径目录。
+3. 让所有要共享名额的进程都指向同一个目录。它们靠操作系统文件锁协调。
 
-顶层可使用 `OPENCOLLAB_REQUEST_POOL` 和 `OPENCOLLAB_REQUEST_CAPACITY`，或 SDK 同名小写字段。路由自己的成对设置优先。多个模型名称指向同一后端容量时，可以共享一个池。Workflow 的 `concurrency` 限制 Agent 会话数，请求池限制同时进入后端的请求，两者应分别按任务和服务能力设置。
+`request_capacity=2` 表示最多同时有两个模型请求占着名额。还在排队等名额的调用，不会发请求到后端。
+
+也可以在顶层设置，对没有自己设置的模型生效：环境变量 `OPENCOLLAB_REQUEST_POOL` 和 `OPENCOLLAB_REQUEST_CAPACITY`，或 SDK 中同名的小写字段。路由里自己成对设置的值优先。多个模型名称如果指向同一个后端，可以共用一个池。
+
+### 名额什么时候占用、什么时候释放
+
+- 请求拿到名额后，provider 重试期间一直占着。
+- 模型请求完成，或者取消后的清理结束，才释放。
+- 执行工具前会先释放名额。所以父 Agent 在等子任务时，子任务仍能用上模型容量。
+- 进程被终止时，操作系统会自动释放它持有的锁。
+
+### 和 Workflow 的 concurrency 有什么区别
+
+| 设置 | 限制什么 |
+| --- | --- |
+| Workflow 的 `concurrency` | 同时运行的 Agent 会话数 |
+| 请求池容量 | 同时进到后端的模型请求数 |
+
+前者按任务需要设置，后者按模型服务能承受的量设置，两者分开配置。
 
 ## 改容量和使用容器
 
-池内 `capacity` 文件记录容量，独立进程给同一池配置不同容量时会报冲突。运行期间保留池目录及锁文件。需要改容量时，先停止全部参与进程，清空池目录内容，再以新容量重新启动。
+### 修改容量
 
-容器中的模型客户端必须把同一宿主目录挂载到配置的绝对路径。两个容器分别创建同名目录会形成独立容量。池路径由运行 Python 模型客户端的进程访问。工具可能在另一个容器中执行，挂载池目录时应以模型客户端所在环境为准。
+池目录里有一个 `capacity` 文件记录容量。如果不同进程给同一个池配置了不同的容量，会报冲突错误。运行期间不要删池目录和其中的锁文件。
+
+要改容量：
+
+1. 停掉所有用这个池的进程。
+2. 清空池目录里的内容。
+3. 用新容量重新启动。
+
+### 在容器里使用
+
+- 运行模型客户端的容器，必须把同一个宿主机目录挂载到配置里写的那个绝对路径。
+- 如果两个容器各自建了一个同名目录，它们是两个独立的池，名额不共享。
+- 池路径是给运行 Python 模型客户端的进程用的。工具可能在另一个容器里执行，挂载时以模型客户端所在的环境为准。
 
 ## 多台机器共同访问服务
 
-多机协调由公共后端或外部网关负责。让各路由的 `base_url` 指向同一网关，并在网关设置后端容量。网关需要支持所选 Chat Completions、Responses 或 Messages，保留模型身份、推理参数和续轮数据。网络断开后仍继续运行的服务端任务，由后端的取消策略管理。本地池适用于具备可靠 OS 文件锁的同机文件系统。
+本地请求池只适用于同一台机器上、文件锁可靠的文件系统。多台机器之间的协调，要交给共用的后端或外部网关：
+
+1. 让各路由的 `base_url` 都指向同一个网关。
+2. 在网关上设置后端容量。
+3. 确认网关支持你选的协议（Chat Completions、Responses 或 Messages），并且原样保留模型身份、推理参数和续轮数据。
+
+网络断开后服务端还在继续跑的任务，由后端自己的取消策略处理。
 
 ## 来源
 
@@ -100,4 +163,4 @@ print(client.configuration["model_routes"])
 
 ## 相关指南
 
-[接入模型端点与认证凭据](provider-endpoint-credentials.md)　[配置从哪里读取以及哪一项生效](configuration-precedence.md)　[设置 token 预算、步数与运行并发](../operations/token-step-concurrency-limits.md)　[中断任务与检查资源清理](../operations/cancellation-cleanup.md)
+[接入模型端点与认证凭据](provider-endpoint-credentials.md)　[配置从哪里读取以及哪一项生效](configuration-precedence.md)　[设置 token 预算、步数与运行并发](../operations/token-step-concurrency-limits.md)　[停止任务并确认清理完成](../operations/cancellation-cleanup.md)

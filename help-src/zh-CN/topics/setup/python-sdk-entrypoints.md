@@ -3,7 +3,7 @@
   "id": "python-sdk-entrypoints",
   "title": "从 Python 调用 OpenCollab",
   "category": "setup",
-  "summary": "在现有 Python 程序中构造客户端，调用单 agent、团队或工作流，并接入程序的结果处理。",
+  "summary": "用 OpenCollab 客户端在 Python 里调用单 Agent、团队或工作流，三者都返回统一的 RunResult。",
   "aliases": [
     "代码调用",
     "嵌入自己的程序",
@@ -25,7 +25,10 @@
     "configuration"
   ],
   "questions": [
-    "在现有 Python 程序中构造客户端，调用单 agent、团队或工作流，并接入程序的结果处理？"
+    "在现有 Python 程序中构造客户端，调用单 agent、团队或工作流，并接入程序的结果处理？",
+    "怎么在自己的 Python 程序里调用 OC？",
+    "在 Notebook 或 Web 服务里怎么用？",
+    "team() 的 config 参数和客户端的 config 有什么不同？"
   ],
   "related": [
     "configuration-precedence",
@@ -42,27 +45,28 @@
 
 # 从 Python 调用 OpenCollab
 
-在已有 Python 程序中导入 `OpenCollab`，构造一个指向项目目录的客户端，再 `await` 调用 `agent`、`team` 或 `workflow`，就能把执行结果接入自己的程序。三个入口返回统一的 `RunResult`，模型与传输配置在客户端构造时解析一次。
+SDK 的入口是 `OpenCollab(workspace)` 客户端，上面有三个 async 方法：`agent()`（单 Agent）、`team()`（团队）和 `workflow()`（工作流）。三者都返回同一个 `RunResult`，应用可以用一套代码处理结果。模型和传输配置只在构造客户端时解析一次。
 
-## 用一个完整脚本开始
+## 最小例子
 
-以下脚本使用只读工具检查项目，沿用配置文件和进程变量中的模型设置，并设置执行额度与任务期限。
+把脚本放在项目根目录，在装了 OpenCollab 的环境里运行。它用只读工具检查项目，沿用配置文件和环境变量里的模型设置。
 
 ```python
 import asyncio
 from opencollab import OpenCollab, RunError
 
 async def main() -> None:
-    client = OpenCollab(".")
+    client = OpenCollab(".")  # 工作区必须已经存在
     result = await client.agent(
         "阅读项目的测试配置，给出最小验证步骤和依据文件。",
         tools="read",
-        budget=100_000,
-        max_steps=40,
-        timeout=300,
-        artifacts="artifacts/sdk-first-run",
+        budget=100_000,   # token 预算
+        max_steps=40,     # 步数上限
+        timeout=300,      # 任务期限（秒）
+        artifacts="artifacts/sdk-first-run",  # 必须是新目录或空目录
     )
     try:
+        # 完成时返回自身，其他状态抛出 RunError
         print(result.raise_for_status().output)
     except RunError as exc:
         outcome = exc.result
@@ -73,15 +77,31 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-把脚本放在项目根目录，在安装了 OpenCollab 的环境中运行。工作区必须已经存在。`artifacts` 必须是新目录或空目录，下一次任务应选新的位置。Web 服务、Notebook 或已有事件循环的程序直接 `await main()`，由宿主程序管理事件循环。
+注意：
 
-## 选择执行方式
+- `artifacts` 必须是新目录或空目录，下一次任务换一个位置。
+- 如果你的程序已经有事件循环（Web 服务、Notebook 等），不要用 `asyncio.run`，直接 `await main()`，由宿主程序管理事件循环。
 
-`agent()` 适合一个 Agent 连续完成任务，当前默认 Base 采用 Single2。`agent2()` 是明确选择 Single2 的便捷入口。调用时可设置 `tools`、`system_prompt`、`budget`、`max_steps` 和 `run_control`。`steps` 是旧步数别名，与 `max_steps` 同时传入会报错。
+## 三个入口怎么选
 
-连续阅读、修改和测试可以使用单 Agent。让角色自行安排协作时使用 Team，按明确阶段和程序条件执行时使用 Workflow。三个入口返回相同的状态结构，应用可以统一保存日志和展示结果。
+| 入口 | 用途 | 说明 |
+| --- | --- | --- |
+| `agent()` | 一个 Agent 连续完成读、改、测 | 默认 Base，当前采用 Single2 |
+| `agent2()` | 同上，明确选择 Single2 | 便捷入口 |
+| `team()` | 成员按团队工具和关系自行交接 | `config=` 是团队 YAML 路径 |
+| `workflow()` | 按明确阶段和程序条件执行 | 接受名称、工作流函数或 spec |
 
-`team()` 让成员按照团队工具和关系决定交接。它的 `config=` 是团队 YAML 文件路径，与构造客户端时 `config={...}` 的模型运行设置不同。先通过 `opencollab team init team.yaml` 准备团队文件，再检查角色工具和执行环境。下面是放在已有 `async` 函数中的调用，`client` 沿用前面的实例。
+### `agent()` / `agent2()` 常用参数
+
+`tools`、`system_prompt`、`budget`、`max_steps` 和 `run_control`。`steps` 是旧的步数别名，与 `max_steps` 同时传入会报错。
+
+### `team()`
+
+容易混淆的一点：`team()` 的 `config=` 是团队 YAML 文件路径，和构造客户端时 `OpenCollab(..., config={...})` 的模型运行设置不是一回事。
+
+1. 先用 `opencollab team init team.yaml` 准备团队文件。
+2. 检查角色工具和执行环境。
+3. 调用（以下代码放在已有 `async` 函数中，`client` 沿用前面的实例）：
 
 ```python
 result = await client.team(
@@ -92,7 +112,15 @@ result = await client.team(
 )
 ```
 
-`workflow()` 接受已安装或工作区发现的名称，也接受工作流函数和 spec。名称查找读取工作区的 `workflows/`，相对的 `OPENCOLLAB_WORKFLOWS_DIR` 也从工作区解析。装饰过的函数和普通 async 函数可直接交给此入口。下面的完整例子用 Python 明确安排一次角色调用。
+### `workflow()`
+
+可以传三种东西：
+
+- 名称：已安装的工作流，或在工作区发现的工作流。名称查找读取工作区的 `workflows/`；相对路径的 `OPENCOLLAB_WORKFLOWS_DIR` 也从工作区解析。
+- 函数：用 `@workflow` 装饰过的函数，或普通 async 函数。
+- spec。
+
+下面的完整例子用 Python 显式安排一次角色调用：
 
 ```python
 import asyncio
@@ -101,6 +129,7 @@ from opencollab.tools import builtin_tools
 
 @workflow(name="project-summary")
 async def project_summary(ctx, inputs):
+    # 只给这个角色只读工具
     tools = builtin_tools("file_read", "grep", "git_diff")
     return await ctx.agent(inputs["task"], tools=tools, label="reader")
 
@@ -116,11 +145,23 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## 接入结果和扩展
+## 处理结果和错误
 
-`status` 为 `completed`、`stopped` 或 `failed`，`reason` 保留停止原因，`output` 可保留部分工作。`raise_for_status()` 对完成结果返回自身，其他状态抛出带原始结果的 `RunError`。参数错误发生在执行前，生命周期或持久化故障也可能直接抛出 `RunError`，应用应在调用边界处理。
+| `status` | 含义 |
+| --- | --- |
+| `completed` | 正常结束 |
+| `stopped` | 停下了，原因在 `reason`；`output` 里可能有部分工作 |
+| `failed` | 失败，`output` 里可能有部分工作 |
 
-通过 `opencollab.tools`、`opencollab.environments`、`opencollab.workflows` 和 `opencollab.profiles` 使用公开扩展入口。`client.configuration` 提供只读且已筛除秘密的有效配置。`create_model_client()` 可创建同配置的原生模型客户端，调用方负责在使用后执行 `await model.close()`。应用可以通过这些接口接入配置检查和自定义模型调用。
+- `raise_for_status()`：完成时返回结果自身；其他状态抛出 `RunError`，异常的 `result` 属性带着原始结果。
+- 参数错误在执行前就会抛出。
+- 生命周期或持久化故障也可能直接抛出 `RunError`。应用应在调用处统一处理。
+
+## 进阶：公开扩展入口
+
+- 扩展模块：`opencollab.tools`、`opencollab.environments`、`opencollab.workflows`、`opencollab.profiles`。
+- `client.configuration`：只读的有效配置，秘密值已经筛掉，可以用来做配置检查。
+- `create_model_client()`：用同一份配置创建原生模型客户端，用于自定义模型调用。用完后由调用方执行 `await model.close()`。
 
 ## 来源
 
@@ -128,4 +169,4 @@ asyncio.run(main())
 
 ## 相关指南
 
-[配置从哪里读取以及哪一项生效](../models/configuration-precedence.md)　[设置 token 预算、步数与运行并发](../operations/token-step-concurrency-limits.md)　[中断任务与检查资源清理](../operations/cancellation-cleanup.md)　[检查有效配置与定位常见启动故障](../operations/configuration-diagnostics.md)　[读取运行结果与判断任务是否完成](../observability/run-results.md)　[找到运行记录、会话和交付文件](../observability/artifacts-and-history.md)　[选择 Agent 能使用的工具](../extensions/tool-selection.md)
+[配置从哪里读取以及哪一项生效](../models/configuration-precedence.md)　[设置 token 预算、步数与运行并发](../operations/token-step-concurrency-limits.md)　[停止任务并确认清理完成](../operations/cancellation-cleanup.md)　[检查生效配置与排查启动故障](../operations/configuration-diagnostics.md)　[读取运行结果与判断任务是否完成](../observability/run-results.md)　[找到运行记录、会话和交付文件](../observability/artifacts-and-history.md)　[选择 Agent 能使用的工具](../extensions/tool-selection.md)

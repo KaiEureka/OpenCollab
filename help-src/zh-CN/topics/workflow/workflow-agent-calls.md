@@ -1,9 +1,9 @@
 ---
 {
   "id": "workflow-agent-calls",
-  "title": "在 Workflow 中调用 Agent 并处理结果",
+  "title": "在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run",
   "category": "workflow",
-  "summary": "为工作流中的每个角色建立会话，选择文本或结构化输出并处理预算、停止与失败。",
+  "summary": "每次调用开一个新会话；只要结果用 ctx.agent，要停止原因、用量和清理状态用 ctx.agent_run。",
   "aliases": [
     "工作流角色",
     "结构化输出",
@@ -13,7 +13,9 @@
     "max_steps",
     "budget",
     "timeout",
-    "cleanup_complete"
+    "cleanup_complete",
+    "ctx.agent 和 agent_run 区别",
+    "调用 Agent"
   ],
   "keywords": [
     "ctx.agent",
@@ -22,7 +24,12 @@
     "Agent 调用"
   ],
   "questions": [
-    "为工作流中的每个角色建立会话，选择文本或结构化输出并处理预算、停止与失败？"
+    "ctx.agent 和 ctx.agent_run 有什么区别？",
+    "两次 Agent 调用之间会共享对话历史吗？",
+    "怎样让 Agent 返回结构化字典？",
+    "ctx.agent 什么时候会返回 None？",
+    "怎样限制单个 Agent 的步数、时限和额度？",
+    "cleanup incomplete 是什么意思？"
   ],
   "related": [
     "author-custom-workflow",
@@ -34,13 +41,20 @@
 }
 ---
 
-# 在 Workflow 中调用 Agent 并处理结果
+# 在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run
 
-`ctx.agent` 适合取得角色回答或结构化对象，`ctx.agent_run` 适合读取一次会话的完整执行快照。每次调用建立新会话，角色之间通过显式提示词、Python 变量和工作区文件交换信息。选择接口时先判断后续代码需要的是任务输出，还是停止原因、用量与清理状态。
+Workflow 里调用 Agent 有两个方法，都会开一个全新会话（fresh session，不继承之前任何调用的对话历史）：
 
-## 用回答推动下一步
+| 方法 | 返回 | 什么时候用 |
+| --- | --- | --- |
+| `ctx.agent` | 文本、校验后的字典，或 `None` | 只需要任务输出 |
+| `ctx.agent_run` | `WorkflowAgentResult` 执行快照 | 还需要停止原因、用量、步数、清理状态，或要用 `RunControl` |
 
-以下代码是完整的异步工作流函数，可传入 SDK 的 `workflow`。它使用 JSON Schema 收集判断，再按结果选择后续步骤。
+角色之间交换信息只有三条路：显式写进提示词、Python 变量、工作区文件。文件是否共享由隔离策略决定。
+
+## `ctx.agent`：用回答决定下一步
+
+以下是完整的异步工作流函数，可以传给 SDK 的 `workflow`。它用 JSON Schema 拿到一个判断，再按结果决定要不要追问。
 
 ```python
 async def inspect_and_explain(ctx, args):
@@ -59,6 +73,7 @@ async def inspect_and_explain(ctx, args):
     if finding is None:
         return {'finding': None, 'detail': None}
     detail = None
+    # 由 Python 读字段决定分支，OC 不会自动路由
     if finding['needs_detail']:
         detail = await ctx.agent(
             f'解释这一结论的依据\n{finding["summary"]}',
@@ -67,11 +82,29 @@ async def inspect_and_explain(ctx, args):
     return {'finding': finding, 'detail': detail}
 ```
 
-`schema` 通过结构化捕获工具取得并校验字典。捕获未满足要求时，运行时会带着已有历史作一次纠正尝试。schema 校验返回数据的结构，字段内容和业务判断则需要结合任务依据与调用方规则验证。自由文本路径返回字符串，常见会话构建、运行失败或调用时限到达时可返回 `None`。
+### 常用参数
 
-`prompt` 是本次任务，`label` 用于记录，`tools` 决定会话能调用的工具。使用空集合适合只处理给定文字的角色。`budget` 从共享余额申请一次调用额度，未用预留在清理后释放。额度耗尽可能在会话创建前抛出预算异常，调用方应结合顶层结果处理。
+| 参数 | 作用 |
+| --- | --- |
+| `prompt` | 本次任务 |
+| `label` | 在记录里标识这个角色 |
+| `tools` | 会话能调用的工具；传空集合表示只处理给定文字 |
+| `budget` | 从共享余额里申请本次调用的额度；没用完的预留在清理后释放 |
+| `schema` | 要求返回符合 JSON Schema 的字典 |
+| `isolation` | 本次会话的环境策略，见下文 |
+| `timeout` | 本次会话的时限 |
+| `tool_choice`、`thinking` | 只用于自由文本路径；结构化路径按捕获阶段的请求策略执行 |
 
-## 取得执行快照
+### 什么时候返回 `None`
+
+- 带 `schema` 时：OC 通过结构化捕获工具取得并校验字典。第一次不满足时，会带着已有历史再纠正一次，仍不满足就返回 `None`。
+- 自由文本时：常见的会话构建失败、运行失败或到达调用时限，都可能返回 `None`。
+
+schema 只校验结构。字段内容和业务判断，要结合任务依据和调用方规则验证。
+
+另外，额度耗尽时，可能在会话创建前就抛出预算异常。调用方应结合顶层结果处理。
+
+## `ctx.agent_run`：取得执行快照
 
 ```python
 from opencollab import RunControl
@@ -82,9 +115,9 @@ async def inspect_files(ctx, args):
         args['goal'],
         label='inspector',
         tools=builtin_tools('file_read', 'grep'),
-        budget=12000,
-        timeout=120,
-        max_steps=12,
+        budget=12000,          # 申请的硬额度
+        timeout=120,           # 本次会话时限（秒）
+        max_steps=12,          # 本次会话步数上限
         system_prompt='阅读任务指定文件，说明观察到的事实。',
         run_control=RunControl(initial_soft_budget_tokens=8000),
         cleanup_timeout=2.0,
@@ -101,17 +134,55 @@ async def inspect_files(ctx, args):
     }
 ```
 
-`agent_run` 的结果为 `WorkflowAgentResult`，还包含实际硬额度 `hard_budget_tokens`、软额度 `soft_budget_tokens` 及 `observation_errors`。申请值会受共享余额和其他预留影响，回调看到的是实际授权。`RunControl` 可在硬额度内决定软额度扩展，也可同步接收事件。
+`WorkflowAgentResult` 除了上面用到的字段，还有：
 
-`system_prompt` 显式设置时替换本次角色默认系统提示词。所选 Agent profile 仍提供工具配置、上下文处理及安全行为。profile 在 SDK 的 `agent_profile` 选择，省略时保留工作流角色自身配置。`agent_run` 还接受工具配置名称或工具对象序列。要明确指定每项工具时，传入工具对象序列。
+- `hard_budget_tokens`：实际拿到的硬额度。
+- `soft_budget_tokens`：软额度。
+- `observation_errors`：观察回调里出的错。
 
-## 时限、环境与失败
+额度说明：申请值会受共享余额和其它预留影响，回调里看到的是实际授权。`RunControl` 可以在硬额度以内扩展软额度，也可以同步接收事件。详见[在哪一层调整 Workflow：从 CLI 参数到单次调用回调](workflow-control-granularity.md)。
 
-`timeout` 限制本次会话运行，`max_steps` 限制会话步数，工作流外层的 `timeout` 则限制整次运行。清理时限单独控制已取消的工具与模型任务怎样结束。`agent_run` 清理未完成时返回 `failed` 和 `cleanup incomplete`，并阻止共享上下文继续启动工作。只有 `cleanup_complete` 为真时，快照中的用量才可按稳定结果理解。后续依赖同一环境的步骤还应检查 `workspace_ready`。
+`system_prompt` 与 profile：
 
-省略 `isolation` 继承运行策略，`False` 选择 `shared`，`True` 选择 `worktree`，字符串可选 `shared`、`worktree` 与已配置的容器或自定义策略。会话历史在每次调用时重新建立，文件是否共享由隔离策略决定。Docker 策略把工具放进容器，普通 Workflow 的 Python 编排继续在调用方进程执行。
+- 显式传 `system_prompt` 会替换本次角色的默认系统提示。
+- 所选 Agent profile 仍然提供工具配置、上下文处理和安全行为。
+- profile 用 SDK 的 `agent_profile` 选择；省略时保留工作流角色自己的配置。
 
-`ctx.agent` 的 `tool_choice` 与 `thinking` 用于自由文本路径，结构化路径遵循捕获阶段的请求策略。`agent_run` 直接提供状态和回调，两种方法参数应按各自签名使用。顶层 `RunResult.agent_failures` 保留内部失败，外部取消会继续向调用方传播。交付结果通过应用真实入口、测试或验证器检查。
+`tools` 参数：`agent_run` 接受工具配置名称或工具对象序列。要精确指定每个工具，就传工具对象序列。
+
+## 时限与清理
+
+| 限制 | 作用范围 |
+| --- | --- |
+| `timeout`（调用参数） | 本次会话运行 |
+| `max_steps` | 本次会话步数 |
+| `timeout`（工作流外层） | 整次运行 |
+| `cleanup_timeout` | 已取消的工具和模型任务怎样收尾 |
+
+如果 `agent_run` 清理没完成：
+
+- 返回状态为 `failed`，原因为 `cleanup incomplete`。
+- 共享上下文会停止启动新工作。
+
+只有 `cleanup_complete` 为真时，快照里的用量才是稳定值。后续步骤若依赖同一环境，还要检查 `workspace_ready`。
+
+## 隔离策略：`isolation`
+
+| 取值 | 效果 |
+| --- | --- |
+| 省略 | 继承本次运行的策略 |
+| `False` | `shared` |
+| `True` | `worktree` |
+| 字符串 | `shared`、`worktree`，或已配置的容器策略、自定义策略 |
+
+- 会话历史每次调用都重新建立。文件是否共享由隔离策略决定。
+- Docker 策略只把工具放进容器，普通 Workflow 的 Python 编排仍在调用方进程里执行。
+
+## 失败如何传到顶层
+
+- 内部失败保留在顶层 `RunResult.agent_failures` 里。
+- 外部取消会继续向调用方传播。
+- 交付结果要通过应用的真实入口、测试或验证器检查。
 
 ## 源码依据
 
@@ -119,4 +190,4 @@ async def inspect_files(ctx, args):
 
 ## 相关章节
 
-[编写第一个自定义 Workflow](author-custom-workflow.md)、[在 Workflow 中并行处理多项任务](workflow-parallel-pipeline.md)、[组合子 Workflow 并采用候选结果](compose-workflow-candidates.md)、[使用 Weave 分组执行并检查交付](weave-workflow.md)。
+[编写第一个自定义 Workflow](author-custom-workflow.md)、[在 Workflow 中并行处理多项任务](workflow-parallel-pipeline.md)、[复用子 Workflow，并在候选环境里试改动](compose-workflow-candidates.md)、[用 Weave 分组接力完成任务并检查交付](weave-workflow.md)。
