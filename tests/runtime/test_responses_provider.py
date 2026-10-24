@@ -171,6 +171,20 @@ async def test_stream_orders_completed_items_by_output_index():
     assert parsed.usage.output_tokens == 30
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "extra"),
+    [
+        ("response.function_call_arguments.delta", {"delta": "{"}),
+        ("response.function_call_arguments.done", {"arguments": "{}"}),
+    ],
+)
+async def test_stream_rejects_boolean_tool_argument_index(event_type, extra):
+    stream = FakeStream([ns(type=event_type, output_index=True, **extra)])
+    with pytest.raises(ResponsesProtocolError, match="output_index|incomplete"):
+        await _consume_stream(stream, 1, 1)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("index", [None, -1, True, 1.5])
 async def test_stream_rejects_invalid_output_index(index):
     stream = FakeStream([ns(type="response.output_item.done", output_index=index, item=message_item("OK"))])
@@ -802,6 +816,39 @@ def test_item_replay_rejects_tool_call_identity_drift():
     ]
     with pytest.raises(ResponsesProtocolError, match="response_items disagree"):
         _messages_to_input(messages)
+
+@pytest.mark.asyncio
+async def test_completed_response_survives_close_reset():
+    class ResetStream(FakeStream):
+        async def close(self):
+            self.closed = True
+            raise ConnectionResetError("reset")
+
+    item = message_item("hello")
+    stream = ResetStream([
+        ns(type="response.created"),
+        ns(type="response.output_text.delta", delta="hello", output_index=0),
+        ns(type="response.output_item.done", output_index=0, item=item),
+        ns(type="response.completed", response=completed_response(output=[item])),
+    ])
+
+    state = await _consume_stream(stream, 1, 1)
+    parsed = _parse_stream(state, [{"role": "user", "content": "hi"}], "gpt-fake")
+
+    assert parsed.content == "hello"
+    assert stream.closed is True
+
+
+@pytest.mark.asyncio
+async def test_close_reset_does_not_hide_a_protocol_error():
+    class ResetStream(FakeStream):
+        async def close(self):
+            self.closed = True
+            raise ConnectionResetError("reset")
+
+    with pytest.raises(ResponsesProtocolError):
+        await _consume_stream(ResetStream([ns(type="response.future_event")]), 1, 1)
+
 
 def test_prompt_cache_key_is_stable_within_one_run_and_isolated_between_runs():
     messages = [

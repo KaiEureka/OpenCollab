@@ -41,6 +41,48 @@ DOCKER_SETUP_TIMEOUT_SECONDS = 120.0
 DOCKER_CONTROL_TIMEOUT_SECONDS = 300.0
 DOCKER_WRITE_TIMEOUT_SECONDS = 120.0
 
+
+def _output_marker() -> str:
+    return f"OCFILE{uuid.uuid4().hex}"
+
+
+def _framed(marker: str, command: str) -> str:
+    return f"printf '%s\\n' {shlex.quote(marker)}; {command}"
+
+
+def _text_after_marker(stdout: str, marker: str) -> str:
+    token = marker + "\n"
+    index = stdout.find(token)
+    if index < 0:
+        raise OSError("docker file command output lost its framing marker")
+    return stdout[index + len(token):]
+
+
+def _within_directory(root: str, path: str) -> bool:
+    root_norm = posixpath.normpath(root)
+    path_norm = posixpath.normpath(path)
+    if not posixpath.isabs(root_norm) or not posixpath.isabs(path_norm):
+        return False
+    if path_norm == root_norm:
+        return True
+    return path_norm.startswith(root_norm.rstrip("/") + "/")
+
+
+def _write_receipt(stdout: str, expected: str, *, observe_change: bool) -> str | None:
+    found = None
+    for line in stdout.splitlines():
+        if observe_change:
+            fields = line.split("\t")
+            if (
+                len(fields) == 3
+                and fields[2] in {"equal", "different", "unknown"}
+                and "\t".join(fields[:2]) == expected
+            ):
+                found = line
+        elif line == expected:
+            found = line
+    return found
+
 _IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@:+-]{0,511}$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 _FULL_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -218,6 +260,7 @@ class DockerEnvironment(Environment):
         self._execution_owner: DockerEnvironment | None = None
         self.source_workspace = getattr(backing_environment, "source_workspace", None)
         self.host_workspace = None
+        self._resolved_workspace: str | None = None
         self._temporary_files: set[str] = set()
 
     @property
@@ -424,7 +467,14 @@ class DockerEnvironment(Environment):
             return self._command_prefix(cmd)
         return f"{self._command_prefix}\n{cmd}"
 
-    def _exec_argv(self, cmd: str, token: str, *, interactive: bool = False) -> tuple[str, ...]:
+    def _exec_argv(
+        self,
+        cmd: str,
+        token: str,
+        *,
+        interactive: bool = False,
+        login: bool | None = None,
+    ) -> tuple[str, ...]:
         assert self._container_id is not None
         pidfile = f"/tmp/.opencollab-exec-{token}.pid"
         args = ["exec"]
@@ -434,7 +484,10 @@ class DockerEnvironment(Environment):
             args.extend(("-w", self._exec_workdir))
         for name, value in _GIT_IDENTITY_ENV:
             args.extend(("-e", f"{name}={value}"))
-        shell_flag = "-lc" if self._command_prefix is not None else "-c"
+        # File commands opt out of the login shell. Its profile shares stdout
+        # with cat and the write receipt, so a banner becomes file bytes.
+        use_login = self._command_prefix is not None if login is None else login
+        shell_flag = "-lc" if use_login else "-c"
         args.extend(
             (
                 "--",
@@ -499,6 +552,7 @@ class DockerEnvironment(Environment):
         input_bytes: bytes | None = None,
         strict_stdout: bool = False,
         stdout_byte_limit: int | None = None,
+        login: bool | None = None,
     ) -> ExecResult:
         self._ensure_active()
         await self._bind_attached()
@@ -510,7 +564,9 @@ class DockerEnvironment(Environment):
             self._active_execs[token] = asyncio.current_task()
         try:
             result = await self._docker(
-                *self._exec_argv(cmd, token, interactive=input_bytes is not None),
+                *self._exec_argv(
+                    cmd, token, interactive=input_bytes is not None, login=login,
+                ),
                 timeout=timeout,
                 input_bytes=input_bytes,
             )
@@ -552,14 +608,19 @@ class DockerEnvironment(Environment):
         return await self._exec(cmd, timeout=timeout, input_bytes=input_bytes)
 
     async def read_file(self, path: str) -> str:
+        physical = await self._contained_file_path(path)
+        marker = _output_marker()
         result = await self._exec(
-            f"cat -- {shlex.quote(path)}", timeout=120.0, strict_stdout=True,
+            _framed(marker, f"cat -- {shlex.quote(physical)}"),
+            timeout=120.0,
+            strict_stdout=True,
+            login=False,
         )
         if result.returncode != 0:
             raise FileNotFoundError(result.stderr)
         if result.stdout_truncated:
             raise OSError(f"docker read exceeded capture limit for {path}")
-        return result.stdout
+        return _text_after_marker(result.stdout, marker)
 
     async def read_text_range(
         self,
@@ -585,8 +646,10 @@ class DockerEnvironment(Environment):
         # Include a complete character beyond the display budget so an
         # incomplete character buffered at the byte cap still marks truncation.
         byte_cap = max_chars * 4 + limit + 4
-        quoted_path = shlex.quote(path)
-        command = (
+        physical = await self._contained_file_path(path)
+        quoted_path = shlex.quote(physical)
+        marker = _output_marker()
+        command = _framed(marker, (
             f"[ -f {quoted_path} ] && [ -r {quoted_path} ] || exit 66; "
             "command -v awk >/dev/null && command -v sed >/dev/null && command -v tr >/dev/null && "
             "command -v head >/dev/null || exit 127; "
@@ -596,13 +659,17 @@ class DockerEnvironment(Environment):
             f"LC_ALL=C awk '{{ sub(/\\r$/, \"\"); print }}' < {quoted_path} | LC_ALL=C tr '\\015' '\\012' | "
             f"LC_ALL=C sed -n '{offset},{final_line}p;{final_line}q' "
             f"| head -c {byte_cap + 1}"
-        )
+        ))
         result = await self._exec(
-            command, timeout=120.0, strict_stdout=True, stdout_byte_limit=byte_cap,
+            command,
+            timeout=120.0,
+            strict_stdout=True,
+            stdout_byte_limit=byte_cap + len(marker.encode("utf-8")) + 1,
+            login=False,
         )
         if result.returncode != 0:
             raise FileNotFoundError(result.stderr)
-        lines, _ended_nl = _split_lines(_normalize_newlines(result.stdout))
+        lines, _ended_nl = _split_lines(_normalize_newlines(_text_after_marker(result.stdout, marker)))
         has_more = len(lines) > limit
         selected = lines[:limit]
         joined = "\n".join(selected)
@@ -625,7 +692,12 @@ class DockerEnvironment(Environment):
         return await self._write_file(path, content, observe_change=True)
 
     @contextlib.asynccontextmanager
-    async def file_write_lock(self, path: str) -> AsyncIterator[str]:
+    async def file_write_lock(
+        self,
+        path: str,
+        *,
+        containment_root: str | None = None,
+    ) -> AsyncIterator[str]:
         """Hold the target lock across a native edit, including its final write."""
         self._ensure_active()
         await self._bind_attached()
@@ -633,7 +705,7 @@ class DockerEnvironment(Environment):
         if container_id is None:
             raise RuntimeError("Container not started. Call setup() first.")
         target = self._validate_container_path(path)
-        target = await self._resolve_write_target(target)
+        target = await self._resolve_write_target(target, containment_root=containment_root)
         key = f"{container_id}\0{target}"
         task = asyncio.current_task()
         assert task is not None
@@ -671,40 +743,127 @@ class DockerEnvironment(Environment):
                 if entry.users == 0:
                     del _WRITE_LOCKS[key]
 
-    async def _write_file(self, path: str, content: str, *, observe_change: bool) -> bool | None:
+    async def _write_file(
+        self,
+        path: str,
+        content: str,
+        *,
+        observe_change: bool,
+        containment_root: str | None = None,
+    ) -> bool | None:
         payload = content.encode("utf-8")
         if len(payload) > ENV_FILE_WRITE_LIMIT_BYTES:
             raise OSError(
                 f"docker file exceeds write limit of {ENV_FILE_WRITE_LIMIT_BYTES} bytes: {path}"
             )
-        async with self.file_write_lock(path) as target:
+        async with self.file_write_lock(path, containment_root=containment_root) as target:
             return await self._write_file_atomic(target, payload, observe_change=observe_change)
 
-    async def _resolve_write_target(self, target: str) -> str:
+    async def _resolve_write_target(
+        self,
+        target: str,
+        *,
+        containment_root: str | None = None,
+    ) -> str:
         # Resolve the parent through the file execution wrapper, including its
         # cwd and command prefix. Keep the final component so atomic writes
         # replace a file symlink rather than modifying its referent.
         directory, filename = posixpath.split(target)
         command = (
-            'directory=$1; suffix=; '
+            'directory=$1; workspace=$2; suffix=; '
             'while [ ! -d "$directory" ]; do '
             '[ ! -e "$directory" ] && [ ! -L "$directory" ] || exit 66; '
             'suffix="/${directory##*/}$suffix"; directory=${directory%/*}; '
             '[ -n "$directory" ] || directory=/; done; '
-            'cd -P -- "$directory" && printf "\\0%s%s\\0" "$PWD" "$suffix"'
+            'cd -P -- "$directory" || exit 66; '
+            'phys_ws=$(readlink -f -- "$workspace") || exit 67; '
+            'printf "\\0%s\\0%s%s\\0" "$phys_ws" "$PWD" "$suffix"'
         )
         parent = directory or "."
         if not posixpath.isabs(parent):
             parent = "./" + parent
+        if containment_root not in (None, "/tmp"):
+            raise ValueError("container temporary files must stay under /tmp")
+        root = self.workspace if containment_root is None else containment_root
         result = await self._exec(
-            f"bash -c {shlex.quote(command)} opencollab-file-parent {shlex.quote(parent)}",
+            "bash -c "
+            f"{shlex.quote(command)} opencollab-file-parent {shlex.quote(parent)} "
+            f"{shlex.quote(root)}",
             timeout=DOCKER_CONTROL_TIMEOUT_SECONDS,
+            login=False,
         )
-        parts = result.stdout.rsplit("\0", 2)
-        resolved = parts[-2] if len(parts) == 3 else ""
-        if result.returncode != 0 or result.stdout_truncated or not posixpath.isabs(resolved):
+        parts = result.stdout.rsplit("\0", 3)
+        resolved_root = parts[-3] if len(parts) == 4 else ""
+        resolved = parts[-2] if len(parts) == 4 else ""
+        if (
+            result.returncode != 0
+            or result.stdout_truncated
+            or not posixpath.isabs(resolved_root)
+            or not posixpath.isabs(resolved)
+        ):
             raise OSError("cannot resolve container file execution directory")
-        return posixpath.normpath(posixpath.join(resolved, filename))
+        resolved_root = posixpath.normpath(resolved_root)
+        # Owned /tmp files must not replace the cached workspace root. A later
+        # workspace write would then treat the temporary directory as the project.
+        if containment_root is None:
+            self._resolved_workspace = resolved_root
+        resolved_target = posixpath.normpath(posixpath.join(resolved, filename))
+        if not _within_directory(resolved_root, resolved_target):
+            boundary = "workspace" if containment_root is None else "temporary directory"
+            raise PermissionError(f"container file path escapes {boundary}: {target}")
+        return resolved_target
+
+    async def _physical_workspace(self) -> str:
+        if self._resolved_workspace is not None:
+            return self._resolved_workspace
+        marker = _output_marker()
+        command = _framed(marker, f"readlink -f -- {shlex.quote(self.workspace)}")
+        result = await self._exec(
+            command,
+            timeout=DOCKER_CONTROL_TIMEOUT_SECONDS,
+            strict_stdout=True,
+            login=False,
+        )
+        text = ""
+        if result.returncode == 0 and not result.stdout_truncated:
+            try:
+                text = _text_after_marker(result.stdout, marker).removesuffix("\n")
+            except OSError:
+                text = ""
+        resolved = posixpath.normpath(text) if text else ""
+        if not posixpath.isabs(resolved):
+            raise OSError("cannot resolve container workspace")
+        self._resolved_workspace = resolved
+        return resolved
+
+    async def _symlink_referent(self, path: str) -> str | None:
+        marker = _output_marker()
+        command = _framed(marker, f"readlink -f -- {shlex.quote(path)} 2>/dev/null || true")
+        result = await self._exec(
+            command,
+            timeout=DOCKER_CONTROL_TIMEOUT_SECONDS,
+            strict_stdout=True,
+            login=False,
+        )
+        if result.returncode != 0 or result.stdout_truncated:
+            return None
+        try:
+            text = _text_after_marker(result.stdout, marker).removesuffix("\n")
+        except OSError:
+            return None
+        if not posixpath.isabs(text):
+            return None
+        return posixpath.normpath(text)
+
+    async def _contained_file_path(self, path: str) -> str:
+        """Resolve a file for reading and refuse a symlink that leaves the workspace."""
+        target = await self._resolve_write_target(self._validate_container_path(path))
+        referent = await self._symlink_referent(target)
+        if referent is None:
+            return target
+        if not _within_directory(await self._physical_workspace(), referent):
+            raise PermissionError(f"container file path escapes workspace: {path}")
+        return referent
 
     @staticmethod
     def _validate_container_path(path: str) -> str:
@@ -783,16 +942,16 @@ class DockerEnvironment(Environment):
                 wrapped,
                 timeout=DOCKER_WRITE_TIMEOUT_SECONDS,
                 input_bytes=payload,
+                login=False,
             )
             expected = f"{len(payload)}\t{digest}"
-            fields = result.stdout.strip().split("\t")
-            valid = (len(fields) == 3 and fields[2] in {"equal", "different", "unknown"}
-                and "\t".join(fields[:2]) == expected
-            ) if observe_change else result.stdout.strip() == expected
-            if result.returncode != 0 or not valid:
+            receipt = _write_receipt(result.stdout, expected, observe_change=observe_change)
+            if result.returncode != 0 or receipt is None:
                 raise OSError(f"docker write verification failed for {target}")
             committed = True
-            return {"equal": False, "different": True}.get(fields[2]) if observe_change else None
+            if not observe_change:
+                return None
+            return {"equal": False, "different": True}.get(receipt.split("\t")[2])
         finally:
             if not committed:
                 await await_owned_operation(
@@ -827,7 +986,9 @@ class DockerEnvironment(Environment):
         if any(character in prefix + suffix for character in ("/", "\0")):
             raise ValueError("temporary file prefix and suffix must be path components")
         path = f"/tmp/{prefix}{uuid.uuid4().hex}{suffix}"
-        await self.write_file(path, content)
+        # Patch staging owns this path. It is outside the project on purpose;
+        # workspace containment would reject it and drop the binary patch.
+        await self._write_file(path, content, observe_change=False, containment_root="/tmp")
         self._temporary_files.add(path)
         return path
 

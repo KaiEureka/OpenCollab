@@ -635,6 +635,28 @@ async def test_second_choice_of_a_multi_choice_stream_is_ignored():
 
     assert streamed.content == "391"
 
+async def test_finished_chat_stream_is_kept_when_close_resets():
+    class ResetClient(FakeClient):
+        async def _create(self, **kwargs):
+            self.calls.append(kwargs)
+            stream = FakeStream(self._scripts.pop(0))
+
+            async def close():
+                stream.closed = True
+                raise ConnectionResetError("reset")
+
+            stream.close = close
+            self.streams.append(stream)
+            return stream
+
+    client = ResetClient([text_script("hello")])
+    response = await complete_openai(client, MODEL, MESSAGES, None, 0.0, 1, stream=True)
+
+    assert response.content == "hello"
+    assert len(client.calls) == 1
+    assert client.streams[0].closed is True
+
+
 async def test_first_chunk_timeout_bounds_the_wait_for_the_first_chunk():
     """The wrong timeout clock can still report the expected first-chunk error text."""
     client = FakeClient([text_script()], delays=[[20.0]])

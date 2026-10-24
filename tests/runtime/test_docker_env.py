@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 
 import pytest
@@ -250,19 +251,25 @@ async def test_exec_preserves_bounded_output_metadata(monkeypatch) -> None:
 
 async def test_docker_text_range_requests_only_window_plus_probe(monkeypatch) -> None:
     env = DockerEnvironment(container_id=CONTAINER_ID)
-    commands: list[str] = []
+    commands: list[tuple[str, int | None]] = []
 
-    async def fake_exec(command, *, timeout, strict_stdout, stdout_byte_limit):
-        commands.append(command)
-        assert timeout == 120.0
+    async def fake_exec(command, *, timeout, strict_stdout=False, stdout_byte_limit=None, login=None):
+        commands.append((command, stdout_byte_limit))
+        assert timeout in {120.0, docker_module.DOCKER_CONTROL_TIMEOUT_SECONDS}
+        if "opencollab-file-parent" in command:
+            return docker_module.ExecResult(0, "\0/workspace\0/workspace\0", "")
+        marker_match = re.search(r"OCFILE[0-9a-f]+", command)
+        marker = marker_match.group(0) if marker_match else ""
+        if "readlink -f" in command:
+            return docker_module.ExecResult(0, f"{marker}\n/workspace/large.txt\n", "")
         assert strict_stdout
-        assert stdout_byte_limit == 406
-        return docker_module.ExecResult(0, "first\nsecond\nthird\n", "")
+        assert stdout_byte_limit is not None and stdout_byte_limit > 406
+        return docker_module.ExecResult(0, f"{marker}\nfirst\nsecond\nthird\n", "")
 
     monkeypatch.setattr(env, "_exec", fake_exec)
 
     window = await env.read_text_range(
-        "/repo/large.txt",
+        "/workspace/large.txt",
         offset=10,
         limit=2,
         max_chars=100,
@@ -273,8 +280,9 @@ async def test_docker_text_range_requests_only_window_plus_probe(monkeypatch) ->
     assert window.total_lines is None
     assert window.has_more
     assert not window.chars_truncated
-    assert "10,12p;12q" in commands[0]
-    assert "head -c 407" in commands[0]
+    read = next(command for command, _limit in commands if "head -c" in command)
+    assert "10,12p;12q" in read
+    assert "head -c 407" in read
 
 async def test_user_exit_125_does_not_destroy_owned_container(monkeypatch) -> None:
     exec_attempts = 0
@@ -523,7 +531,7 @@ async def test_verified_write_threads_stdin_and_digest(monkeypatch) -> None:
             return _result(stdout=f"{CONTAINER_ID}\n".encode())
         if command[1] == "exec":
             if "opencollab-file-parent" in command[-1]:
-                return _result(stdout=b"\0/workspace\0")
+                return _result(stdout=b"\0/workspace\0/workspace\0")
             assert kwargs["input_bytes"] == payload
             return _result(stdout=f"5\t{digest}\n".encode())
         raise AssertionError(command)
@@ -542,7 +550,7 @@ async def test_write_half_input_failure_keeps_old_target_and_cleans_temp(monkeyp
 
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER in args:
             assert input_bytes is not None
             if 'cat > "$target"' in args[-1]:
@@ -576,7 +584,7 @@ async def test_write_timeout_keeps_old_target_and_cleans_temp(monkeypatch) -> No
 
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER in args:
             assert input_bytes is not None
             if 'cat > "$target"' in args[-1]:
@@ -608,7 +616,7 @@ async def test_cancelled_write_keeps_old_target_and_cleans_temp(monkeypatch) -> 
 
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER in args:
             assert input_bytes is not None
             if 'cat > "$target"' in args[-1]:
@@ -646,7 +654,7 @@ async def test_concurrent_same_container_path_writes_are_serialized(monkeypatch)
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         nonlocal target, active, max_active
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER not in args:
             raise AssertionError(args)
         assert input_bytes is not None

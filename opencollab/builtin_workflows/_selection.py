@@ -160,6 +160,34 @@ def _judge_input(
     }
     return encoded, paths, False
 
+def _path_atom(char: str) -> bool:
+    return char.isalnum() or char in "._-"
+
+
+def _bounded_path_mention(anchor: str, needle: str, *, slash_can_precede: bool) -> bool:
+    """True when ``needle`` occurs as its own path token, not as a suffix of a longer name."""
+    if not needle:
+        return False
+    start = 0
+    while True:
+        index = anchor.find(needle, start)
+        if index < 0:
+            return False
+        end = index + len(needle)
+        before = anchor[index - 1] if index else ""
+        after = anchor[end] if end < len(anchor) else ""
+        before_ok = not before or (not _path_atom(before) and (slash_can_precede or before != "/"))
+        if after == ".":
+            # A sentence-final dot is a boundary. ".bak" still extends the name.
+            rest = anchor[end + 1] if end + 1 < len(anchor) else ""
+            after_ok = not rest or not _path_atom(rest)
+        else:
+            after_ok = not after or (not _path_atom(after) and after != "/")
+        if before_ok and after_ok:
+            return True
+        start = index + 1
+
+
 def _evidence_mentions_changed_path(
     evidence: list[Any],
     paths: list[str],
@@ -168,7 +196,11 @@ def _evidence_mentions_changed_path(
     for path in paths:
         normalized = str(path).replace("\\", "/")
         name = PurePosixPath(normalized).name
-        if any(normalized in anchor or name and name in anchor for anchor in anchors):
+        if any(
+            _bounded_path_mention(anchor, normalized, slash_can_precede=False)
+            or _bounded_path_mention(anchor, name, slash_can_precede=True)
+            for anchor in anchors
+        ):
             return True
     return False
 

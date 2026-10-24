@@ -97,6 +97,10 @@ def test_outputs_match_follows_io2code_rules() -> None:
     assert outputs_match(0.1 + 0.2, 0.3) and not outputs_match(0.1, 0.2)
     assert outputs_match([1, [2, 3]], [1, [2, 3]]) and not outputs_match([1, 2], [1, 2, 3])
     assert outputs_match(jsonable((1, 2)), [1, 2])
+    assert outputs_match(True, True) and not outputs_match(True, 1)
+    assert not outputs_match(False, 0) and not outputs_match(1.0, True)
+    assert outputs_match({"ok": True}, {"ok": True}) and not outputs_match({"ok": True}, {"ok": 1})
+    assert outputs_match({"value": 0.1 + 0.2}, {"value": 0.3})
 
 
 @pytest.mark.parametrize(

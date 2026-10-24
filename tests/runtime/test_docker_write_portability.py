@@ -24,7 +24,7 @@ async def test_verified_write_accepts_bsd_wc_padding(monkeypatch, tmp_path) -> N
     fake_wc.chmod(0o755)
     child_env = {"PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
 
-    async def run_locally(command, *, timeout, input_bytes=None):
+    async def run_locally(command, *, timeout, input_bytes=None, **_kwargs):
         completed = subprocess.run(
             ["bash", "-c", command],
             input=input_bytes,
@@ -52,7 +52,7 @@ async def test_verified_write_accepts_bsd_wc_padding(monkeypatch, tmp_path) -> N
 
 @pytest.fixture
 def local_shell_docker(monkeypatch, tmp_path):
-    async def run_locally(command, *, timeout, input_bytes=None):
+    async def run_locally(command, *, timeout, input_bytes=None, **_kwargs):
         completed = subprocess.run(
             ["bash", "-c", command], input=input_bytes, capture_output=True, cwd=tmp_path, check=False,
         )

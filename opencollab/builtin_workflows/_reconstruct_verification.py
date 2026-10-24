@@ -20,13 +20,38 @@ def jsonable(value: Any) -> Any:
     return json.loads(json.dumps(value))
 
 
+def _json_containers(value: Any) -> Any:
+    """Treat tuples as JSON lists so a candidate can return either shape."""
+    if isinstance(value, tuple):
+        return [_json_containers(item) for item in value]
+    if isinstance(value, list):
+        return [_json_containers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_containers(item) for key, item in value.items()}
+    return value
+
+
+def _is_real_number(value: Any) -> bool:
+    """True for ints and floats. ``bool`` is an ``int`` subclass, not a number here."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def outputs_match(actual: Any, expected: Any) -> bool:
     """Default output comparison: exact for ints and containers, 1e-6 tolerance for floats."""
+    actual = _json_containers(actual)
+    expected = _json_containers(expected)
     if isinstance(expected, list) and isinstance(actual, list):
         if len(expected) != len(actual):
             return False
         return all(outputs_match(a, e) for a, e in zip(actual, expected))
-    if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if set(expected) != set(actual):
+            return False
+        return all(outputs_match(actual[key], expected[key]) for key in expected)
+    # Check bool before the numeric branch. Otherwise True matches 1 and False matches 0.
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return isinstance(actual, bool) and isinstance(expected, bool) and actual == expected
+    if _is_real_number(expected) and _is_real_number(actual):
         if isinstance(expected, int):
             return actual == expected
         return abs(actual - expected) < 1e-6

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -376,14 +377,15 @@ def _handle_event(event: Any, state: _StreamState, expected_model: str | None = 
     if event_type == "response.function_call_arguments.delta":
         index = getattr(event, "output_index", None)
         delta = getattr(event, "delta", None)
-        if not isinstance(index, int) or not isinstance(delta, str):
+        # bool is an int subclass. Index 1 must not absorb a fragment labelled true.
+        if type(index) is not int or not isinstance(delta, str):
             raise ResponsesProtocolError("tool argument delta is missing output_index or text")
         state.argument_fragments.setdefault(index, []).append(delta)
         return False
     if event_type == "response.function_call_arguments.done":
         index = getattr(event, "output_index", None)
         arguments = getattr(event, "arguments", None)
-        if not isinstance(index, int) or not isinstance(arguments, str):
+        if type(index) is not int or not isinstance(arguments, str):
             raise ResponsesProtocolError("tool argument completion is incomplete")
         fragments = state.argument_fragments.get(index)
         if fragments and "".join(fragments) != arguments:
@@ -401,6 +403,24 @@ def _handle_event(event: Any, state: _StreamState, expected_model: str | None = 
     if event_type not in _PASSIVE_EVENT_TYPES:
         raise ResponsesProtocolError(f"unsupported Responses event {event_type!r}")
     return False
+
+async def _close_finished_stream(stream: Any) -> None:
+    """Release the socket without replacing a finished read or its original error.
+
+    ``AsyncStream.close`` awaits the HTTP response close. A reset at that point
+    is not a failed generation: the terminal event is already in memory, and a
+    retryable close error would drop it and bill the request again.
+    """
+    close = getattr(stream, "close", None)
+    if close is None:
+        return
+    try:
+        result = close()
+        if asyncio.iscoroutine(result):
+            await result
+    except Exception:
+        logging.getLogger(__name__).debug("responses stream close failed", exc_info=True)
+
 
 async def _consume_stream(
     stream: Any,
@@ -444,11 +464,7 @@ async def _drain_stream(
             if _handle_event(event, state, expected_model):
                 break
     finally:
-        close = getattr(stream, "close", None)
-        if close is not None:
-            result = close()
-            if asyncio.iscoroutine(result):
-                await result
+        await _close_finished_stream(stream)
     if state.argument_fragments:
         _, finish_reason = _validate_terminal_response(state.completed_response, expected_model)
         output = _validated_response_items(to_plain_data(getattr(state.completed_response, "output", None)))

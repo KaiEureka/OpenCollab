@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -262,12 +263,16 @@ async def _next_chunk(iterator: Any, budget: float | None, *, stage: str) -> Any
         ) from exc
 
 async def _close_stream(stream: Any) -> None:
+    """Release the socket without replacing a finished read or its original error."""
     close = getattr(stream, "close", None)
     if close is None:
         return
-    result = close()
-    if asyncio.iscoroutine(result):
-        await result
+    try:
+        result = close()
+        if asyncio.iscoroutine(result):
+            await result
+    except Exception:
+        logging.getLogger(__name__).debug("chat stream close failed", exc_info=True)
 
 async def _consume_chat_stream(
     stream: Any, first_chunk_timeout: float | None, idle_timeout: float | None

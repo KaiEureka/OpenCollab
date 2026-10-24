@@ -191,7 +191,9 @@ async def test_docker_file_read_continues_using_reported_line_offsets(
 
     assert observed == expected
     assert target.read_bytes() == original
-    assert all("head -c" in call["command"] for call in calls)
+    # Path containment probes share the command log. Each displayed page is still
+    # a bounded head read, not an unbounded cat of the file.
+    assert sum("head -c" in call["command"] for call in calls) == len(observed)
     assert not runtime.environment._active_execs
 
 async def test_docker_file_read_rejects_non_utf8(tmp_path, docker_runtime):
