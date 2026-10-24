@@ -51,6 +51,7 @@
     "python-sdk-entrypoints",
     "base-single2",
     "configuration-precedence",
+    "configuration-reference",
     "provider-endpoint-credentials",
     "model-routing-request-capacity",
     "wire-protocol-streaming",
@@ -112,5 +113,6 @@
     "upgrade-existing-integration",
     "report-problem-and-request-help"
   ],
-  "source_commit_url": "https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41"
+  "source_commit_url": "https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41",
+  "documented_version": "0.9.5"
 }

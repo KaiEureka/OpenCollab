@@ -28,6 +28,8 @@ export function needsChoice(index, query) {
 async function initializeSearch() {
   const input = document.querySelector("#help-search");
   if (!input || !document.body.dataset.searchIndex) return;
+  const shortcut = document.querySelector(".search-shortcut");
+  if (shortcut && /Mac|iPhone|iPad/.test(navigator.platform)) shortcut.textContent = "⌘ K";
   const results = document.querySelector("#search-results");
   const status = document.querySelector("#search-status");
   const indexURL = new URL(document.body.dataset.searchIndex, window.location.href);

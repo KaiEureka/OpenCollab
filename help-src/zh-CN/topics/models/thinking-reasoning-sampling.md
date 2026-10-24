@@ -47,7 +47,7 @@
 
 当前能力声明中，`qwen3.8-flash` 的 Chat 请求显式发送 `enable_thinking=false`。`deepseek-flash`、`deepseek-v4-pro` 和 `deepseek-v4-flash` 在 Chat 与 Anthropic 路径使用 disabled thinking，Responses 将 `reasoning` 的 `effort` 设为 `none`。显式 Responses reasoning effort 优先于该默认。普通模型的实际默认按 provider 能力处理。
 
-可以先用 `inspect_model_runtime` 查看已安装运行时的模型能力，再用 `OpenCollab.configuration` 查看显式覆盖。能力检查查询本地表，服务端能否接受参数仍应结合所用端点。
+`inspect_model_runtime` 显示已安装版本的模型能力，`OpenCollab.configuration` 显示显式覆盖值。本地能力表用于构造请求，参数支持情况以所用端点为准。
 
 ## 为 Chat 和 Responses 设置推理
 
@@ -90,11 +90,11 @@ OPENCOLLAB_THINKING_PARAMS={"thinking":{"type":"adaptive"},"output_config":{"eff
 
 全局 `temperature` 默认 0.2，范围为 0 到 2，显式 0.0 有效。`top_p` 范围为 0 到 1，省略时使用 provider 默认。在支持采样的原生 Claude 4 普通请求里，显式 `top_p` 优先于温度。模型或 thinking 模式要求时，请求构造器会省略相应采样字段。
 
-团队 YAML 的角色可把 `temperature` 设为 0.0，把 `thinking` 设为 true，未设置的字段继承全局值。更详细的原生 thinking 参数放在客户端模型设置中，角色配置字段应按团队 schema 使用。
+团队 YAML 的角色可把 `temperature` 设为 0.0，把 `thinking` 设为 true，省略时继承全局值。原生 thinking 的详细参数通过客户端模型设置传入，角色可用字段见团队 schema。
 
 ## 留出会话额度
 
-单次输出上限与整次会话 `budget` 分开控制。有限会话在确定输出空间前先保留输入 token，手动 thinking 还需要思考额度与回答空间。剩余额度低于组合最低需求时会以 budget-exceeded 原因停止，并保留已完成工具结果及用量。遇到请求前参数错误，先核对模型与格式，遇到额度停止，再检查会话预算、输入长度和单次输出上限。
+单次输出上限与整次会话 `budget` 分开控制。会话预算有限时，先为输入预留 token，再确定输出空间。手动 thinking 需要同时留出思考额度和回答空间，剩余额度低于最低需求时会以 budget-exceeded 原因停止，并保留已完成的工具结果及用量。参数错误时检查模型与格式，额度不足时检查会话预算、输入长度和单次输出上限。
 
 ## 来源
 

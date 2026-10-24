@@ -26,6 +26,7 @@
     "解释某项配置为什么生效，并稳定地让 CLI 或 SDK 读取选定配置？"
   ],
   "related": [
+    "configuration-reference",
     "provider-endpoint-credentials",
     "model-routing-request-capacity",
     "configuration-diagnostics"
@@ -55,7 +56,7 @@ OPENCOLLAB_CONFIG_FILE=/absolute/path/project.env \
 
 ## 在 SDK 中明确覆盖
 
-`OpenCollab` 构造参数中的 `model`、`provider`、`api_key` 和 `base_url` 会覆盖对应的 `config` 值。其余运行设置可通过 `config` 映射传入。下面的代码只构造客户端并查看元数据，使用公开占位模型名，实际运行前应选择服务端支持的名称。
+`OpenCollab` 构造参数中的 `model`、`provider`、`api_key` 和 `base_url` 会覆盖对应的 `config` 值。其余运行设置通过 `config` 映射传入。下面的代码构造客户端并打印有效配置，将占位模型名替换为所用服务支持的名称。
 
 ```python
 from opencollab import OpenCollab
@@ -72,7 +73,7 @@ client = OpenCollab(
 print(dict(client.configuration))
 ```
 
-零温度是有效覆盖值。SDK 的 `config` 使用字段名，例如 `llm_timeout`，env 文件使用 `OPENCOLLAB_LLM_TIMEOUT`。把环境变量名直接放进 `config` 会触发未知字段错误。构造成功说明本地配置通过校验，端点能否接受请求还取决于服务端。
+零温度是有效覆盖值。SDK 的 `config` 使用字段名，例如 `llm_timeout`，env 文件使用 `OPENCOLLAB_LLM_TIMEOUT`。把环境变量名直接放进 `config` 会触发未知字段错误。构造客户端会校验本地配置，调用运行入口时才向端点发送请求。
 
 ## 空值、类型和认证的特殊情况
 
@@ -80,9 +81,13 @@ print(dict(client.configuration))
 
 认证有额外的 provider 专用顺序。普通 OpenAI 兼容端点依次选择通用 key 和 `OPENAI_API_KEY`，DashScope 优先 `DASHSCOPE_API_KEY`，原生 Anthropic 优先自己的 key 或 bearer token。专用凭据的变量顺序跨进程和文件来源生效，例如文件中的 `DASHSCOPE_API_KEY` 优先于 shell 中导出的通用 key。显式 `api_key` 的优先级最高，完整选择规则见端点认证指南。
 
+## 查找参数名与默认值
+
+[配置参数与环境变量速查](configuration-reference.md) 对照列出环境变量、SDK 字段和内置默认值，并指向对应运行入口的详细指南。设置角色工具、Team 上下文或一次任务期限时，从表中的具体入口继续配置。
+
 ## 查看最终结果
 
-`configuration` 是只读元数据，嵌套值与客户端内部配置隔离。它显示模型、provider、协议、预算、窗口、采样和传输设置，凭据被筛除，端点用 `base_url_sha256` 标识。只打印需要比较的字段，更容易判断修改是否进入新客户端。逻辑路由存在时，还能看到逻辑名称到物理模型的公开映射。
+`configuration` 是只读元数据，嵌套值与客户端内部配置隔离。它显示模型、provider、协议、预算、窗口、采样和传输设置，凭据被筛除，端点用 `base_url_sha256` 标识。打印需要比较的字段，可以查看新客户端采用了哪些设置。逻辑路由存在时，还能看到逻辑名称到物理模型的公开映射。
 
 ## 来源
 

@@ -33,7 +33,7 @@
 
 # 选择 Workflow 的入口与控制粒度
 
-调整 Workflow 时，可以从现成流程的输入参数开始，逐步进入 SDK 运行设置、自定义 Python 编排、单次 Agent 调用及运行回调。它们是不同的实际调用入口，各有自己的参数范围。决定把一个要求放在哪里时，先看它影响整次运行、某个角色，还是一次具体工具或模型请求。
+调整 Workflow 时，可以从现成流程的输入参数开始，逐步进入 SDK 运行设置、自定义 Python 编排、单次 Agent 调用及运行回调。各入口提供不同范围的参数。决定把一个要求放在哪里时，先看它影响整次运行、某个角色，还是一次具体工具或模型请求。
 
 ## 使用现成流程输入
 
@@ -104,7 +104,7 @@ async def controlled_answer(ctx, args):
     return {'answer': run.output, 'status': run.status, 'usage_events': usage}
 ```
 
-`decide_budget` 可以是同步函数或异步函数，收到 `BudgetSnapshot` 后返回 `BudgetDecision`。软额度应保持有效且不递减，并受实际硬授权限制。`on_event` 在记账位置同步执行，适合收集简短观察，耗时工作应交给应用另行处理。观察回调异常会进入 `observation_errors`，预算策略错误则影响会话执行。
+`decide_budget` 可以是同步函数或异步函数，收到 `BudgetSnapshot` 后返回 `BudgetDecision`。软额度应保持有效且不递减，并受实际硬授权限制。`on_event` 在记录用量时同步执行，适合收集简短事件，耗时工作由应用另行处理。观察回调异常会进入 `observation_errors`，预算策略错误则影响会话执行。
 
 ## 对照时限和资源层级
 
@@ -116,7 +116,7 @@ async def controlled_answer(ctx, args):
 | 模型配置 | 输出上限、请求时限、连接与流等待设置 | 模型请求 |
 | 清理设置 | `cleanup_timeout` 等 | 已停止任务的结束与持久化 |
 
-运行剩余时间可用 `ctx.seconds_left()` 读取，`ctx.time_low()` 表示是否进入预留范围。某次模型请求超时、整次运行到期和调用清理超时分别记录在相应层级。调试时读取具体停止原因与清理状态，再决定扩大哪个参数，通常比同时提高所有上限更容易找出实际瓶颈。
+运行剩余时间可用 `ctx.seconds_left()` 读取，`ctx.time_low()` 表示是否进入预留范围。某次模型请求超时、整次运行到期和调用清理超时分别记录在相应层级。调试时，先从具体停止原因和清理状态确定限制发生在哪一层，再调整对应参数。
 
 ## 源码依据
 

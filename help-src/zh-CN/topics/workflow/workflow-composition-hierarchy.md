@@ -33,7 +33,7 @@
 
 # 理解 Agent、Team 与 Workflow 的调用层级
 
-同一个 Python 应用可以通过 SDK 启动 Agent、Team 和 Workflow。三种入口都返回 `RunResult`，各自的控制方式有所区别。Agent 执行单次会话，Team 让成员按角色和通信关系协作，Workflow 由异步 Python 函数安排步骤。组合时先确定谁创建运行、谁支付额度、谁负责停止和交付。
+同一个 Python 应用可以通过 SDK 启动 Agent、Team 和 Workflow。三种入口都返回 `RunResult`，各自的控制方式有所区别。Agent 执行单次会话，Team 让成员按角色和通信关系协作，Workflow 由异步 Python 函数安排步骤。组合时先确定运行的创建者，以及额度、停止和交付由谁管理。
 
 ## 在宿主使用三个入口
 
@@ -61,7 +61,7 @@ async def run_independent_examples(workspace, team_config):
 
 `ctx.agent` 与 `ctx.agent_run` 建立属于当前 Workflow 的会话，共享该运行的额度和容量，并按当前环境策略执行工具。使用 `await helper(ctx, args)` 调用普通异步子函数时，资源归属也继续保持在当前 ctx。
 
-如果整套子流程需要候选环境，可用 `ctx.candidate_workflow(fn, args, label=...)`。其子会话受父运行的会话容量、集合容量和绝对期限管理，返回 `CandidateRun`，供父流程检查后采用。当前候选子上下文未配备新候选后端，继续组合更深的普通函数适合复用逻辑。
+如果整套子流程需要候选环境，可用 `ctx.candidate_workflow(fn, args, label=...)`。其子会话受父运行的会话容量、集合容量和绝对期限管理，返回 `CandidateRun`，供父流程检查后采用。当前候选子上下文未配备新候选后端。子流程要继续拆分逻辑时，可以调用普通异步函数。
 
 ## Team 成员怎样进入 Workflow
 
@@ -78,11 +78,9 @@ async def run_independent_examples(workspace, team_config):
 
 ## 在 Python 中启动独立 Team
 
-公开 `ctx` 提供 Agent、集合与候选操作，当前没有 `ctx.team` 方法。需要在一套业务流程中运行 Team 时，可以从宿主代码显式调用 `OpenCollab.team`。如果把独立 SDK 调用放进自定义 Workflow 的函数体，它仍是一项独立运行，需要作者连接外层的额度和生命期。
+公开 `ctx` 提供 Agent、集合与候选操作，`ctx.team` 尚未提供。业务流程中的独立 Team 通过宿主 SDK 的 `OpenCollab.team` 启动。如果把独立 SDK 调用放进自定义 Workflow 的函数体，它仍是一项独立运行，需要作者连接外层的额度和生命期。
 
 例如外层 Workflow 有 50,000 token 预算，内层独立 `oc.team(..., budget=30000)` 的调用应由应用确认是否属于同一个业务总额。需要统一停止时，应用应拥有内层任务并传播取消，等待其清理后再释放环境。产物目录、模型客户端与调用方环境也应由明确的拥有者负责。
-
-因此，复用小逻辑时把 ctx 传给普通函数，比较候选时采用候选接口，成员执行运行时源文件时采用管理工具，独立组织 Team 时在宿主显式管理运行。每个选择都对应一条实际的调用路径和清理责任。
 
 ## 源码依据
 

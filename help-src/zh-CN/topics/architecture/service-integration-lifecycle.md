@@ -3,7 +3,7 @@
   "id": "service-integration-lifecycle",
   "title": "从示例接入自己的服务",
   "category": "architecture",
-  "summary": "把一次 SDK 演示接入业务服务，并明确运行身份、结果处理与资源清理责任。",
+  "summary": "把 SDK 调用接入业务服务，关联运行记录，并处理结果与资源清理。",
   "aliases": [
     "Web 服务",
     "嵌入应用",
@@ -94,23 +94,44 @@ async def inspect_request(project, request_id, task):
 
 ## 时间限制分别设置
 
-SDK `timeout` 约束完整运行，Workflow 单次角色也可以设置自己的 `timeout`。模型请求、连接、首个流事件和流空闲超时由 transport 设置。`cleanup_timeout` 约束执行结束后的拥有资源清理。只增大模型请求超时，会继续受到完整运行 deadline 的约束。
+SDK `timeout` 限制完整运行，Workflow 中的单次角色调用也可以设置自己的 `timeout`。模型请求、连接、首个流事件和流空闲超时由传输层设置。`cleanup_timeout` 限制执行结束后框架清理自身资源的等待时间。模型请求同时受到整次运行期限的约束。
 
-如果 Workflow 需要严格保留调用方传入的 token 与步数额度，应选择 `limit_mode="explicit"`。默认 environment 模式会考虑 `OPENCOLLAB_UNBOUNDED_LIMITS`。所有限制都应结合一次真实请求观察，确认等待、停止与部分产物处理符合服务需要。
+如果 Workflow 需要严格保留调用方传入的 token 与步数额度，应选择 `limit_mode="explicit"`。默认 environment 模式会考虑 `OPENCOLLAB_UNBOUNDED_LIMITS`。接入时执行一次真实请求，检查等待、停止与部分产物处理是否符合服务需要。
 
 ## 在服务中安排环境与记录
 
 OpenCollab 客户端在构造时读取有效配置。服务更新模型路由或环境变量后，应按自己的配置更新流程创建相应客户端，让后续请求使用需要的设置。模型端点、实际请求并发和任务隔离分别配置，容器内能否联网也需要按工具访问目标验证。
 
-产物可以关联服务请求，但完整会话可能包含业务输入和文件内容。服务应沿用自己的访问权限和保留规则存放这些材料，并把面向用户的摘要与内部排错材料放在适合的访问位置。需要减少轨迹时可以使用 trace=False，保存的会话和运行清单仍按各入口的产物行为保留。
+产物可以关联服务请求，但完整会话可能包含业务输入和文件内容。服务按自身的访问权限和保留规则存放这些材料，分别设置用户摘要与排错材料的访问范围。需要减少轨迹时可以使用 trace=False，保存的会话和运行清单仍按各入口的产物行为保留。
 
 统计成本时，运行 tokens 是累计输入与输出，缓存读取已经计入输入，推理 token 按提供方的输出统计处理。需要费用时使用有效价格与提供方原始用量计算，区分带 estimated 标记的估算记录。一次失败或超时也可能已经产生用量，最终记录有助于把资源消耗对应到真实请求。
 
+## 接入已有模型客户端
+
+应用需要观察或适配模型传输过程时，可以先调用 `create_model_client()`，再把满足模型调用协议的客户端通过 `agent(llm=...)` 传入。下面片段放在已构造 `client` 的异步函数中。
+
+```python
+model = client.create_model_client()
+try:
+    result = await client.agent(
+        "说明项目的公开入口",
+        tools=builtin_tools("file_read", "grep"),
+        llm=model,
+        budget=50_000,
+        max_steps=40,
+        timeout=900,
+    )
+finally:
+    await model.close()
+```
+
+`create_model_client()` 沿用该 OpenCollab 对象解析后的配置，创建者负责在所有使用结束后关闭它。应用注入的 environment 同样由应用安排 setup、cleanup 和最终资源检查。按请求分配运行标识和产物目录，并在所有使用结束后关闭模型客户端，便于追踪请求与连接的生命周期。
+
 ## 取消、结算与资源结束
 
-调用方取消会在运行拥有的清理结束后继续传播 `asyncio.CancelledError`，运行 deadline 则产生 `reason="timeout"` 的停止结果。已经发出的模型请求可能稍后返回用量，框架在自己的 draining 阶段只结算一次。费用解释应读取最终保存的 usage 和清理记录。
+调用方取消任务后，框架先清理该运行拥有的资源，再继续传播 `asyncio.CancelledError`。达到运行期限时，返回 `reason="timeout"` 的停止结果。已经发出的模型请求可能稍后返回用量，框架会在清理等待阶段结算一次。统计费用时读取最终保存的 usage 和清理记录。
 
-`session_quiesced` 描述会话与持久化是否结束。调用方注入 environment 时，`environment_quiesced`、`cleanup_quiesced` 和 `execution_quiesced` 保留为 `None`，环境是否静止由调用方清理后验证。若调用 `create_model_client()` 创建 transport，也要在使用结束后执行 `await model.close()`。
+`session_quiesced` 描述会话与持久化是否结束。调用方注入 environment 时，`environment_quiesced`、`cleanup_quiesced` 和 `execution_quiesced` 保留为 `None`，环境是否静止由调用方清理后验证。由 SDK 自己创建的运行资源按运行生命周期清理，应用拥有的 transport 和 environment 按前面的所有权安排结束。
 
 本机文件适配器支持 Linux 和 macOS，并依赖平台的描述符相对操作、无跟随读取、文件锁和原子重命名能力。部署目标需要满足这些文件操作条件，处理未知代码应放在可丢弃的隔离环境中。调用方已有容器的资源归属见 [让任务在指定目录或现有容器里执行](../isolation/execution-environments.md)，异常材料恢复见 [找回隔离任务的改动并清理资源](../isolation/workspace-recovery.md)。
 

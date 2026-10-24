@@ -39,7 +39,7 @@
 
 # 组合子 Workflow 并采用候选结果
 
-复用一段 Workflow 最直接的方法，是把当前 `ctx` 传给另一个异步函数。需要把整套方案放进独立环境后再比较时，可以调用 `candidate_workflow`。只需要一个候选 Agent 时，则使用 `candidate_agent`。这三种方式分别决定了函数复用、环境归属和交付步骤。
+复用一段 Workflow 最直接的方法，是把当前 `ctx` 传给另一个异步函数。需要把整套方案放进独立环境后再比较时，可以调用 `candidate_workflow`。只需要一个候选 Agent 时，则使用 `candidate_agent`。选择时可按需要复用的范围和环境来决定。
 
 ## 共享上下文的函数组合
 
@@ -82,7 +82,7 @@ async def collect_single_candidate(ctx, args):
     }
 ```
 
-`evidence_tools` 在原生工具上收集可识别的测试执行记录，供候选比较使用。此函数只准备候选并返回证据，需要采用时应在仍持有候选对象的函数内调用 `adopt_candidate`。
+`evidence_tools` 在原生工具上收集可识别的测试执行记录，供候选比较使用。此函数准备候选并返回证据。要交付候选改动，在仍持有候选对象的函数内调用 `adopt_candidate`。
 
 ## 把完整子流程作为候选
 
@@ -110,13 +110,13 @@ async def prepare_candidate(ctx, args):
     }
 ```
 
-`candidate_workflow` 为完整子流程建立候选环境和子上下文，子函数里的多次会话在该环境中工作。候选与父运行共享 Agent 并发容量、集合任务容量及绝对期限，有限候选预算来自父运行的授权。当前默认候选子上下文自身的候选后端为空，更深层组合适合继续调用普通子函数或选择单次会话隔离，额外候选层需要由集成提供对应后端。
+`candidate_workflow` 为完整子流程建立候选环境和子上下文，子函数里的多次会话在该环境中工作。候选与父运行共享 Agent 并发容量、集合任务容量及绝对期限，有限候选预算来自父运行的授权。默认候选子上下文的候选后端为空。子流程可以继续调用普通子函数，或为单次会话选择隔离策略。要再建立一层候选环境，需要集成方提供对应后端。
 
 ## 读取候选证据
 
 `CandidateRun` 的 `label` 标识候选，`output` 是文本或子流程返回值，`diff` 是捕获的改动，`test_records` 与 `verified_targets` 保存可用的测试证据，`lifecycle_errors` 保存清理等生命周期问题。`source_revision` 在后端支持时记录源版本。`delivery_diff`、`delivery_paths` 和 `delivery_source_diff` 承载额外交付材料，`effective_diff` 按捕获关系选择有效差异。
 
-单会话候选可通过证据工具收集测试记录。当前 `candidate_workflow` 返回的顶层 `test_records` 与 `verified_targets` 初始为空，子流程需要把自己的验证结果放入 `output` 或运行记录。对某个候选的采用决策应读取实际行为证据，字段中有文本报告意味着模型给出了说明。
+单会话候选可通过证据工具收集测试记录。当前 `candidate_workflow` 返回的顶层 `test_records` 与 `verified_targets` 初始为空，子流程需要把自己的验证结果放入 `output` 或运行记录。选择候选时，结合实际测试记录、文件差异和报告判断其是否满足任务。
 
 ## 采用与恢复
 
@@ -132,7 +132,7 @@ async def deliver_selected(ctx, candidate):
 
 候选执行期间源工作区变化、源版本在采用前改变、改动捕获失败，都可能阻止交付。运行时会保留相关候选环境并报告恢复位置。Git 保留工作区中的 `refs/worktree/opencollab-source` 指向原始源树，可据此读取原文件。默认仓库补丁交付范围为父仓库文件，修改子模块内容会触发捕获错误并保留工作区，子模块交付应由适合的后端负责。
 
-候选产物成功捕获后还要经过采用，采用成功后还要经过任务检查。把这些结果写进最终返回值，可让调用方准确知道目前已经完成哪一步。
+捕获候选后，调用采用接口交付改动，再执行任务检查。在最终返回值中记录各步结果，方便调用方查看交付进度。
 
 ## 源码依据
 

@@ -45,9 +45,9 @@
 
 ## 找到保存目录
 
-团队运行目录位于 `<workspace>/.opencollab/sessions/`，名称含时间及随机后缀。成员文件采用 `agent_<aid>_<role>.json`，入口可能是 `agent_0_analyst.json`，团队 manifest 为 `team.json`。终端显示的本次目录比根据时间猜测更可靠。
+团队运行目录位于 `<workspace>/.opencollab/sessions/`，名称含时间及随机后缀。成员文件采用 `agent_<aid>_<role>.json`，入口可能是 `agent_0_analyst.json`，团队 manifest 为 `team.json`。运行目录以终端显示的实际路径为准。
 
-工作流目录带 `wf-` 前缀，内部会话采用 `000_<role>.json` 等顺序文件名，另有 `workflow.json`。启用轨迹时还有 `orchestration.jsonl`。这些文件把一次运行中的多个会话联系起来，查看时先用 manifest 确认运行身份。
+工作流目录带 `wf-` 前缀，内部会话采用 `000_<role>.json` 等顺序文件名，另有 `workflow.json`。启用轨迹时还有 `orchestration.jsonl`。这些文件关联一次运行中的多个会话，查看时先用 manifest 确认运行标识。
 
 交互中输入 `/save` 会把 lead 主会话写为当前启动目录中的 `session-<随机值>.jsonl`，终端打印实际路径。切换到其他成员后执行该命令，保存对象仍为 lead。需要完整团队历史时保留自动保存目录。
 
@@ -60,7 +60,7 @@ opencollab --workspace /path/to/application \
   --session /absolute/path/agent_0_analyst.json
 ```
 
-也可以把手动导出的 JSONL 路径传给同一个选项。兼容入口接受旧的 JSONL 与 Agent JSON。读取不到快照及其可恢复记录时会报告文件不存在，文件结构或记录损坏则报告读取错误。
+也可以把手动导出的 JSONL 路径传给同一个选项。该选项接受旧的 JSONL 与 Agent JSON。找不到快照及其可恢复记录时会报告文件不存在，文件结构或记录损坏则报告读取错误。
 
 恢复入口读取的是主会话历史。团队成员与工作流各会话的保存记录适合分别检查，具体团队结构继续由当前选中的团队配置创建。恢复后先查看历史中最后的工具结果和待办，再提交一个范围明确的后续任务。
 
@@ -85,7 +85,7 @@ print(snapshot.get("session_state", {}))
 print(snapshot.get("run_id"))
 ```
 
-迁移或备份运行目录时，一并保留已有 sidecar 文件，读取时通过公开存储入口处理。运行身份 `run_id` 可关联会话、manifest 和轨迹，SDK 新运行也可由调用方指定该值。
+迁移或备份运行目录时，一并保留已有 sidecar 文件，读取时通过公开存储入口处理。运行标识 `run_id` 用于关联会话、manifest 和轨迹，调用方也可以为新的 SDK 运行指定该值。
 
 ## 选择工作流保存设置
 

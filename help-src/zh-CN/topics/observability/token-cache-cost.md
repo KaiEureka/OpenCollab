@@ -31,7 +31,7 @@ token 预算控制是否继续执行，用量记录描述已经发生的调用�
 
 ## 这些计数怎样相加
 
-`total_tokens` 是输入加输出。缓存命中的输入已经包含在输入总量里，推理 token 通常作为输出细分保留。将缓存或推理再加一遍会高估总量。提供方可能只返回部分字段，缺失值需要保留其含义。
+`total_tokens` 是输入加输出。缓存命中的输入已经包含在输入总量里，推理 token 通常作为输出细分保留。将缓存或推理再加一遍会高估总量。提供方可能只返回部分字段，统计时保留缺失值。
 
 缓存命中率可以用累计 `cached_input_tokens` 除以累计 `input_tokens`。对多个任务求平均开销时，还应写明分母包含哪些任务与尝试。
 
@@ -45,11 +45,38 @@ export OPENCOLLAB_API_USAGE_LOG=/absolute/path/to/usage.jsonl
 
 该文件按提供方调用追加记录，包含模型、协议、用量、`estimated` 以及可用的 `raw_usage`。账本与会话指标分别保存不同层面的信息，汇总前先确定选用哪一层，避免把一次请求同时从两处累计。
 
+账本每行的 `usage` 保存 `input_tokens`、`output_tokens`、`total_tokens`、`cached_input_tokens`、`cache_creation_tokens`、`reasoning_tokens`、`cost_usd` 和 `pricing`。trace 的对应缓存读取字段名为 `cache_read_tokens`，解析时按各自结构读取。`None` 表示该项信息缺失，`estimated=True` 表示记录包含估算。
+
+命令行批次可以通过 `OPENCOLLAB_RUN_ID` 或 `OPENCOLLAB_USAGE_RUN_ID` 标记账本运行，通过 `OPENCOLLAB_USAGE_LABEL` 追加实验标签。这些字段来自进程环境。并发服务可使用每次 SDK 调用的 `run_id` 和 `RunControl.on_event` 关联业务请求，回调会在原运行的迟到用量结算期间继续接收事件，使用方式见 [查看 Agent 做了什么](trace-and-events.md)。
+
+## 离线汇总一份账本
+
+下面脚本读取指定文件的全部记录，报告记录数、累计 token 和缺失标志。分析某个模型或时间段时，可以先按每行的 `model`、`timestamp`、`run_id` 或 `label` 筛选。
+
+```python
+import json
+from pathlib import Path
+
+usage_path = Path("artifacts/usage.jsonl")
+with usage_path.open(encoding="utf-8") as stream:
+    records = [json.loads(line) for line in stream if line.strip()]
+usages = [record["usage"] for record in records]
+print("records", len(usages))
+print("input_tokens", sum(usage["input_tokens"] for usage in usages))
+print("output_tokens", sum(usage["output_tokens"] for usage in usages))
+print("total_tokens", sum(usage["total_tokens"] for usage in usages))
+print("estimated_records", sum(usage["estimated"] for usage in usages))
+print("missing_cache_records", sum(usage["cached_input_tokens"] is None for usage in usages))
+print("missing_cost_records", sum(usage["cost_usd"] is None for usage in usages))
+```
+
+检查每条记录的 `pricing` 后，再汇总具有完整价格和用量的费用。通用价格默认值为零，零费用需要结合实际配置解释。缓存读取或写入字段缺失时，费用可能为 `None`。保留缺失记录数，便于判断汇总覆盖了多少调用。
+
 ## 重试与摘要
 
 内部传输重试可能合并为外层调用的累计用量。上下文压力关注最终请求的输入大小，累计花费关注全部已返回尝试。摘要也会调用模型，因此需要计入真实开销。
 
-取消发生后，后台请求可能才返回最后用量。应结合 late 与清理完成记录确定最终累计值。未返回实际用量的调用，不能由“未看到数字”推导为免费。
+取消发生后，后台请求可能才返回最后用量。应结合 late 与清理完成记录确定最终累计值。实际用量缺失的调用，其费用仍为未知，需要结合服务账单核对。
 
 ## 配置自己的价格
 
@@ -59,7 +86,7 @@ export OPENCOLLAB_API_USAGE_LOG=/absolute/path/to/usage.jsonl
 
 ## 查找异常增长
 
-先区分请求次数增加、单次输入变长和输出变长，再看缓存比例、重试和摘要次数。长密文的字符数属于传输表示，不能直接作为已计费 token。相关机制见上下文压缩与深度思考指南。
+先区分请求次数增加、单次输入变长和输出变长，再看缓存比例、重试和摘要次数。加密内容的字符数描述传输长度，计费 token 以提供方返回的用量为准。相关机制见上下文压缩与深度思考指南。
 
 ## 源码与进一步阅读
 

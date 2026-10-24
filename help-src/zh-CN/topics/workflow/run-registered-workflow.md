@@ -97,7 +97,7 @@ asyncio.run(main())
 
 ## 读结果与记录
 
-SDK 返回 `RunResult`，其中 `output` 是入口函数返回的值，`status` 为 `completed`、`stopped` 或 `failed`，`reason` 解释停止原因。`raise_for_status()` 在完成时返回原结果，其他状态抛出带有该结果的 `RunError`。流程选择在某次 Agent 失败后仍返回数据时，`agent_failures` 保留那次失败，所以还应检查交付文件与实际测试。
+SDK 返回 `RunResult`，其中 `output` 是入口函数返回的值，`status` 为 `completed`、`stopped` 或 `failed`，`reason` 解释停止原因。`raise_for_status()` 在完成时返回原结果，其他状态抛出带有该结果的 `RunError`。流程可以在某次 Agent 失败后返回已有数据，这次失败会保存在 `agent_failures` 中。读取结果时，同时查看该字段、交付文件与实际测试。
 
 CLI 打印工作流 `output` 的 JSON，并在工作流有停止原因时返回非零退出码。默认 `--save` 保存 `.opencollab/sessions/` 下的本次运行目录，包含会话和工作流清单。默认 `--trace` 在保存目录记录 `orchestration.jsonl`，便于对应阶段、日志和步骤消耗。`--no-save` 关闭保存，`--no-trace` 可关闭编排轨迹。SDK 的 `artifacts` 和 `trace` 则控制对应持久记录。保存的执行证据适合调试，跨进程继续运行所需的业务状态由工作流作者管理。
 

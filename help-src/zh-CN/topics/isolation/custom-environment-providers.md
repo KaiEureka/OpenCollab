@@ -68,18 +68,18 @@ client = OpenCollab(".", environment_providers={
 
 `workspace` 是调用方项目位置，`base_environment` 是真实来源环境。`owned_save_dir` 指向当前运行产物目录，`owned_output_paths` 帮助环境区分运行自己写出的记录与任务源内容。`enable_adoption` 表示运行需要采纳能力，这会影响候选准备和交付方式。
 
-环境池实现公开的 `opencollab.environments.EnvironmentPool`。`acquire(role, source=...)` 接收角色和实际父环境或审阅源，返回已经准备好执行工具的 Environment。审阅源可能来自另一策略，也可能位于容器中，工厂应按环境操作读取其内容。直接从宿主同名目录复制，会让审阅任务读到错误版本。
+环境池需要实现公开的 `opencollab.environments.EnvironmentPool` 接口。`acquire(role, source=...)` 接收角色和实际父环境或审阅源，返回已经准备好执行工具的 Environment。审阅源可能来自另一策略，也可能位于容器中，工厂应按环境操作读取其内容。直接从宿主同名目录复制，会让审阅任务读到错误版本。
 
 ## 为新后端实现同一组操作
 
-接入远端执行服务时，可以先让一个环境完成真实的文件写入与读取，再运行一个短命令并核对退出码。接着申请两份环境，让它们写入同名文件，观察内容是否按预期独立。这些操作能说明后端实际提供了怎样的隔离。
+接入远端执行服务时，先在一个环境中写入并读取文件，执行短命令并查看退出码。再申请两份环境，分别写入同名文件，观察内容是否独立。这样可以直接检查文件操作、命令执行和隔离是否可用。
 
-环境池还应明确实例与资源的关系。例如环境对象可以代表一份会话租约，底层容器由池统一管理。多个视图引用同一资源时，归还其中一个视图应保留其他视图仍在使用的资源。先把这层所有权表达清楚，后续审阅与清理更容易保持一致。
+明确环境对象与底层资源的关系。例如，环境对象可以代表一份会话租约，底层容器由池统一管理。多个环境视图引用同一资源时，归还其中一个视图后，资源仍需保留到其他使用者结束。审阅和清理都应遵循这一所有权关系。
 
 ## 把分配、交付与释放一起实现
 
 `adopt(patch)` 将增量应用到交付工作区。`release_env(environment)` 归还一次分配，`release()` 结束池拥有的资源。传入的源环境保持借用关系，释放应针对池分配的资源。Environment 需要提供准备、文件读写、命令执行、撤销、停止和清理操作，详细签名见[公开端口](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/ports.py)。
 
-取消可能发生在资源申请途中。提供器需要追踪尚未结束的申请，等它得到明确结果再完成撤销。补丁导出失败时，应保留可恢复的文件与资源信息，并让同一个池能够再次清理。先运行一次真实文件写入、命令取消和导出失败恢复，可以发现单看工厂返回类型无法识别的问题。
+取消可能发生在资源申请途中。提供器需要追踪尚未结束的申请，等它得到明确结果再完成撤销。补丁导出失败时，应保留可恢复的文件与资源信息，并让同一个池能够再次清理。接入时实际执行文件写入、命令取消和导出失败恢复，检查这些操作是否符合资源的所有权和清理要求。
 
-接入前应说明提供器的文件范围、进程范围、网络和权限限制。VM 专用后端仍处于[扩展规划](../../reserved/vm-environment-extension.md)。实现自己的 VM 环境时，上述生命周期同样需要完成。环境池组合行为见[策略池实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/session_environments.py)，已有环境的所有权见 [让任务在指定目录或现有容器里执行](execution-environments.md)。
+为使用者说明提供器的文件共享范围、进程与网络隔离方式，以及权限限制。VM 专用后端仍处于[扩展规划](../../reserved/vm-environment-extension.md)。实现自己的 VM 环境时，上述生命周期同样需要完成。环境池组合行为见[策略池实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/session_environments.py)，已有环境的所有权见 [让任务在指定目录或现有容器里执行](execution-environments.md)。

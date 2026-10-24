@@ -5,23 +5,21 @@ guides on first visit. A global Chinese and English switch selects the help cent
 edition. The browser remembers the selected edition when entering through `help/`
 again. Explicit article URLs open their specified edition. The English
 page at `help/en/` uses the same reader layout and displays "Coming soon."
-Chinese article URLs remain under `help/zh-CN/`. The 68 guides are
-maintained in `zh-CN/topics/`. Navigation pages and the explicitly planned VM
-extension page live alongside them. Each Markdown document is rendered to an
+Chinese article URLs remain under `help/zh-CN/`. The 69 guides are
+maintained in `zh-CN/topics/`. Navigation pages and VM integration planning live alongside them. Each Markdown document is rendered to an
 independent HTML page, so article links work with JavaScript disabled. Browser
-search loads a local static index and uses no external model service.
+search reads a local static index.
 
 ## Edit and build
 
-Topic front matter is a JSON object enclosed in YAML delimiters. It owns the
-stable document ID, title, category, summary, search terms, related topics and
-reviewed source revision. `catalog.json` owns category labels and navigation
-order. `search-routes.json` owns explicit synonyms and disambiguation choices.
+Topic front matter is a JSON object enclosed in YAML delimiters. It stores the
+document ID, title, category, summary, search terms, related topics and source
+revision. `catalog.json` stores the documented version, category labels and
+navigation order. `search-routes.json` maps synonyms and ambiguous queries to guides.
 Natural questions in `questions.md` also become search routes during the build.
 
 Preserve document IDs when changing titles. Relative Markdown links are resolved
-to generated HTML destinations. The builder reports a missing destination instead
-of publishing a broken internal link. Source references identify the framework
+to generated HTML destinations. The builder reports missing link destinations. Source references identify the framework
 revision that the guide describes. Update those references after checking the
 corresponding API, CLI, configuration or runtime behavior.
 
@@ -46,9 +44,12 @@ the site's existing static publishing behavior.
 
 The local checks verify generated links and anchors, guide coverage, source
 metadata, code-block syntax, search routes, subpath URL resolution and homepage
-entry points. Model, Docker and external-service examples have environment
-requirements; their execution coverage is recorded separately in PR validation.
-Source code examples should be checked against the documented framework revision.
+entry points. Run changed examples against the documented framework revision with the model,
+Docker or service setup specified in each guide.
+
+Keep existing guides aligned when parameters, defaults, or behavior change. Add a
+new topic when a feature introduces an independent user task. Include its reader
+questions and synonyms in the search metadata and connect it to a reading path.
 
 Review the Markdown sources and generated pages together. Publish by merging the
 reviewed change into `gh-pages`. The project homepage navigation, hero action and

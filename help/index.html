@@ -6,33 +6,43 @@
 <title>OC 中文帮助中心 · OpenCollab 帮助中心</title>
 <meta name="description" content="OpenCollab 中文使用与开发指南">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/index.html">
+<link rel="icon" href="../fig/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&amp;family=Noto+Sans:wght@400;500;600;700&amp;family=Google+Sans+Code:wght@400;500&amp;display=swap" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="assets/help.css">
 <script type="module" src="assets/help.mjs"></script>
 </head>
-<body data-search-index="zh-CN/search-index.json" data-help-entry="true">
+<body class="help-home" data-search-index="zh-CN/search-index.json" data-help-entry="true">
 <a class="skip" href="#content">跳到正文</a>
-<header class="topbar">
-<a class="brand" href="zh-CN/index.html">OpenCollab <span>帮助中心</span></a>
+<header class="topbar"><div class="topbar-inner">
+<a class="brand" href="zh-CN/index.html"><img src="../fig/mark.svg" alt="" width="32" height="32"><span>OpenCollab<small>帮助中心</small></span></a>
 <div class="searchbox">
+<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
 <label class="sr-only" for="help-search">搜索帮助文档</label>
-<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<input id="help-search" type="search" placeholder="搜索文档、功能或问题" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<kbd class="search-shortcut" aria-hidden="true">Ctrl K</kbd>
 <div id="search-results" class="results" hidden></div>
 <div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
 </div>
+<div class="header-actions">
 <nav class="language-switch" aria-label="Language"><a href="zh-CN/index.html" lang="zh-CN" hreflang="zh-CN" aria-current="true">中文</a><a href="en/index.html" lang="en" hreflang="en">English</a></nav>
-<a class="project-link" href="../index.html">项目主页</a>
+<a class="project-link" href="../index.html" aria-label="项目主页"><span>项目主页</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
 <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
-</header>
+</div>
+</div></header>
 <div class="layout">
 <nav id="help-navigation" aria-label="帮助分类">
-<div class="nav-start"><a href="zh-CN/index.html">帮助首页</a><a href="zh-CN/reading-paths/index.html">阅读路径</a><a href="zh-CN/questions/index.html">新用户与面试问题</a></div>
-<details><summary>认识 OC <small>2</small></summary><a href="zh-CN/concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="zh-CN/choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="zh-CN/install-source-checkout/index.html">安装前提与版本选择</a><a href="zh-CN/first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="zh-CN/interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="zh-CN/python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="zh-CN/base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="zh-CN/configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="zh-CN/provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="zh-CN/model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="zh-CN/wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="zh-CN/thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="zh-CN/isolation-overview/index.html">隔离怎么选</a><a href="zh-CN/isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="zh-CN/worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="zh-CN/docker-isolation/index.html">在容器中运行任务</a><a href="zh-CN/execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="zh-CN/custom-environment-providers/index.html">接入自己的执行环境</a><a href="zh-CN/candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="zh-CN/workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="zh-CN/configure-team/index.html">Team 完整指南与团队配置</a><a href="zh-CN/dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="zh-CN/message-team-agents/index.html">向队友发消息并继续协作</a><a href="zh-CN/wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="zh-CN/adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="zh-CN/run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="zh-CN/workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="zh-CN/workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="zh-CN/author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="zh-CN/workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="zh-CN/workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="zh-CN/workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="zh-CN/workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="zh-CN/workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="zh-CN/workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="zh-CN/compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="zh-CN/workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="zh-CN/workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="zh-CN/team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="zh-CN/member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="zh-CN/duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="zh-CN/weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="zh-CN/reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="zh-CN/context-compaction/index.html">上下文窗口与自动压缩</a><a href="zh-CN/token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="zh-CN/timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="zh-CN/session-save-resume/index.html">保存会话与恢复历史</a><a href="zh-CN/cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="zh-CN/configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="zh-CN/tool-selection/index.html">选择 Agent 能使用的工具</a><a href="zh-CN/custom-tools/index.html">把自己的函数接成工具</a><a href="zh-CN/skills-on-demand/index.html">使用与编写 Skill</a><a href="zh-CN/team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="zh-CN/file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="zh-CN/shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="zh-CN/run-results/index.html">读取运行结果与判断任务是否完成</a><a href="zh-CN/artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="zh-CN/trace-and-events/index.html">查看 Agent 做了什么</a><a href="zh-CN/token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="zh-CN/native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="zh-CN/collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="zh-CN/evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="zh-CN/runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="zh-CN/session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="zh-CN/extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="zh-CN/service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="zh-CN/upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="zh-CN/report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<div class="nav-start"><a href="zh-CN/index.html" aria-current="page">帮助首页</a><a href="zh-CN/reading-paths/index.html">阅读路径</a><a href="zh-CN/questions/index.html">问题导航</a></div>
+<p class="nav-label">文档目录</p>
+<details><summary>认识 OC <small>2</small></summary><a href="zh-CN/concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="zh-CN/choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="zh-CN/install-source-checkout/index.html">安装前提与版本选择</a><a href="zh-CN/first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="zh-CN/interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="zh-CN/python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="zh-CN/base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="zh-CN/configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="zh-CN/configuration-reference/index.html">配置参数与环境变量速查</a><a href="zh-CN/provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="zh-CN/model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="zh-CN/wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="zh-CN/thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="zh-CN/isolation-overview/index.html">隔离怎么选</a><a href="zh-CN/isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="zh-CN/worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="zh-CN/docker-isolation/index.html">在容器中运行任务</a><a href="zh-CN/execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="zh-CN/custom-environment-providers/index.html">接入自己的执行环境</a><a href="zh-CN/candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="zh-CN/workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="zh-CN/configure-team/index.html">Team 完整指南与团队配置</a><a href="zh-CN/dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="zh-CN/message-team-agents/index.html">向队友发消息并继续协作</a><a href="zh-CN/wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="zh-CN/adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="zh-CN/run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="zh-CN/workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="zh-CN/workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="zh-CN/author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="zh-CN/workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="zh-CN/workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="zh-CN/workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="zh-CN/workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="zh-CN/workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="zh-CN/workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="zh-CN/compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="zh-CN/workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="zh-CN/workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="zh-CN/team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="zh-CN/member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="zh-CN/duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="zh-CN/weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="zh-CN/reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="zh-CN/context-compaction/index.html">上下文窗口与自动压缩</a><a href="zh-CN/token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="zh-CN/timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="zh-CN/session-save-resume/index.html">保存会话与恢复历史</a><a href="zh-CN/cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="zh-CN/configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="zh-CN/tool-selection/index.html">选择 Agent 能使用的工具</a><a href="zh-CN/custom-tools/index.html">把自己的函数接成工具</a><a href="zh-CN/skills-on-demand/index.html">使用与编写 Skill</a><a href="zh-CN/team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="zh-CN/file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="zh-CN/shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="zh-CN/run-results/index.html">读取运行结果与判断任务是否完成</a><a href="zh-CN/artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="zh-CN/trace-and-events/index.html">查看 Agent 做了什么</a><a href="zh-CN/token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="zh-CN/native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="zh-CN/collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="zh-CN/evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="zh-CN/runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="zh-CN/session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="zh-CN/extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="zh-CN/service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="zh-CN/upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="zh-CN/report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
-<p class="category">阅读导航</p>
+<p class="category">HELP CENTER</p>
 <h1 id="oc-中文帮助中心">OC 中文帮助中心</h1>
-<p>OpenCollab 中文帮助中心包含 68 篇指南，按使用目标组织安装、模型配置、团队协作、Workflow、执行环境与结果检查。文档依据 OC main 提交 <a href="https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41"><code>e7946a42</code></a>，说明该版本的公开接口及运行行为。</p>
-<p><a href="https://rise-x-lab.github.io/OpenCollab/">返回项目站主页</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab">GitHub 源码</a> · <a href="zh-CN/reading-paths/index.html">阅读路径</a> · <a href="zh-CN/questions/index.html">新用户与技术问题</a></p>
+<p>从这里了解 OpenCollab 的安装配置、团队协作和 Workflow 开发，查找隔离、调试与运行记录的使用方法。可以按下面的任务入口开始，也可以直接搜索功能名或遇到的问题。</p>
+<p>适用版本为 <a href="https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a>。</p>
+<p><a href="https://rise-x-lab.github.io/OpenCollab/">返回项目站主页</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab">GitHub 源码</a> · <a href="zh-CN/reading-paths/index.html">阅读路径</a> · <a href="zh-CN/questions/index.html">问题导航</a></p>
 <h2 id="从你的目标开始">从你的目标开始</h2>
 <table>
 <thead>
@@ -126,6 +136,10 @@
 <tr>
 <td><a href="zh-CN/configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a></td>
 <td>解释某项配置为什么生效，并稳定地让 CLI 或 SDK 读取选定配置。</td>
+</tr>
+<tr>
+<td><a href="zh-CN/configuration-reference/index.html">配置参数与环境变量速查</a></td>
+<td>按环境变量、SDK 字段和运行入口查找现有配置的默认值与详细用法。</td>
 </tr>
 <tr>
 <td><a href="zh-CN/provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a></td>
@@ -333,7 +347,7 @@
 </tr>
 <tr>
 <td><a href="zh-CN/configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></td>
-<td>用可核对的信息定位配置、模型能力、CLI 参数和端点连接中的常见问题。</td>
+<td>查看有效配置、模型能力和错误记录，定位 CLI 参数与端点连接中的常见问题。</td>
 </tr>
 </tbody>
 </table>
@@ -383,7 +397,7 @@
 <tbody>
 <tr>
 <td><a href="zh-CN/run-results/index.html">读取运行结果与判断任务是否完成</a></td>
-<td>正确处理 RunResult 和 RunError，把框架完成状态与实际任务验证分开理解。</td>
+<td>读取 RunResult、处理 RunError，并结合测试结果判断任务是否完成。</td>
 </tr>
 <tr>
 <td><a href="zh-CN/artifacts-and-history/index.html">找到运行记录、会话和交付文件</a></td>
@@ -434,7 +448,7 @@
 </tr>
 <tr>
 <td><a href="zh-CN/service-integration-lifecycle/index.html">从示例接入自己的服务</a></td>
-<td>把一次 SDK 演示接入业务服务，并明确运行身份、结果处理与资源清理责任。</td>
+<td>把 SDK 调用接入业务服务，关联运行记录，并处理结果与资源清理。</td>
 </tr>
 <tr>
 <td><a href="zh-CN/upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a></td>
@@ -447,7 +461,7 @@
 </tbody>
 </table>
 
-<footer class="article-footer"><a href="../help-src/zh-CN/index.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../help-src/zh-CN/index.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E4%BD%A0%E7%9A%84%E7%9B%AE%E6%A0%87%E5%BC%80%E5%A7%8B">从你的目标开始</a><a href="#%E8%AE%A4%E8%AF%86-oc">认识 OC</a><a href="#%E5%AE%89%E8%A3%85%E4%B8%8E%E5%BC%80%E5%A7%8B%E4%BD%BF%E7%94%A8">安装与开始使用</a><a href="#%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E4%B8%8E%E9%85%8D%E7%BD%AE">模型接入与配置</a><a href="#%E6%89%A7%E8%A1%8C%E7%8E%AF%E5%A2%83%E4%B8%8E%E9%9A%94%E7%A6%BB">执行环境与隔离</a><a href="#team-%E4%B8%8E%E5%AD%90-agent">Team 与子 Agent</a><a href="#workflow-%E4%B8%8E%E5%AD%90-workflow">Workflow 与子 Workflow</a><a href="#%E9%A2%84%E7%AE%97%E4%B8%8A%E4%B8%8B%E6%96%87%E4%B8%8E%E8%BF%90%E8%A1%8C%E6%81%A2%E5%A4%8D">预算、上下文与运行恢复</a><a href="#%E5%B7%A5%E5%85%B7skill-%E4%B8%8E%E6%89%A9%E5%B1%95">工具、Skill 与扩展</a><a href="#%E7%BB%93%E6%9E%9C%E8%BD%A8%E8%BF%B9%E4%B8%8E%E8%AF%84%E6%B5%8B">结果、轨迹与评测</a><a href="#%E6%9E%B6%E6%9E%84%E9%9B%86%E6%88%90%E4%B8%8E%E7%BB%B4%E6%8A%A4">架构、集成与维护</a></aside>
 </div>
