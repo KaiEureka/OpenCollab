@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import threading
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from opencollab.bootstrap import container
 from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
 from opencollab.bootstrap.context_builder import SpawnConfig
 from opencollab.bootstrap.session_factory import build_session
+from opencollab.bootstrap.workflow_runtime import run_workflow
 from opencollab.domain.agent import Agent
 from opencollab.sdk import OpenCollab
 from tests.support.environment_test_support import local_environment_factory as local_environment_factory
@@ -32,6 +34,42 @@ def _child_import_path(monkeypatch):
 
 def _call(name, args):
     return {"id": "call", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+@contextmanager
+def _serve_model(reply):
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            requests.append(body)
+            message, usage = reply(body)
+            payload = json.dumps({
+                "id": "offline", "object": "chat.completion", "created": 0, "model": "gpt-4o",
+                "choices": [{"index": 0, "message": message, "finish_reason": (
+                    "tool_calls" if message.get("tool_calls") else "stop"
+                )}],
+                "usage": usage,
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 async def test_member_writes_workflow_source_and_collects_loopback_model_result(
@@ -337,6 +375,57 @@ async def test_child_sessions_preserve_member_tool_permissions(local_environment
     assert result["result"]["agent_failures"][0]["exception_type"] == "PermissionError"
     assert parent.used_tokens == 0
     await parent.aclose()
+
+
+@pytest.mark.parametrize("capture", ["structured_output", "submit_findings"])
+async def test_managed_workflows_retain_internal_capture_tools(local_environment_factory, tmp_path, capture):
+    schema = {
+        "type": "object", "properties": {"value": {"type": "integer"}}, "required": ["value"],
+    }
+    options = {"schema": schema} if capture == "structured_output" else {
+        "enforcement_strength": "needs-enforcement",
+    }
+    payload = {"value": 7} if capture == "structured_output" else {
+        "findings": [], "summary": "No source evidence was requested.", "insufficient_evidence": True,
+    }
+
+    def reply(body):
+        assert [tool["function"]["name"] for tool in body["tools"]] == [capture]
+        return {"role": "assistant", "content": None, "tool_calls": [_call(capture, payload)]}, {
+            "prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18,
+        }
+
+    async def regular(ctx, args):
+        return await ctx.agent("Return a result", tools=[], **options)
+
+    (tmp_path / "authored.py").write_text(
+        "async def main(ctx, args):\n"
+        "    return await ctx.agent('Return a result', tools=[], **args)\n",
+    )
+    with _serve_model(reply) as (url, requests):
+        config = {"model": "gpt-4o", "provider": "openai", "api_key": "offline-test",  # pragma: allowlist secret
+                  "base_url": url, "thinking": False}
+        control = await run_workflow(
+            regular, {}, cfg=config, workspace=str(tmp_path), trace=False, budget=None,
+            return_details=True, limit_mode="explicit",
+        )
+        parent, tool, runtime = _manager(local_environment_factory(str(tmp_path)), budget=None)
+        parent.agent.base_url = url
+        parent.agent.api_key = config["api_key"]
+        try:
+            child = await _launch(tool, runtime, args=options)
+            result = json.loads(await tool.execute_with_runtime({"action": "wait", "id": child["id"]}, runtime))
+            assert result["status"] == "completed"
+            assert result["result"]["output"] == control.output
+            assert result["result"]["agent_failures"] == []
+            assert result["tokens"] == parent.used_tokens == control.tokens == 18
+            assert len(requests) == 2
+            if capture == "structured_output":
+                assert control.output == payload
+            else:
+                assert payload["summary"] in control.output
+        finally:
+            await parent.aclose()
 
 
 async def test_read_only_member_cannot_execute_source(local_environment_factory, tmp_path):

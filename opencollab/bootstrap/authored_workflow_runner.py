@@ -13,6 +13,8 @@ from typing import Any
 
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.application.run_control import RunControl, RunEvent
+from opencollab.application.structured_output import StructuredOutputTool
+from opencollab.application.submit_findings import SubmitFindingsTool
 from opencollab.bootstrap.session_factory import build_session
 from opencollab.bootstrap.workflow_runtime import run_workflow
 
@@ -29,7 +31,10 @@ async def _run(request: dict[str, Any]) -> dict[str, Any]:
     tokens = 0
 
     def build_child(**kwargs: Any) -> Any:
-        forbidden = {tool.name for tool in kwargs["agent"].tools} - set(request["allowed_tools"])
+        forbidden = {
+            tool.name for tool in kwargs["agent"].tools
+            if not isinstance(tool, (StructuredOutputTool, SubmitFindingsTool))
+        } - set(request["allowed_tools"])
         if forbidden:
             raise PermissionError(f"workflow requests tools unavailable to its Team member: {sorted(forbidden)}")
         for tool in kwargs["agent"].tools:
