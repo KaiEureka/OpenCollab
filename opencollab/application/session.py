@@ -7,7 +7,7 @@ import os
 import threading
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.application.autosave import AutoSaveSubscriber
@@ -110,6 +110,7 @@ class Session:
         # cleanup, but callers can otherwise interleave a new message or a
         # second run with the same mutable FSM.
         self._turn_lock = asyncio.Lock()
+        self._owned_runtime_closers: list[Callable[[], Awaitable[None]]] = []
 
         self.state = runtime.state
         self.event_bus = runtime.event_bus
@@ -257,6 +258,7 @@ class Session:
 
     async def aclose(self) -> None:
         """Close the model transport when this session created and owns it."""
+        await self._close_owned_runtimes()
         if self._llm_close_error is not None:
             raise self._llm_close_error
         if not self._owns_llm or self._llm_closed:
@@ -276,6 +278,18 @@ class Session:
                 self.runner._emit_run_event("error", error_type=type(exc).__name__, message=str(exc))
                 raise
         self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
+
+    def own_runtime(
+        self, close: Callable[[], Awaitable[None]], *, reserve_tokens: Callable[[], int] | None = None,
+    ) -> None:
+        """Stop attached work before terminal persistence and transport closure."""
+        self._owned_runtime_closers.append(close)
+        if reserve_tokens is not None:
+            self.runner.budget_reservations.append(reserve_tokens)
+
+    async def _close_owned_runtimes(self) -> None:
+        for close in self._owned_runtime_closers:
+            await await_owned_operation(close(), propagate_cancellation=False)
 
     @property
     def messages(self) -> list[dict]:
@@ -362,6 +376,13 @@ class Session:
                 primary_error = exc
                 raise
             finally:
+                if self.state.phase.is_terminal() or primary_error is not None:
+                    try:
+                        await self._close_owned_runtimes()
+                    except BaseException as cleanup_error:
+                        if primary_error is None:
+                            raise
+                        add_exception_note(primary_error, f"owned runtime cleanup also failed: {cleanup_error}")
                 self.runner._record_run_terminal()
                 try:
                     await self._checkpoint_terminal_snapshot()

@@ -548,8 +548,8 @@ class DockerEnvironment(Environment):
                     )
         return decoded
 
-    async def exec_cmd(self, cmd: str, timeout: float = 120.0) -> ExecResult:
-        return await self._exec(cmd, timeout=timeout)
+    async def exec_cmd(self, cmd: str, timeout: float = 120.0, *, input_bytes: bytes | None = None) -> ExecResult:
+        return await self._exec(cmd, timeout=timeout, input_bytes=input_bytes)
 
     async def read_file(self, path: str) -> str:
         result = await self._exec(

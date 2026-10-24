@@ -193,6 +193,7 @@ def build_scheduler(
             safety_policy_factory=build_workspace_safety_policy,
         ),
         team_cfg=team_cfg,
+        environment_pool_factory=getattr(worktree_pool, "child_pool", None),
         lead_workspace=ctx.workspace,
         lead_environment=environment,
         interactive=interactive,

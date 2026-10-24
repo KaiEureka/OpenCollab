@@ -27,7 +27,7 @@ class EnvironmentPort(Protocol):
         """Prepare the environment and return its ready workspace identity."""
         ...
 
-    async def exec_cmd(self, cmd: str, timeout: float = 120.0) -> Any:
+    async def exec_cmd(self, cmd: str, timeout: float = 120.0, *, input_bytes: bytes | None = None) -> Any:
         ...
 
     async def read_file(self, path: str) -> str:

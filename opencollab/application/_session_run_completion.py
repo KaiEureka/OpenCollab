@@ -693,13 +693,8 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
                 self._run_control is not None and self.hard_budget_tokens is not None
             ),
         )
-        ceilings = [self.max_budget_tokens]
-        if self._run_control is not None:
-            ceilings.append(self.hard_budget_tokens)
-        for ceiling in ceilings:
-            if ceiling is None:
-                continue
-            remaining_budget = int(ceiling) - int(self.state.used_tokens)
+        remaining_budget = self.remaining_budget_tokens
+        if remaining_budget is not None:
             output_budget = remaining_budget - reserved_input_tokens
             if output_budget < minimum_output_tokens:
                 raise _TokenBudgetStop(
@@ -708,6 +703,16 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
                 )
             max_output_tokens = min(max_output_tokens, output_budget)
         return max_output_tokens
+
+    @property
+    def remaining_budget_tokens(self) -> int | None:
+        ceilings = [self.max_budget_tokens]
+        if self._run_control is not None:
+            ceilings.append(self.hard_budget_tokens)
+        finite = [int(ceiling) for ceiling in ceilings if ceiling is not None]
+        if not finite:
+            return None
+        return min(finite) - int(self.state.used_tokens) - sum(reserve() for reserve in self.budget_reservations)
 
     def _completion_accepts_output_limit(self) -> bool:
         """Include the default limit when the injected completion accepts it."""
