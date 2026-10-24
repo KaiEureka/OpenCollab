@@ -5,20 +5,33 @@ import base64
 import contextlib
 import json
 import math
+import os
 import posixpath
 import re
 import shlex
+import shutil
+import struct
+import tempfile
 import uuid
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from opencollab import __version__
 from opencollab.adapters._env_base import ENV_FILE_WRITE_LIMIT_BYTES, Environment, ExecResult, TextFileRange
-from opencollab.adapters._env_process import ProcessCleanupError, run_process
+from opencollab.adapters._env_process import (
+    ProcessCleanupError,
+    ProcessRegistry,
+    read_bounded_output,
+    run_process,
+)
+from opencollab.adapters._vm_archive import pack, publish, unpack
 from opencollab.application.async_timeout import await_owned_operation
+from opencollab.application.exception_notes import add_exception_note
 from opencollab.domain.vm import VMConnection, validate_vm_path
 
-_MESSAGE_LIMIT = 16 * 1024 * 1024
+_MESSAGE_LIMIT = 32 * 1024 * 1024
+_FRAME = b"OCVM1\n"
 _COMPONENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
 
@@ -60,6 +73,7 @@ class VMEnvironment(Environment):
         self._setup_lock = asyncio.Lock()
         self._operations: set[str] = set()
         self._uncertain: set[str] = set()
+        self._edit_locks: set[str] = set()
         self._temporary_files: dict[str, list[int]] = {}
 
     @property
@@ -77,7 +91,7 @@ class VMEnvironment(Environment):
             raise VMOperationError("Recover uncertain VM operations before starting further work",
                                    operation_id=operation, state="unknown")
 
-    def _ssh_command(self) -> list[str]:
+    def _ssh_command(self, method: str = "rpc") -> list[str]:
         connection = self.connection
         command = ["ssh", "-T", "-F", "/dev/null", "-o", "BatchMode=yes",
                    "-o", "StrictHostKeyChecking=yes", "-o", "ControlMaster=no", "-o", "ControlPath=none",
@@ -89,7 +103,7 @@ class VMEnvironment(Environment):
         if connection.known_hosts_file is not None:
             command += ["-o", f"UserKnownHostsFile={connection.known_hosts_file}"]
         command += ["-l", connection.user, connection.host,
-                    shlex.join([connection.python, "-m", "opencollab.adapters._vm_remote", "rpc",
+                    shlex.join([connection.python, "-m", "opencollab.adapters._vm_remote", method,
                                 self.state_directory, self.run_id])]
         return command
 
@@ -105,17 +119,26 @@ class VMEnvironment(Environment):
             detail = result.stderr.decode("utf-8", errors="replace").strip()
             raise VMTransportError(f"VM SSH request failed with status {result.returncode}: {detail}",
                                    operation_id=operation_id, returncode=result.returncode)
+        return self._decode_response(result.stdout, operation_id)
+
+    @staticmethod
+    def _decode_response(payload: bytes, operation_id: str) -> Any:
+        start = payload.rfind(_FRAME)
         try:
-            response = json.loads(result.stdout)
+            if start < 0:
+                raise ValueError("missing VM helper frame")
+            response = json.loads(payload[start + len(_FRAME):])
+            if not isinstance(response, dict) or not isinstance(response.get("ok"), bool):
+                raise ValueError("invalid VM helper response")
         except (ValueError, UnicodeError) as exc:
-            raise VMTransportError("VM helper response was incomplete", operation_id=operation_id) from exc
+            raise VMTransportError("VM helper response was incomplete or invalid", operation_id=operation_id) from exc
         if not response["ok"]:
             error = {"ValueError": ValueError, "PermissionError": PermissionError,
                      "FileNotFoundError": FileNotFoundError,
                      "FileExistsError": FileExistsError, "UnicodeDecodeError": UnicodeError
                      }.get(response["error"], OSError)
             raise error(response["message"])
-        return response["value"]
+        return response.get("value", response)
 
     async def setup(self, mount_dir: str | None = None) -> str:
         self._ensure_active()
@@ -146,11 +169,11 @@ class VMEnvironment(Environment):
         self._uncertain.discard(operation_id)
 
     async def _wait(self, operation_id: str, status: dict[str, Any]) -> Any:
-        while status["status"] in {"running", "preparing"}:
+        while status["status"] in {"running", "preparing", "uploading"}:
             await asyncio.sleep(0.05)
             status.update(await self._rpc({"method": "query", "operation_id": operation_id}))
         state = status["status"]
-        if state in {"unknown", "cleanup_failed"}:
+        if state in {"unknown", "cleanup_failed", "upload_incomplete"}:
             self._uncertain.add(operation_id)
             raise VMOperationError(status.get("message", "VM operation state requires recovery"),
                                    operation_id=operation_id, state=state)
@@ -224,10 +247,17 @@ class VMEnvironment(Environment):
         return await self.exec_operation(uuid.uuid4().hex, cmd, timeout, input_bytes=input_bytes)
 
     async def recover_operation(self, operation_id: str) -> Any:
+        known = operation_id in self._operations
         self._operations.add(operation_id)
         try:
             status = await self._rpc({"method": "query", "operation_id": operation_id})
             value = await self._wait(operation_id, status)
+        except FileNotFoundError:
+            if not known:
+                self._operations.discard(operation_id)
+            else:
+                self._uncertain.add(operation_id)
+            raise
         except VMTransportError:
             self._uncertain.add(operation_id)
             raise
@@ -274,6 +304,7 @@ class VMEnvironment(Environment):
         await self.setup()
         operation_id = uuid.uuid4().hex
         self._operations.add(operation_id)
+        self._edit_locks.add(operation_id)
         try:
             status = await self._rpc({"method": "start", "operation_id": operation_id,
                 "request": {"action": "lock", "args": {}, "workspace": self.workspace, "identity": self._identity}})
@@ -290,10 +321,131 @@ class VMEnvironment(Environment):
         finally:
             if not self._uncertain:
                 await await_owned_operation(self._cancel_operation(operation_id))
+                self._edit_locks.discard(operation_id)
+
+    @contextlib.asynccontextmanager
+    async def _transfer_process(self, method: str):
+        registry = ProcessRegistry()
+        process = await registry.spawn(lambda: asyncio.create_subprocess_exec(
+            *self._ssh_command(method), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE, start_new_session=True))
+        stderr = asyncio.create_task(read_bounded_output(process.stderr, 65536))
+        try:
+            yield process, stderr
+        finally:
+            await await_owned_operation(registry.abort(), propagate_cancellation=True)
+            await await_owned_operation(stderr, propagate_cancellation=True)
+
+    async def copy_to_host(self, source: str, target: Path, *, directory: bool = False) -> None:
+        self._ensure_active()
+        await self.setup()
+        target = Path(target).absolute()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=".oc-vm-download-", dir=target.parent))
+        archive = staging / "archive.tar"
+        try:
+            async with self._transfer_process("download") as (process, stderr):
+                payload = {"source": source, "directory": directory,
+                           "workspace": self.workspace, "identity": self._identity}
+                process.stdin.write(json.dumps(payload).encode())
+                await process.stdin.drain()
+                process.stdin.close()
+                prefix = await process.stdout.readuntil(_FRAME)
+                header = await process.stdout.readline()
+                response = self._decode_response(prefix + header, "download")
+                if not response.get("stream"):
+                    raise VMTransportError("VM download stream is missing", operation_id="download")
+                with archive.open("wb") as output:
+                    while True:
+                        length = struct.unpack("!I", await process.stdout.readexactly(4))[0]
+                        if not length:
+                            break
+                        if length > 65536:
+                            raise VMTransportError("VM download frame exceeds transfer limit", operation_id="download")
+                        output.write(await process.stdout.readexactly(length))
+                    output.flush()
+                    os.fsync(output.fileno())
+                remainder = await process.stdout.read(1)
+                await process.wait()
+                errors, _dropped = await stderr
+                if process.returncode or remainder:
+                    raise VMTransportError(errors.decode(errors="replace"), operation_id="download",
+                                           returncode=process.returncode)
+            payload = await await_owned_operation(
+                asyncio.to_thread(unpack, archive, staging / "contents", directory=directory),
+                propagate_cancellation=True)
+            await await_owned_operation(asyncio.to_thread(publish, payload, target, directory=directory),
+                                        propagate_cancellation=True)
+        except (asyncio.IncompleteReadError, asyncio.LimitOverrunError) as exc:
+            raise VMTransportError(f"VM download interrupted, staging retained at {staging}",
+                                   operation_id="download") from exc
+        except BaseException as exc:
+            add_exception_note(exc, f"VM download staging retained at {staging}")
+            raise
+        else:
+            await asyncio.to_thread(shutil.rmtree, staging)
+
+    async def copy_from_host(self, source: Path, destination: str, *, directory: bool = False) -> None:
+        self._ensure_active()
+        await self.setup()
+        operation_id = uuid.uuid4().hex
+        self._operations.add(operation_id)
+        request = {"method": "start", "operation_id": operation_id,
+                   "request": {"action": "import", "workspace": self.workspace, "identity": self._identity,
+                               "args": {"destination": destination, "directory": directory}}}
+        try:
+            async with self._transfer_process("upload") as (process, stderr):
+                stdout = asyncio.create_task(read_bounded_output(process.stdout, _MESSAGE_LIMIT))
+                read_fd, write_fd = os.pipe()
+                def produce() -> None:
+                    with os.fdopen(write_fd, "wb") as output:
+                        pack(source, output, directory=directory)
+                producer = asyncio.create_task(asyncio.to_thread(produce))
+                try:
+                    process.stdin.write(json.dumps(request).encode() + b"\n")
+                    await process.stdin.drain()
+                    while True:
+                        chunk = await asyncio.to_thread(os.read, read_fd, 65536)
+                        if not chunk:
+                            break
+                        process.stdin.write(struct.pack("!I", len(chunk)) + chunk)
+                        await process.stdin.drain()
+                    await producer
+                    process.stdin.write(struct.pack("!I", 0))
+                    await process.stdin.drain()
+                    process.stdin.close()
+                    output, dropped = await stdout
+                    await process.wait()
+                    errors, _stderr_dropped = await stderr
+                    if process.returncode or dropped:
+                        raise VMTransportError(errors.decode(errors="replace"), operation_id=operation_id,
+                                               returncode=process.returncode)
+                    status = self._decode_response(output, operation_id)
+                finally:
+                    os.close(read_fd)
+                    await await_owned_operation(asyncio.gather(producer, return_exceptions=True))
+                    if not stdout.done():
+                        stdout.cancel()
+                    await asyncio.gather(stdout, return_exceptions=True)
+            await self._wait(operation_id, status)
+        except VMTransportError:
+            self._uncertain.add(operation_id)
+            raise
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            self._uncertain.add(operation_id)
+            raise VMTransportError("VM upload transport closed", operation_id=operation_id) from exc
+        except BaseException:
+            try:
+                await await_owned_operation(self._cancel_operation(operation_id))
+            except BaseException as exc:
+                self._uncertain.add(operation_id)
+                raise ProcessCleanupError(f"VM upload cleanup requires recovery, operation {operation_id}") from exc
+            raise
 
     async def cleanup(self) -> None:
         self.revoke()
-        for operation_id in tuple(self._operations):
+        operations = (self._operations - self._edit_locks, self._edit_locks)
+        for operation_id in tuple(operation for group in operations for operation in group):
             try:
                 await await_owned_operation(self._cancel_operation(operation_id), propagate_cancellation=True)
             except BaseException:

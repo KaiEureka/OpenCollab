@@ -10,9 +10,12 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
+import struct
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -22,6 +25,7 @@ from opencollab import __version__
 from opencollab.adapters._env_base import ENV_FILE_WRITE_LIMIT_BYTES
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import ProcessCleanupError
+from opencollab.adapters._vm_archive import pack, publish, unpack
 from opencollab.adapters.safe_anchored_files import (
     create_regular_bytes_atomic_at,
     open_directory_anchor,
@@ -31,7 +35,8 @@ from opencollab.adapters.safe_anchored_files import (
 )
 from opencollab.domain.vm import validate_vm_path
 
-_MAX_MESSAGE = 16 * 1024 * 1024
+_MAX_MESSAGE = 32 * 1024 * 1024
+_FRAME = b"OCVM1\n"
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
 
@@ -91,6 +96,14 @@ def _status(directory: Path) -> dict[str, Any]:
     try:
         started = _read(directory, "started.json")
     except FileNotFoundError:
+        request = _read(directory, "request.json")
+        if request["action"] == "import" and not (directory / "upload.json").exists():
+            with (directory / "upload.lock").open("a+b") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return {"status": "uploading"}
+            return {"status": "upload_incomplete"}
         return {"status": "preparing"}
     try:
         live = (_process(started["pid"])[1] == started["started"]
@@ -150,6 +163,10 @@ async def _perform(request: dict[str, Any], directory: Path) -> Any:
     if _identity(request["workspace"]) != request["identity"]:
         raise OSError("VM workspace or guest boot identity changed")
     env = LocalEnvironment(request["workspace"])
+    info = os.fstat(env._root_fd())
+    if (info.st_dev, info.st_ino) != (request["identity"]["device"], request["identity"]["inode"]):
+        await env.cleanup()
+        raise OSError("VM workspace identity changed while opening it")
     action = request["action"]
     args = request.get("args", {})
     try:
@@ -168,7 +185,17 @@ async def _perform(request: dict[str, Any], directory: Path) -> Any:
                         await asyncio.sleep(0.02)
                 _write(directory, "lock.json", True)
                 await asyncio.Future()
+        if action == "import":
+            destination = Path(args["destination"])
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            staging = Path(tempfile.mkdtemp(prefix=".oc-vm-import-", dir=destination.parent))
+            _write(directory, "staging.json", str(staging))
+            payload = unpack(directory / "archive.tar", staging / "contents", directory=args["directory"])
+            publish(payload, destination, directory=args["directory"])
+            shutil.rmtree(staging)
+            return None
         if action == "exec":
+            env.workspace = f"/proc/{os.getpid()}/fd/{env._root_fd()}"
             result = asdict(await env.exec_cmd(args["cmd"], math.inf if args["timeout"] is None else args["timeout"],
                            input_bytes=base64.b64decode(args["input"]) if args["input"] is not None else None))
             result["stdout_bytes"] = (base64.b64encode(result["stdout_bytes"]).decode()
@@ -267,6 +294,83 @@ def _worker(directory: Path) -> None:
             _write(directory, "result.json", {"status": "failed", "error": type(exc).__name__, "message": str(exc)})
 
 
+def _prepare(root: Path, request: dict[str, Any]) -> Path:
+    operation = request["operation_id"]
+    if not isinstance(operation, str) or not _ID.fullmatch(operation):
+        raise ValueError("invalid VM operation ID")
+    directory = root / operation
+    try:
+        directory.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    fd = open_directory_anchor(directory)
+    os.close(fd)
+    with (directory / "submit.lock").open("a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            previous = _read(directory, "request.json")
+        except FileNotFoundError:
+            _write(directory, "request.json", request["request"])
+        else:
+            if previous != request["request"]:
+                raise ValueError("VM operation ID is already bound to another request")
+    return directory
+
+
+def _read_exact(length: int) -> bytes:
+    result = bytearray()
+    while len(result) < length:
+        chunk = sys.stdin.buffer.read(length - len(result))
+        if not chunk:
+            raise EOFError("VM upload ended before its completion frame")
+        result.extend(chunk)
+    return bytes(result)
+
+
+def _upload(root: Path, request: dict[str, Any]) -> Any:
+    directory = _prepare(root, request)
+    with (directory / "upload.lock").open("a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        status = _status(directory)
+        receiving = status["status"] in {"preparing", "uploading", "upload_incomplete"}
+        output = (directory / "archive.partial").open("wb") if receiving else None
+        try:
+            while True:
+                length = struct.unpack("!I", _read_exact(4))[0]
+                if length == 0:
+                    break
+                if length > 65536:
+                    raise ValueError("VM upload frame exceeds transfer limit")
+                chunk = _read_exact(length)
+                if output is not None:
+                    output.write(chunk)
+            if output is not None:
+                output.flush()
+                os.fsync(output.fileno())
+                output.close()
+                output = None
+                os.replace(directory / "archive.partial", directory / "archive.tar")
+                _write(directory, "upload.json", True)
+        finally:
+            if output is not None:
+                output.close()
+    return _rpc(root, request)
+
+
+class _ArchiveOutput:
+    def write(self, value: bytes) -> int:
+        for offset in range(0, len(value), 65536):
+            chunk = value[offset:offset + 65536]
+            sys.stdout.buffer.write(struct.pack("!I", len(chunk)))
+            sys.stdout.buffer.write(chunk)
+        return len(value)
+
+
+def _response(value: dict[str, Any]) -> None:
+    sys.stdout.buffer.write(_FRAME + json.dumps(value).encode() + b"\n")
+    sys.stdout.buffer.flush()
+
+
 def _rpc(root: Path, request: dict[str, Any]) -> Any:
     action = request["method"]
     if action == "setup":
@@ -286,27 +390,26 @@ def _rpc(root: Path, request: dict[str, Any]) -> Any:
         raise ValueError("invalid VM operation ID")
     directory = root / operation
     if action == "start":
-        try:
-            directory.mkdir(mode=0o700)
-        except FileExistsError:
-            pass
-        fd = open_directory_anchor(directory)
-        os.close(fd)
-        with (directory / "submit.lock").open("a+b") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                previous = _read(directory, "request.json")
-            except FileNotFoundError:
-                _write(directory, "request.json", request["request"])
-            else:
-                if previous != request["request"]:
-                    raise ValueError("VM operation ID is already bound to another request")
+        directory = _prepare(root, request)
+        if (request["request"]["action"] == "import" and not (directory / "upload.json").exists()
+                and _status(directory)["status"] not in {"cancelled", "completed", "failed"}):
+            raise OSError("VM upload has no completed archive")
         if _status(directory)["status"] == "preparing":
             subprocess.Popen([sys.executable, "-m", "opencollab.adapters._vm_remote", "worker", str(directory)],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True, close_fds=True)
+    fd = open_directory_anchor(directory)
+    os.close(fd)
     if action == "cancel":
         _write(directory, "cancel.json", True)
+        with (directory / "worker.lock").open("a+b") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                pass
+            else:
+                if not (directory / "started.json").exists() and not (directory / "result.json").exists():
+                    _write(directory, "result.json", {"status": "cancelled"})
     if action not in {"start", "query", "cancel"}:
         raise ValueError("unknown VM RPC method")
     return _status(directory)
@@ -317,17 +420,28 @@ def _main() -> None:
         _worker(Path(sys.argv[2]))
         return
     try:
-        if len(sys.argv) != 4 or sys.argv[1] != "rpc" or not _ID.fullmatch(sys.argv[3]):
+        if len(sys.argv) != 4 or sys.argv[1] not in {"rpc", "upload", "download"} or not _ID.fullmatch(sys.argv[3]):
             raise ValueError("invalid VM helper arguments")
         root = _directory(f"{validate_vm_path(sys.argv[2])}/{sys.argv[3]}")
-        payload = sys.stdin.buffer.read(_MAX_MESSAGE + 1)
+        if sys.argv[1] == "upload":
+            payload = sys.stdin.buffer.readline(_MAX_MESSAGE + 1)
+        else:
+            payload = sys.stdin.buffer.read(_MAX_MESSAGE + 1)
         if len(payload) > _MAX_MESSAGE:
             raise ValueError("VM request exceeds message limit")
-        value = _rpc(root, json.loads(payload))
+        request = json.loads(payload)
+        if sys.argv[1] == "download":
+            if _identity(request["workspace"]) != request["identity"]:
+                raise OSError("VM workspace or guest boot identity changed")
+            _response({"ok": True, "stream": True})
+            pack(request["source"], _ArchiveOutput(), directory=request["directory"])
+            sys.stdout.buffer.write(struct.pack("!I", 0))
+            return
+        value = _upload(root, request) if sys.argv[1] == "upload" else _rpc(root, request)
         response = {"ok": True, "value": value}
     except Exception as exc:
         response = {"ok": False, "error": type(exc).__name__, "message": str(exc)}
-    sys.stdout.buffer.write(json.dumps(response).encode())
+    _response(response)
 
 
 if __name__ == "__main__":

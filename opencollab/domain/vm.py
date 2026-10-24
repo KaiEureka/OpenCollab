@@ -17,8 +17,9 @@ class VMConnection:
     connect_timeout: float = 10.0
 
     def __post_init__(self) -> None:
+        patterns = {"host": r"[A-Za-z0-9\[][A-Za-z0-9_.:\[\]%-]*", "user": r"[A-Za-z0-9_][A-Za-z0-9_.-]*"}
         for name, value in (("host", self.host), ("user", self.user)):
-            if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:@%-]*", value):
+            if not isinstance(value, str) or not re.fullmatch(patterns[name], value):
                 raise ValueError(f"VM {name} must be an SSH hostname or account name")
         if isinstance(self.port, bool) or not isinstance(self.port, int) or not 1 <= self.port <= 65535:
             raise ValueError("VM SSH port must be between 1 and 65535")

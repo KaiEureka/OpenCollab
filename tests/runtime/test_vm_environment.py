@@ -131,3 +131,32 @@ async def test_remote_result_uses_existing_execution_result():
     result = VMEnvironment._exec_result({"returncode": 0, "stdout": "ok", "stderr": "", "stdout_bytes": "b2s="})
     assert isinstance(result, ExecResult)
     assert result.stdout_bytes == b"ok"
+
+
+def test_owned_file_removal_rejects_replacement(tmp_path):
+    import os
+
+    from opencollab.adapters.safe_anchored_files import open_directory_anchor, unlink_regular_file_durable_at
+
+    target = tmp_path / "owned"
+    target.write_text("owned")
+    identity = (target.stat().st_dev, target.stat().st_ino)
+    target.rename(tmp_path / "saved")
+    target.write_text("replacement")
+    anchor = open_directory_anchor(tmp_path)
+    try:
+        with pytest.raises(OSError, match="replaced"):
+            unlink_regular_file_durable_at(anchor, tmp_path, "owned", expected_identity=identity)
+        assert target.read_text() == "replacement"
+    finally:
+        os.close(anchor)
+
+
+def test_helper_framing_ignores_banner_and_retains_invalid_payload_error():
+    framed = b'login banner\nOCVM1\n{"ok": true, "value": {"status": "completed"}}\n'
+    assert VMEnvironment._decode_response(framed, "once") == {"status": "completed"}
+    with pytest.raises(ValueError, match="invalid request"):
+        VMEnvironment._decode_response(b'OCVM1\n{"ok": false, "error": "ValueError", '
+                                       b'"message": "invalid request"}\n', "once")
+    with pytest.raises(VMTransportError, match="incomplete"):
+        VMEnvironment._decode_response(b'OCVM1\n{"ok":', "once")
