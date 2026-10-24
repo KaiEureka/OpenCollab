@@ -76,6 +76,9 @@ class VMEnvironment(Environment):
         self._edit_locks: set[str] = set()
         self._temporary_files: dict[str, list[int]] = {}
         self._downloads: set[asyncio.Task[None]] = set()
+        self._transfers: dict[ProcessRegistry, tuple[
+            asyncio.Task[asyncio.subprocess.Process], asyncio.Task[tuple[bytes, int]] | None,
+        ]] = {}
 
     @property
     def revoked(self) -> bool:
@@ -334,15 +337,31 @@ class VMEnvironment(Environment):
     @contextlib.asynccontextmanager
     async def _transfer_process(self, method: str):
         registry = ProcessRegistry()
-        process = await registry.spawn(lambda: asyncio.create_subprocess_exec(
+        spawn = asyncio.create_task(registry.spawn(lambda: asyncio.create_subprocess_exec(
             *self._ssh_command(method), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE, start_new_session=True))
-        stderr = asyncio.create_task(read_bounded_output(process.stderr, 65536))
+            stderr=asyncio.subprocess.PIPE, start_new_session=True)))
+        self._transfers[registry] = (spawn, None)
         try:
+            process = await await_owned_operation(spawn, propagate_cancellation=True)
+            stderr = asyncio.create_task(read_bounded_output(process.stderr, 65536))
+            self._transfers[registry] = (spawn, stderr)
             yield process, stderr
         finally:
-            await await_owned_operation(registry.abort(), propagate_cancellation=True)
-            await await_owned_operation(stderr, propagate_cancellation=True)
+            await self._cleanup_transfer(registry)
+
+    async def _cleanup_transfer(self, registry: ProcessRegistry) -> None:
+        transfer = self._transfers.get(registry)
+        if transfer is None:
+            return
+        await await_owned_operation(asyncio.gather(transfer[0], return_exceptions=True),
+                                    propagate_cancellation=True)
+        await await_owned_operation(registry.abort(), propagate_cancellation=True)
+        transfer = self._transfers.get(registry)
+        try:
+            if transfer is not None and transfer[1] is not None and not transfer[1].cancelled():
+                await await_owned_operation(transfer[1], propagate_cancellation=True)
+        finally:
+            self._transfers.pop(registry, None)
 
     async def copy_to_host(self, source: str, target: Path, *, directory: bool = False) -> None:
         self._ensure_active()
@@ -470,6 +489,8 @@ class VMEnvironment(Environment):
             for result in results:
                 if isinstance(result, ProcessCleanupError):
                     raise result
+        for registry in tuple(self._transfers):
+            await self._cleanup_transfer(registry)
         operations = (self._operations - self._edit_locks, self._edit_locks)
         for operation_id in tuple(operation for group in operations for operation in group):
             try:

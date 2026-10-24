@@ -9,7 +9,7 @@ import threading
 import pytest
 
 from opencollab import __version__
-from opencollab.adapters import _env_vm
+from opencollab.adapters import _env_process, _env_vm
 from opencollab.adapters.env import ExecResult, VMEnvironment, VMOperationError, VMTransportError
 from opencollab.adapters.vm_config import VMConnection
 
@@ -305,3 +305,78 @@ async def test_download_cleanup_failure_reaches_environment_cleanup(monkeypatch,
         await env.cleanup()
     with pytest.raises(_env_vm.ProcessCleanupError, match="remained alive"):
         await task
+
+
+@pytest.mark.parametrize("direction,stage", [("download", "spawn"), ("download", "stream"), ("upload", "spawn")])
+async def test_transfer_cleanup_retries_failed_process_termination(monkeypatch, tmp_path, direction, stage):
+    env = _env()
+    env._identity = {"workspace": env.workspace}
+    marker = tmp_path / "stream-ready"
+    code = (
+        "import pathlib,sys,time; sys.stdin.buffer.read(); "
+        "sys.stdout.buffer.write(b'OCVM1\\n{\"ok\":true,\"value\":{\"stream\":true}}\\n'); "
+        "sys.stdout.buffer.flush(); pathlib.Path(sys.argv[1]).touch(); time.sleep(30)"
+    )
+    monkeypatch.setattr(env, "_ssh_command", lambda _method: [sys.executable, "-c", code, str(marker)])
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    spawn = asyncio.create_subprocess_exec
+    if stage == "spawn":
+        async def delayed_spawn(*args, **kwargs):
+            process = await spawn(*args, **kwargs)
+            entered.set()
+            await release.wait()
+            return process
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", delayed_spawn)
+    terminate = _env_process.terminate_process
+    attempts = []
+
+    async def fail_once(process):
+        attempts.append(process)
+        return False if len(attempts) == 1 else await terminate(process)
+
+    monkeypatch.setattr(_env_process, "terminate_process", fail_once)
+    if direction == "upload":
+        source = tmp_path / "source"
+        source.write_text("upload")
+
+        async def rpc(payload):
+            assert payload["method"] == "cancel"
+            return {"status": "cancelled"}
+
+        monkeypatch.setattr(env, "_rpc", rpc)
+        task = asyncio.create_task(env.copy_from_host(source, "target"))
+    else:
+        task = asyncio.create_task(env.copy_to_host("source", tmp_path / "target"))
+    try:
+        if stage == "spawn":
+            await asyncio.wait_for(entered.wait(), 2)
+        else:
+            async def ready():
+                while not marker.exists():
+                    await asyncio.sleep(0.01)
+            await asyncio.wait_for(ready(), 2)
+        cleanup = asyncio.create_task(env.cleanup())
+        if stage == "spawn":
+            await asyncio.wait({cleanup}, timeout=0.05)
+            release.set()
+        with pytest.raises(_env_vm.ProcessCleanupError, match="did not quiesce"):
+            await cleanup
+        if direction == "download":
+            with pytest.raises(_env_vm.ProcessCleanupError, match="did not quiesce"):
+                await task
+        process = attempts[0]
+        assert process.returncode is None
+        await asyncio.wait_for(env.cleanup(), 2)
+        await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 2)
+        assert len(attempts) >= 2
+        assert all(attempt is process for attempt in attempts)
+        assert process.returncode is not None
+        assert not env._transfers
+    finally:
+        release.set()
+        for process in attempts:
+            await terminate(process)
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
