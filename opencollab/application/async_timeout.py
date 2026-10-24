@@ -115,6 +115,7 @@ async def abandon_on_timeout(
     task_tracker: Callable[[asyncio.Task[T]], None] | None = None,
     late_task_tracker: Callable[[asyncio.Task[T]], None] | None = None,
     late_result_handler: Callable[[asyncio.Future[T]], None] | None = None,
+    start_event: asyncio.Event | None = None,
 ) -> T:
     """Await ``awaitable`` with a hard caller-side timeout.
 
@@ -124,6 +125,8 @@ async def abandon_on_timeout(
     optional handler account for a delayed result in the background, and
     immediately raises TimeoutError to the caller. Caller cancellation retains
     the same background ownership and delayed-result handling.
+
+    ``start_event`` defers the deadline until request admission finishes.
     """
     if timeout is None:
         return await awaitable
@@ -139,7 +142,12 @@ async def abandon_on_timeout(
     task = asyncio.ensure_future(awaitable)
     if task_tracker is not None and isinstance(task, asyncio.Task):
         task_tracker(task)
+    admission = asyncio.create_task(start_event.wait()) if start_event is not None else None
     try:
+        if admission is not None:
+            await asyncio.wait({task, admission}, return_when=asyncio.FIRST_COMPLETED)
+            if task.done():
+                return task.result()
         done, _ = await asyncio.wait({task}, timeout=normalized_timeout)
     except asyncio.CancelledError:
         if late_task_tracker is not None and isinstance(task, asyncio.Task):
@@ -147,6 +155,9 @@ async def abandon_on_timeout(
         task.cancel()
         task.add_done_callback(late_result_handler or consume_task_result)
         raise
+    finally:
+        if admission is not None:
+            admission.cancel()
 
     if task in done:
         return task.result()

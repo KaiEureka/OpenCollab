@@ -9,7 +9,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 import openai
@@ -121,6 +121,7 @@ class LLMClient:
             raise ValueError("request_pool must be an absolute local directory path")
         self.request_pool = request_pool
         self.request_capacity = request_capacity
+        self.supports_request_admission = request_pool is not None
         self.model = model
         self.provider = provider
         self.max_retries = max(0, max_retries)
@@ -288,6 +289,7 @@ class LLMClient:
         top_p: float | None = None,
         max_output_tokens: int | None = None,
         response_session_id: str | None = None,
+        on_admitted: Callable[[], None] | None = None,
     ) -> LLMResponse:
         """Single-shot completion. Returns full response.
 
@@ -314,6 +316,8 @@ class LLMClient:
         with recording() as first_token:
             try:
                 async with request_slot(self.request_pool, self.request_capacity):
+                    if on_admitted is not None:
+                        on_admitted()
                     if self._anthropic:
                         response = await complete_anthropic(
                             self._anthropic,

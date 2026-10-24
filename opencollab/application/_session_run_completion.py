@@ -746,6 +746,9 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
             kwargs["max_output_tokens"] = max_output_tokens
         start = time.monotonic()
         protected_call = self.state.wind_down_done
+        admitted = asyncio.Event() if getattr(self.llm, "supports_request_admission", False) else None
+        if admitted is not None:
+            kwargs["on_admitted"] = admitted.set
         abandoned = False
         if self.tracer:
             self.tracer.log_step(step_type="llm_call_started", payload={
@@ -789,6 +792,7 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
                 owner, self._per_call_timeout,
                 late_task_tracker=self._mark_provider_task_draining,
                 late_result_handler=self._provider_task_done,
+                start_event=admitted,
             )
         except CallerTimeoutError as exc:
             abandoned = True
@@ -813,6 +817,9 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
         if self._run_control is not None:
             self._raise_if_run_cancelled()
         protected_call = self.state.wind_down_done
+        admitted = asyncio.Event() if getattr(self.llm, "supports_request_admission", False) else None
+        if admitted is not None:
+            kwargs["on_admitted"] = admitted.set
         operation = _complete_with_error_usage(self, self.llm.complete, protected_call=protected_call, **kwargs)
         try:
             response = await operation if self._per_call_timeout is None else await abandon_on_timeout(
@@ -824,6 +831,7 @@ class _SessionRunCompletionMixin(_SessionRunTraceMixin):
                     task,
                     protected_call=protected_call,
                 ),
+                start_event=admitted,
             )
         except CallerTimeoutError as exc:
             raise GenerationTimeoutError(
