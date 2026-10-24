@@ -75,6 +75,7 @@ class VMEnvironment(Environment):
         self._uncertain: set[str] = set()
         self._edit_locks: set[str] = set()
         self._temporary_files: dict[str, list[int]] = {}
+        self._downloads: set[asyncio.Task[None]] = set()
 
     @property
     def revoked(self) -> bool:
@@ -145,6 +146,7 @@ class VMEnvironment(Environment):
         if mount_dir is not None:
             raise ValueError("mount_dir is supported only by container environments")
         await self._setup_identity()
+        self._ensure_active()
         return self.workspace
 
     async def _setup_identity(self) -> None:
@@ -345,6 +347,14 @@ class VMEnvironment(Environment):
     async def copy_to_host(self, source: str, target: Path, *, directory: bool = False) -> None:
         self._ensure_active()
         await self.setup()
+        owner = asyncio.create_task(self._copy_to_host(source, target, directory=directory))
+        self._downloads.add(owner)
+        try:
+            await owner
+        finally:
+            self._downloads.discard(owner)
+
+    async def _copy_to_host(self, source: str, target: Path, *, directory: bool) -> None:
         target = Path(target).absolute()
         target.parent.mkdir(parents=True, exist_ok=True)
         staging_parent = target if directory and target.is_dir() else target.parent
@@ -390,7 +400,7 @@ class VMEnvironment(Environment):
             add_exception_note(exc, f"VM download staging retained at {staging}")
             raise
         else:
-            await asyncio.to_thread(shutil.rmtree, staging)
+            await await_owned_operation(asyncio.to_thread(shutil.rmtree, staging), propagate_cancellation=True)
 
     async def copy_from_host(self, source: Path, destination: str, *, directory: bool = False) -> None:
         self._ensure_active()
@@ -451,6 +461,15 @@ class VMEnvironment(Environment):
 
     async def cleanup(self) -> None:
         self.revoke()
+        downloads = tuple(self._downloads)
+        for download in downloads:
+            download.cancel()
+        if downloads:
+            results = await await_owned_operation(asyncio.gather(*downloads, return_exceptions=True),
+                                                   propagate_cancellation=True)
+            for result in results:
+                if isinstance(result, ProcessCleanupError):
+                    raise result
         operations = (self._operations - self._edit_locks, self._edit_locks)
         for operation_id in tuple(operation for group in operations for operation in group):
             try:
