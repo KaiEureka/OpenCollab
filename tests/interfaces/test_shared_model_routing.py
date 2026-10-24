@@ -39,7 +39,8 @@ async def test_sdk_routes_physical_model_provider_and_controls(tmp_path, monkeyp
         return completion_http_response(request, text="finished")
 
     install_sdk_transport(monkeypatch, "anthropic", handler)
-    client = OpenCollab(tmp_path, model="writer", api_key="default-endpoint-secret", model_routes={  # pragma: allowlist secret
+    client = OpenCollab(tmp_path, model="writer",
+        api_key="default-endpoint-secret", model_routes={  # pragma: allowlist secret
         "writer": {
             "model": "claude-sonnet-4-6", "provider": "anthropic", "base_url": "https://writer.example",
             "auth_token": "route-token", "context_window": 12345,
@@ -119,12 +120,14 @@ async def test_routed_responses_preserve_identity_and_optional_session(tmp_path,
 def test_routes_resolve_env_file_secrets_once(tmp_path, monkeypatch):
     config_dir = tmp_path / "configs"
     config_dir.mkdir()
-    routes = {"worker": {"model": "local-model", "base_url": "http://localhost:9999/v1", "api_key_env": "WORKER_KEY"}}  # pragma: allowlist secret
+    routes = {"worker": {"model": "local-model", "base_url": "http://localhost:9999/v1",
+        "api_key_env": "WORKER_KEY"}}  # pragma: allowlist secret
     (config_dir / ".env").write_text(f"WORKER_KEY=initial-key\nOPENCOLLAB_MODEL_ROUTES='{json.dumps(routes)}'\n")
     client = OpenCollab(tmp_path, model="worker")
     monkeypatch.setenv("WORKER_KEY", "later-key")
     assert client._config["model_routes"]["worker"]["api_key"] == "initial-key"  # pragma: allowlist secret
-    monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({"worker": {"model": "other", "api_key_env": "MISSING"}}))  # pragma: allowlist secret
+    monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({"worker": {"model": "other",
+        "api_key_env": "MISSING"}}))  # pragma: allowlist secret
     with pytest.raises(ValueError, match="MISSING"):
         build_config(str(tmp_path))
 
@@ -213,8 +216,10 @@ def test_independent_team_and_workflow_processes_share_actual_http_capacity(tmp_
         (tmp_path / "config.json").write_text(json.dumps({
             "thinking_params": {}, "request_pool": str(pool), "request_capacity": 2,
             "model_routes": {
-                "team": {"model": "team-physical", "base_url": team_url, "api_key": "local"},  # pragma: allowlist secret
-                "workflow": {"model": "workflow-physical", "base_url": workflow_url, "api_key": "local"},  # pragma: allowlist secret
+                "team": {"model": "team-physical", "base_url": team_url,
+                    "api_key": "local"},  # pragma: allowlist secret
+                "workflow": {"model": "workflow-physical", "base_url": workflow_url,
+                    "api_key": "local"},  # pragma: allowlist secret
             },
         }))
         (tmp_path / "team.yaml").write_text(
@@ -284,7 +289,8 @@ async def test_parent_tool_waiting_for_child_workflow_releases_request_slot(tmp_
     install_sdk_transport(monkeypatch, "openai", handler)
     client = OpenCollab(tmp_path, model="worker", model_routes={
         "worker": {
-            "model": "physical-worker", "api_key": "local", "request_pool": str(tmp_path), "request_capacity": 1,  # pragma: allowlist secret
+            "model": "physical-worker",
+                "api_key": "local", "request_pool": str(tmp_path), "request_capacity": 1,  # pragma: allowlist secret
         },
     }, config={"thinking_params": {}})
 
@@ -339,7 +345,8 @@ def test_cli_keeps_role_defaults_while_resolving_default_credentials(tmp_path, m
 
     monkeypatch.setenv("OPENCOLLAB_MODEL", "worker")
     monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({
-        "worker": {"model": "local-physical", "api_key": "local", "base_url": "http://localhost:9999/v1"},  # pragma: allowlist secret
+        "worker": {"model": "local-physical",
+            "api_key": "local", "base_url": "http://localhost:9999/v1"},  # pragma: allowlist secret
     }))
     config = resolve_config(str(tmp_path), None, None, None, None, None)
     assert config["model"] == "worker"
@@ -357,8 +364,10 @@ def test_resolved_config_keeps_physical_identity_across_bootstrap_paths(tmp_path
     from opencollab.bootstrap.team_config import RoleConfig, TeamConfig
 
     client = OpenCollab(tmp_path, model="worker", model_routes={
-        "worker": {"model": "physical-worker", "api_key": "local", "base_url": "https://worker.example/v1"},  # pragma: allowlist secret
-        "physical-worker": {"model": "unrelated-model", "api_key": "other", "base_url": "https://other.example/v1"},  # pragma: allowlist secret
+        "worker": {"model": "physical-worker",
+            "api_key": "local", "base_url": "https://worker.example/v1"},  # pragma: allowlist secret
+        "physical-worker": {"model": "unrelated-model",
+            "api_key": "other", "base_url": "https://other.example/v1"},  # pragma: allowlist secret
     })
     config = resolve_model_route(client._config)
     assert resolve_model_route(config) == config
