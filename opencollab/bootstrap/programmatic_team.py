@@ -14,6 +14,7 @@ from opencollab.adapters.trace import Tracer
 from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.scheduler_types import SchedulerTurnError
 from opencollab.bootstrap import programmatic as _programmatic
+from opencollab.bootstrap.isolation import prepare_scheduler
 from opencollab.bootstrap.programmatic import (
     DEFAULT_TEAM_CLEANUP_TIMEOUT_SECONDS,
     ProgrammaticResult,
@@ -36,6 +37,8 @@ async def run_team(
     artifacts: Path | None,
     trace: bool,
     use_worktrees: bool,
+    isolation: str | None = None,
+    environment_providers: Mapping[str, Any] | None = None,
     prebuild_team: bool = False,
     allow_unisolated_shell: bool | None = None,
     max_steps: int | None = SESSION_MAX_STEPS,
@@ -75,8 +78,9 @@ async def run_team(
             filename="trajectory.jsonl",
         )
     try:
-        scheduler = _programmatic.build_scheduler(
-            context,
+        scheduler = await prepare_scheduler(
+            context, builder=_programmatic.build_scheduler, isolation=isolation,
+            environment_providers=environment_providers,
             use_worktrees=use_worktrees,
             # Programmatic runs cannot answer ``ask_user``. The caller separately
             # chooses whether to allow an unsandboxed shell.
@@ -222,6 +226,7 @@ async def run_team(
             "run_id": run_id,
             "steps": int(getattr(lead, "step_count", 0)),
             "sessions": len(scheduler.table.entries),
+            **({"entry_patch": scheduler.entry_patch_path} if getattr(scheduler, "entry_patch_path", None) else {}),
             **({"tree_snapshots": [dict(row) for row in scheduler.delivery_tree_snapshots]}
                if record_delivery_tree else {}),
             # Cleanup also persists the terminal snapshot and releases owned

@@ -1,6 +1,7 @@
 """Public execution-environment contract and thin composition helpers."""
 
 from opencollab.application.ports import EnvironmentPort as Environment
+from opencollab.application.ports import WorktreePoolPort as EnvironmentPool
 from opencollab.bootstrap.programmatic import (
     attach_container,
     build_repo_map_via_env,
@@ -11,6 +12,7 @@ from opencollab.bootstrap.programmatic import (
 
 __all__ = [
     "Environment",
+    "EnvironmentPool",
     "attach_container",
     "build_repo_map_via_env",
     "docker_environment",

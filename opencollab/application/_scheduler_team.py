@@ -576,6 +576,9 @@ class SchedulerTeamMixin:
         if not diff:
             return result
         recovery = ""
+        if aid == 0 and self.preserve_entry_changes:
+            self.entry_patch_path = await self._preserve_adoption_candidate(aid, diff)
+            recovery = f"\n\n[Entry changes saved at {self.entry_patch_path}]"
         if len(diff) > WORKTREE_DIFF_MAX_CHARS:
             if partial and isinstance(env, RecoverableChangesPort):
                 recovery = f"\n\n[Full partial changes retained at {env.retain_changes()}]"

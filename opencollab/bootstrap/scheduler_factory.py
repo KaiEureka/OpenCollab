@@ -99,6 +99,7 @@ def build_scheduler(
     environment: Environment | None = None,
     record_delivery_tree: bool = False,
     run_id: str | None = None,
+    worktree_pool=None,
 ) -> Scheduler:
     """Compose a team and initialize agent 0 with the selected configuration.
 
@@ -203,7 +204,7 @@ def build_scheduler(
     )
     try:
         lead_environment = session_factory.lead_environment
-        worktree_pool = WorktreePool(
+        worktree_pool = worktree_pool if worktree_pool is not None else WorktreePool(
             ctx.workspace,
             use_worktrees=use_worktrees,
             base_environment=environment,

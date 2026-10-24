@@ -58,7 +58,7 @@ class WorkflowAgentRunMixin:
         *,
         label: str | None = None,
         tools: str | Sequence[Any] | None = None,
-        isolation: bool = False,
+        isolation: bool | str | None = None,
         budget: int | None = None,
         timeout: float | None = None,
         max_steps: int | None = None,

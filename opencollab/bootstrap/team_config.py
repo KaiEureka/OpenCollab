@@ -30,6 +30,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from opencollab.adapters.safe_files import read_regular_text
+from opencollab.application.isolation import isolation_name
 from opencollab.bootstrap.context_policy import ContextPolicy, resolve_context_policy
 from opencollab.bootstrap.tool_registry import (
     COORDINATION_TOOL_NAMES,
@@ -133,6 +134,12 @@ class RoleConfig(BaseModel):
     # tool caps. ``ContextBuilder`` appends the role card and applies tool caps.
     # ``DefaultSessionFactory`` wires the shaper and safety wrapper.
     profile: str | None = None
+    isolation: str | None = None
+
+    @field_validator("isolation", mode="before")
+    @classmethod
+    def _isolation_name(cls, value):
+        return isolation_name(value)
     # This role's own token allowance, from the team file (``budget.tokens`` at
     # the team level, overridable per role). ``None`` on every role leaves the
     # team on the shared ``per_agent_cap`` rule; see ``TeamConfig.role_budgets``.
@@ -214,6 +221,12 @@ class _RoleFileModel(BaseModel):
     thinking_params: dict | None = None
     tools: list[str] = Field(default_factory=list)
     profile: str | None = None
+    isolation: str | None = None
+
+    @field_validator("isolation", mode="before")
+    @classmethod
+    def _isolation_name(cls, value):
+        return isolation_name(value)
     budget: _BudgetFileModel | None = None
 
     @field_validator("profile")
@@ -275,6 +288,13 @@ class _TeamFileModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    isolation: str | None = None
+
+    @field_validator("isolation", mode="before")
+    @classmethod
+    def _isolation_name(cls, value):
+        return isolation_name(value)
+
     roles: dict[str, _RoleFileModel] = Field(default_factory=dict)
     topology: dict[str, list[str]] = Field(default_factory=dict)
     hooks: dict[str, list[_HookActionFileModel]] = Field(default_factory=dict)
@@ -315,8 +335,10 @@ class TeamConfig:
     # Tool name -> constructor kwargs (output caps); applied by the registry.
     tool_limits: dict[str, dict[str, int]] = field(default_factory=dict)
     context: ContextPolicy = field(default_factory=ContextPolicy)
+    isolation: str | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "isolation", isolation_name(self.isolation))
         normalized_tool_limits = validate_tool_limits(self.tool_limits)
         normalized_roles: dict[str, RoleConfig] = {}
         role_names: dict[str, str] = {}
@@ -567,6 +589,7 @@ def _build_team_config(data: Any, base_dir: Path) -> TeamConfig:
             thinking_params=entry.thinking_params,
             tools=list(entry.tools),
             profile=entry.profile,
+            isolation=entry.isolation,
             budget_tokens=(
                 entry.budget.tokens
                 if entry.budget is not None
@@ -608,6 +631,7 @@ def _build_team_config(data: Any, base_dir: Path) -> TeamConfig:
         entry=_resolve_entry_role(model.entry, roles),
         tool_limits={name: dict(kwargs) for name, kwargs in model.tool_limits.items()},
         context=resolve_context_policy(model.context),
+        isolation=model.isolation,
     )
 
 def resolve_team_file(workspace: str | None = None) -> Path | None:

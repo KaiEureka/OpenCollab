@@ -82,6 +82,8 @@ class Scheduler(
         entry_role: str | None = None,
         candidate_diff_writer: Callable[[int, str, str], Awaitable[str]] | None = None,
     ):
+        self.preserve_entry_changes = False
+        self.entry_patch_path: str | None = None
         self._session_factory = session_factory
         self._worktree_pool = worktree_pool
         self._event_sink = event_sink

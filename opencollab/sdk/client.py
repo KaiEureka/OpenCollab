@@ -11,6 +11,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from opencollab.application.isolation import isolation_name
 from opencollab.application.run_control import RunControl
 from opencollab.bootstrap.config import _optional_string, build_config, resolve_provider_base_url
 from opencollab.bootstrap.programmatic import (
@@ -116,6 +117,7 @@ class OpenCollab:
         base_url: str | None = None,
         config: Mapping[str, Any] | None = None,
         environment: Any | None = None,
+        environment_providers: Mapping[str, Any] | None = None,
     ) -> None:
         raw_workspace = os.fspath(workspace)
         if not raw_workspace or "\x00" in raw_workspace:
@@ -144,6 +146,7 @@ class OpenCollab:
             self._config["provider"], self._config["base_url"],
         )
         self._environment = environment
+        self._environment_providers = dict(environment_providers or {})
 
     @property
     def configuration(self) -> Mapping[str, Any]:
@@ -310,6 +313,7 @@ class OpenCollab:
         artifacts: str | os.PathLike[str] | None = None,
         trace: bool = True,
         use_worktrees: bool = True,
+        isolation: str | None = None,
         prebuild_team: bool = False,
         allow_unisolated_shell: bool | None = None,
         max_steps: int | None = SESSION_MAX_STEPS,
@@ -372,6 +376,9 @@ class OpenCollab:
                 artifacts=_path(artifacts, "artifacts"),
                 trace=trace,
                 use_worktrees=use_worktrees,
+                **({"isolation": isolation_name(isolation),
+                    "environment_providers": self._environment_providers}
+                   if isolation is not None or self._environment_providers else {}),
                 prebuild_team=prebuild_team,
                 allow_unisolated_shell=allow_unisolated_shell,
                 max_steps=resolved_team_max_steps,
@@ -404,6 +411,7 @@ class OpenCollab:
         run_id: str | None = None,
         llm: Any | None = None,
         limit_mode: str = "environment",
+        isolation: str | None = None,
     ) -> RunResult[Any]:
         """Run a workflow name, decorated function, or plain async function.
 
@@ -489,6 +497,9 @@ class OpenCollab:
                 agent_profile=resolved_agent_profile,
                 llm=llm,
                 limit_mode=limit_mode,
+                **({"isolation": isolation_name(isolation),
+                    "environment_providers": self._environment_providers}
+                   if isolation is not None or self._environment_providers else {}),
                 cleanup_timeout=_required_positive_timeout(
                     cleanup_timeout,
                     "cleanup_timeout",

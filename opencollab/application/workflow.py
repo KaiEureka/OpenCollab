@@ -40,6 +40,7 @@ from opencollab.application.async_timeout import (
 from opencollab.application.async_timeout import (
     abandon_on_timeout as abandon_on_timeout,
 )
+from opencollab.application.isolation import isolation_name
 from opencollab.application.ports import (
     CandidateWorkspacePort,
     EventPublisherPort,
@@ -335,7 +336,7 @@ class WorkflowContext(
         label: str | None,
         budget: int | None,
         tools: Sequence[Any] | None = None,
-        isolation: bool = False,
+        isolation: bool | str | None = None,
         **kwargs: Any,
     ) -> Any:
         """Build one one-shot session and record that this agent existed.
@@ -355,7 +356,15 @@ class WorkflowContext(
         Emitted after the build, because an agent that failed to build has no
         id to attribute anything to; the caller records that failure instead.
         """
-        env = await self._factory.acquire_isolated_env(label=label) if isolation else None
+        strategy = isolation_name(isolation, default=getattr(self._factory, "default_isolation", "shared"))
+        acquire = getattr(self._factory, "acquire_environment", None)
+        if callable(acquire):
+            env = await acquire(isolation=strategy, label=label)
+        elif strategy in {"shared", "worktree"}:
+            env = await self._factory.acquire_isolated_env(label=label) if strategy == "worktree" else None
+        else:
+            raise ValueError(f"session factory does not support isolation strategy {strategy!r}")
+        isolation = strategy != "shared"
         session = self._factory.build_workflow_session(
             label=label,
             budget=budget,
@@ -380,6 +389,7 @@ class WorkflowContext(
                 # An isolated writer needs a recorded handoff because siblings cannot see
                 # its edits through the shared filesystem.
                 "isolated": bool(isolation),
+                "isolation": strategy,
             },
         )
         return session
@@ -495,7 +505,7 @@ class WorkflowContext(
         schema: dict[str, Any] | None = None,
         label: str | None = None,
         tools: Sequence[Any] | None = None,
-        isolation: bool = False,
+        isolation: bool | str | None = None,
         tool_choice: Any = None,
         thinking: bool | None = None,
         timeout: float | None = None,
@@ -627,7 +637,7 @@ class WorkflowContext(
         *,
         label: str | None,
         tools: Sequence[Any] | None,
-        isolation: bool,
+        isolation: bool | str | None,
         tool_choice: Any = None,
         thinking: bool | None = None,
         timeout: float | None = None,
