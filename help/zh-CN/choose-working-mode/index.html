@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>按任务选择默认 CLI、Base、Team 或 Workflow · OpenCollab 帮助中心</title>
+<meta name="description" content="根据交互需求、可重复流程和协作方式选择最合适的启动入口。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/choose-working-mode/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<nav class="language-switch" aria-label="Language"><a href="../index.html" lang="zh-CN" hreflang="zh-CN" aria-current="true">中文</a><a href="../../en/index.html" lang="en" hreflang="en">English</a></nav>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details open><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="index.html" aria-current="page">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">认识 OC</p>
+<h1 id="按任务选择默认-clibaseteam-或-workflow">按任务选择默认 CLI、Base、Team 或 Workflow</h1>
+<p>选择模式时，先确定你希望谁来安排交接。需要边聊边改代码，使用默认 CLI。需要一个模型完成单次任务，使用 Base。需要成员根据情况分工，配置 Team。希望每次都按指定算法执行，编写 Workflow。</p>
+<h2 id="按目标选择">按目标选择</h2>
+<table>
+<thead>
+<tr>
+<th>你的目标</th>
+<th>推荐起点</th>
+<th>需要继续决定的事项</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>在终端持续处理项目</td>
+<td>默认 CLI</td>
+<td>工作目录、模型、命令权限</td>
+</tr>
+<tr>
+<td>从程序获得一次编码结果</td>
+<td><code>oc.agent(...)</code></td>
+<td>工具、额度、产物目录</td>
+</tr>
+<tr>
+<td>让分析、实现、测试角色自主交接</td>
+<td><code>oc.team(...)</code> 或团队 CLI</td>
+<td>角色、通信方向、改动采用</td>
+</tr>
+<tr>
+<td>强制先实现再验证</td>
+<td>自定义 Workflow</td>
+<td>输入输出、验证与失败处理</td>
+</tr>
+<tr>
+<td>比较两个编码候选</td>
+<td>Duo</td>
+<td>工具环境、候选证据和交付方式</td>
+</tr>
+<tr>
+<td>将应用开发拆成有检查的工作组</td>
+<td>Weave</td>
+<td>组依赖、检查器和修复预算</td>
+</tr>
+<tr>
+<td>根据输入输出探索隐藏程序</td>
+<td>Reconstruct</td>
+<td>查询接口、候选执行器和停止条件</td>
+</tr>
+</tbody>
+</table>
+<p>推荐表示最接近现有能力的入口。任务很简单时，一个 Agent 通常更容易观察。角色增加后，还需要处理交接、上下文和代码交付的成本。</p>
+<h2 id="team-与-workflow-可以组合">Team 与 Workflow 可以组合</h2>
+<p>Team 适合把“下一步找谁”交给成员决定。拓扑声明谁可以派发或通信，角色工具决定能执行的操作。一个注册了 <code>run_workflow</code> 的成员，可以在任务需要时调用已安装的工作流。</p>
+<p>Workflow 适合把协作算法写进程序。例如先让两个候选各自实现，再执行检查，最后根据结果采用其中一个。普通 Python 条件和循环决定流程结构，OC 提供 Agent、候选、并发和用量管理等操作。</p>
+<p>成员运行中编写 Python 文件再启动，使用 <code>manage_workflow</code>。这种动态子运行与调用启动时已注册的工作流有不同的生命周期，后续应阅读各自指南。</p>
+<h2 id="隔离与模式分别选择">隔离与模式分别选择</h2>
+<p>选择 Team 并不自动确定容器级别的隔离。选择 Workflow 也不自动把宿主 Python 代码放入容器。先选组织方式，再决定 <code>shared</code>、<code>worktree</code> 或 Docker 策略以及命令权限。</p>
+<p>对陌生仓库，可以先用只读工具调查。需要执行项目代码时，应明确执行环境及其网络和挂载设置。开始时保留运行记录，便于看到实际调用、停止原因和改动去向。</p>
+<h2 id="从哪条路径开始读">从哪条路径开始读</h2>
+<p>终端用户接着读第一次运行与默认交互。应用开发者接着读 SDK 与运行结果。准备发明新协作算法的开发者，应从 Workflow 编程模型开始，再读公开 API、数据流和验证调试。Skill 可提供任务指导，完整的程序设计仍由这些接口与运行规则支撑。</p>
+<h2 id="源码与进一步阅读">源码与进一步阅读</h2>
+<p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">opencollab/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/single2.md">docs/single2.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/duo.md">docs/duo.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/weave.md">docs/weave.md</a></p>
+<p><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a> · <a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a> · <a href="../configure-team/index.html">Team 完整指南与团队配置</a> · <a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a> · <a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a> · <a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a></p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/orientation/choose-working-mode.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%8C%89%E7%9B%AE%E6%A0%87%E9%80%89%E6%8B%A9">按目标选择</a><a href="#team-%E4%B8%8E-workflow-%E5%8F%AF%E4%BB%A5%E7%BB%84%E5%90%88">Team 与 Workflow 可以组合</a><a href="#%E9%9A%94%E7%A6%BB%E4%B8%8E%E6%A8%A1%E5%BC%8F%E5%88%86%E5%88%AB%E9%80%89%E6%8B%A9">隔离与模式分别选择</a><a href="#%E4%BB%8E%E5%93%AA%E6%9D%A1%E8%B7%AF%E5%BE%84%E5%BC%80%E5%A7%8B%E8%AF%BB">从哪条路径开始读</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
+</div>
+</body>
+</html>

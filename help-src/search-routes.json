@@ -1,0 +1,698 @@
+{
+  "routes": [
+    {
+      "queries": [
+        "隔离",
+        "隔离级别",
+        "沙箱",
+        "环境隔离",
+        "isolation",
+        "sandbox"
+      ],
+      "target_id": "isolation-overview",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "独立工作区",
+        "互相覆盖",
+        "代码互相覆盖",
+        "worktree"
+      ],
+      "target_id": "worktree-workspaces",
+      "mode": "direct",
+      "also_show": [
+        "isolation-overview"
+      ]
+    },
+    {
+      "queries": [
+        "docker",
+        "容器",
+        "每个Agent一个容器",
+        "docker-session",
+        "docker-group"
+      ],
+      "target_id": "docker-isolation",
+      "mode": "direct",
+      "also_show": [
+        "isolation-overview"
+      ]
+    },
+    {
+      "queries": [
+        "对话隔离",
+        "上下文隔离",
+        "Agent能看到彼此对话吗"
+      ],
+      "target_id": "isolation-overview",
+      "mode": "direct",
+      "also_show": [
+        "message-team-agents"
+      ]
+    },
+    {
+      "queries": [
+        "Team",
+        "团队",
+        "组队",
+        "team.yaml"
+      ],
+      "target_id": "configure-team",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Workflow",
+        "工作流",
+        "work flow",
+        "工作流程",
+        "DW"
+      ],
+      "target_id": "run-registered-workflow",
+      "mode": "direct",
+      "also_show": [
+        "choose-working-mode"
+      ]
+    },
+    {
+      "queries": [
+        "派发子Agent",
+        "spawn agent",
+        "spawn_agent",
+        "创建子智能体",
+        "派个分身去干活"
+      ],
+      "target_id": "dispatch-team-agents",
+      "mode": "direct",
+      "also_show": [
+        "team-run-workflow"
+      ]
+    },
+    {
+      "queries": [
+        "Team调用Workflow",
+        "run_workflow",
+        "让队友运行Duo"
+      ],
+      "target_id": "team-run-workflow",
+      "mode": "direct",
+      "also_show": [
+        "member-authored-workflow"
+      ]
+    },
+    {
+      "queries": [
+        "自己写工作流再运行",
+        "manage_workflow",
+        "动态编写工作流",
+        "子工作流状态"
+      ],
+      "target_id": "member-authored-workflow",
+      "mode": "direct",
+      "also_show": [
+        "team-run-workflow"
+      ]
+    },
+    {
+      "queries": [
+        "派发子Workflow",
+        "子工作流",
+        "child workflow"
+      ],
+      "target_id": "team-run-workflow",
+      "mode": "choose",
+      "also_show": [
+        "member-authored-workflow",
+        "compose-workflow-candidates"
+      ]
+    },
+    {
+      "queries": [
+        "自定义Workflow",
+        "workflow装饰器",
+        "@workflow"
+      ],
+      "target_id": "author-custom-workflow",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "候选子工作流",
+        "candidate_workflow",
+        "嵌套Workflow"
+      ],
+      "target_id": "compose-workflow-candidates",
+      "mode": "direct",
+      "also_show": [
+        "team-run-workflow"
+      ]
+    },
+    {
+      "queries": [
+        "Duo",
+        "双候选",
+        "双coder"
+      ],
+      "target_id": "duo-workflow",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Weave",
+        "分组实现",
+        "边做边验证"
+      ],
+      "target_id": "weave-workflow",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Reconstruct",
+        "黑盒重建",
+        "输入输出反推程序"
+      ],
+      "target_id": "reconstruct-workflow",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Base",
+        "Single2",
+        "单Agent",
+        "agent2"
+      ],
+      "target_id": "base-single2",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "安装",
+        "怎么装OC"
+      ],
+      "target_id": "install-source-checkout",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "第一次运行",
+        "快速开始"
+      ],
+      "target_id": "first-run-workspace",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "默认CLI",
+        "终端交互",
+        "切换Agent"
+      ],
+      "target_id": "interactive-cli-controls",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Python SDK",
+        "嵌入Python",
+        "OpenCollab()"
+      ],
+      "target_id": "python-sdk-entrypoints",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "配置没生效",
+        "配置覆盖",
+        "环境变量优先级"
+      ],
+      "target_id": "configuration-precedence",
+      "mode": "direct",
+      "also_show": [
+        "configuration-diagnostics"
+      ]
+    },
+    {
+      "queries": [
+        "API key",
+        "接入模型",
+        "base_url"
+      ],
+      "target_id": "provider-endpoint-credentials",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "共享模型",
+        "逻辑模型",
+        "request_capacity",
+        "请求池"
+      ],
+      "target_id": "model-routing-request-capacity",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "并发",
+        "并行",
+        "同时跑几个"
+      ],
+      "target_id": "token-step-concurrency-limits",
+      "mode": "choose",
+      "also_show": [
+        "model-routing-request-capacity",
+        "workflow-parallel-pipeline"
+      ]
+    },
+    {
+      "queries": [
+        "reasoning",
+        "thinking",
+        "推理强度",
+        "深度思考"
+      ],
+      "target_id": "thinking-reasoning-sampling",
+      "mode": "direct",
+      "also_show": [
+        "context-compaction"
+      ]
+    },
+    {
+      "queries": [
+        "上下文压缩",
+        "记忆太长",
+        "context window",
+        "压缩太频繁"
+      ],
+      "target_id": "context-compaction",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "预算",
+        "token额度",
+        "步数上限"
+      ],
+      "target_id": "token-step-concurrency-limits",
+      "mode": "direct",
+      "also_show": [
+        "token-cache-cost"
+      ]
+    },
+    {
+      "queries": [
+        "卡住",
+        "没响应",
+        "429",
+        "超时"
+      ],
+      "target_id": "timeouts-retries",
+      "mode": "choose",
+      "also_show": [
+        "wait-for-team-results",
+        "configuration-diagnostics"
+      ]
+    },
+    {
+      "queries": [
+        "恢复会话",
+        "断点续跑",
+        "继续上次对话",
+        "保存会话"
+      ],
+      "target_id": "session-save-resume",
+      "mode": "choose",
+      "also_show": [
+        "weave-workflow",
+        "workspace-recovery"
+      ]
+    },
+    {
+      "queries": [
+        "取消",
+        "停止运行",
+        "Ctrl+C",
+        "清理没结束"
+      ],
+      "target_id": "cancellation-cleanup",
+      "mode": "direct",
+      "also_show": [
+        "member-authored-workflow"
+      ]
+    },
+    {
+      "queries": [
+        "发消息",
+        "message",
+        "通知队友"
+      ],
+      "target_id": "message-team-agents",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "等待子Agent",
+        "等队友",
+        "队友没结束"
+      ],
+      "target_id": "wait-for-team-results",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "采用队友代码",
+        "adopt_agent",
+        "队友改了但主目录没变"
+      ],
+      "target_id": "adopt-team-changes",
+      "mode": "direct",
+      "also_show": [
+        "candidate-delivery"
+      ]
+    },
+    {
+      "queries": [
+        "adopt_candidate",
+        "候选采纳",
+        "交付候选"
+      ],
+      "target_id": "candidate-delivery",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "改动丢了",
+        "恢复补丁",
+        "entry_patch"
+      ],
+      "target_id": "workspace-recovery",
+      "mode": "direct",
+      "also_show": [
+        "candidate-delivery"
+      ]
+    },
+    {
+      "queries": [
+        "工具列表",
+        "工具有哪些",
+        "builtin_tools"
+      ],
+      "target_id": "tool-selection",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "自定义工具",
+        "接入自己的API"
+      ],
+      "target_id": "custom-tools",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "技能",
+        "Skill",
+        "use_skill",
+        "SKILL.md"
+      ],
+      "target_id": "skills-on-demand",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Hook",
+        "PreToolUse",
+        "PostToolUse"
+      ],
+      "target_id": "team-hooks",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "权限",
+        "yolo",
+        "允许执行shell"
+      ],
+      "target_id": "shell-permissions-execution",
+      "mode": "choose",
+      "also_show": [
+        "tool-selection",
+        "isolation-overview"
+      ]
+    },
+    {
+      "queries": [
+        "文件路径",
+        "读取文件",
+        "apply_patch"
+      ],
+      "target_id": "file-editing-safe-workspace",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "结果怎么看",
+        "RunResult",
+        "completed",
+        "stopped",
+        "failed"
+      ],
+      "target_id": "run-results",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "日志在哪里",
+        "artifacts",
+        "no-trace",
+        "no-save"
+      ],
+      "target_id": "artifacts-and-history",
+      "mode": "direct",
+      "also_show": [
+        "trace-and-events"
+      ]
+    },
+    {
+      "queries": [
+        "轨迹",
+        "trace",
+        "on_event",
+        "谁做了什么"
+      ],
+      "target_id": "trace-and-events",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "费用",
+        "缓存命中",
+        "token统计",
+        "usage"
+      ],
+      "target_id": "token-cache-cost",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "测试证据",
+        "verified_targets",
+        "测试后又改代码"
+      ],
+      "target_id": "native-test-evidence",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "真的协作了吗",
+        "Adherence",
+        "角色没参与"
+      ],
+      "target_id": "collaboration-adherence",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "评测",
+        "OCE",
+        "Terminal-Bench",
+        "DeepSWE",
+        "SWE-bench"
+      ],
+      "target_id": "evaluation-boundary",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Workflow支持哪些语法",
+        "workflow语法",
+        "能用if和while吗",
+        "工作流自由度"
+      ],
+      "target_id": "workflow-programming-model",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Workflow API",
+        "ctx能做什么",
+        "公开API"
+      ],
+      "target_id": "workflow-public-api-map",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "传递结果",
+        "结构化输出",
+        "schema",
+        "步骤间共享数据"
+      ],
+      "target_id": "workflow-dataflow-structured-io",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Team套Workflow",
+        "Workflow套Team",
+        "ctx.team",
+        "调用层级"
+      ],
+      "target_id": "workflow-composition-hierarchy",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Workflow档位",
+        "怎么控制每一步",
+        "控制粒度"
+      ],
+      "target_id": "workflow-control-granularity",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Workflow失败",
+        "工作流重试",
+        "流程中断恢复"
+      ],
+      "target_id": "workflow-failure-recovery-lifecycle",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "任何想法都能实现吗",
+        "DAG",
+        "工作流有什么限制",
+        "分布式Workflow"
+      ],
+      "target_id": "workflow-capabilities-boundaries",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "调试Workflow",
+        "测试自己的工作流",
+        "mock模型"
+      ],
+      "target_id": "workflow-testing-debugging",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "运行时架构",
+        "一次任务怎么执行",
+        "框架负责什么"
+      ],
+      "target_id": "runtime-execution-model",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "Session状态",
+        "会话状态机",
+        "断点是怎么保存的"
+      ],
+      "target_id": "session-state-lifecycle",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "扩展OC",
+        "为什么不用直接调用API",
+        "OC和OCE区别"
+      ],
+      "target_id": "extension-and-evaluation-boundaries",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "接入服务",
+        "HTTP服务",
+        "任务队列",
+        "作为后台服务运行"
+      ],
+      "target_id": "service-integration-lifecycle",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "升级OC",
+        "版本不一致",
+        "旧配置迁移"
+      ],
+      "target_id": "upgrade-existing-integration",
+      "mode": "direct",
+      "also_show": []
+    },
+    {
+      "queries": [
+        "报告bug",
+        "怎么提issue",
+        "反馈问题"
+      ],
+      "target_id": "report-problem-and-request-help",
+      "mode": "direct",
+      "also_show": []
+    }
+  ]
+}

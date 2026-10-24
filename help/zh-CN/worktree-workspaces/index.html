@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>多个任务怎样在独立工作区改代码 · OpenCollab 帮助中心</title>
+<meta name="description" content="并行修改同一个项目时保留清晰的文件起点并理解结果如何返回。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/worktree-workspaces/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<nav class="language-switch" aria-label="Language"><a href="../index.html" lang="zh-CN" hreflang="zh-CN" aria-current="true">中文</a><a href="../../en/index.html" lang="en" hreflang="en">English</a></nav>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details open><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="index.html" aria-current="page">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">执行环境与隔离</p>
+<h1 id="多个任务怎样在独立工作区改代码">多个任务怎样在独立工作区改代码</h1>
+<p>独立工作树让多个任务在不同目录里修改同一个项目，适合并行实现与候选比较。Git 项目共享对象存储，每个任务有自己的文件内容和索引。工作树位于父执行环境里，父任务在容器中时，子工作树继续在该容器里执行。</p>
+<h2 id="工作区从哪里开始">工作区从哪里开始</h2>
+<p>传统工作树根据 Git 提交创建，源仓库需要有可解析的 <code>HEAD</code>，并且保持干净。错误 <code>source workspace has uncommitted changes</code> 会附带相关文件线索。可以先查看 <code>git status --short</code>，再按项目工作方式提交、暂存处理或保留现有修改。运行自己创建的产物目录有专门排除规则，已跟踪文件的改动仍参与检查。</p>
+<p>声明 <code>adopt_agent</code> 的 Team 使用候选快照准备子任务，会把当前交付目录中的用户修改和先前已采纳结果一并带入。审阅任务还可以以被审阅成员的真实环境为起点。因此，看到同一个 <code>worktree</code> 名字时，应结合入口判断它采用传统干净仓库路径，还是带采纳能力的当前内容快照路径。</p>
+<p>下面通过公开工厂观察传统工作树。请在准备好的 Git 项目或普通目录中执行。</p>
+<pre><code class="language-python">import asyncio
+from opencollab.environments import worktree_environment
+
+async def main():
+    environment = worktree_environment(&quot;.&quot;)
+    try:
+        await environment.setup()
+        print(environment.workspace)
+        result = await environment.exec_cmd(&quot;pwd&quot;)
+        print(result.returncode, result.stdout)
+    finally:
+        await environment.cleanup()
+
+asyncio.run(main())
+</code></pre>
+<p>工厂调用只创建对象，<code>setup()</code> 才准备目录。<code>workspace</code> 是工具实际使用的工作路径。如果从仓库子目录启动，新工作树仍保持该子目录相对仓库根的位置，方便已有脚本继续使用相对路径。</p>
+<h2 id="普通目录子模块与共享资源">普通目录、子模块与共享资源</h2>
+<p>源目录没有 Git 时，环境创建独立副本，并以文件差异记录改动。Git 项目还需要关注已初始化子模块、可执行位和实际落盘内容。候选准备会处理可用的源子模块，并校验物理内容能否重建。出现子模块准备错误时，应确认源端已经初始化到需要的状态，并查看报错指出的子模块路径。</p>
+<p>工作树内的文件编辑彼此独立，但操作系统进程和网络沿用父环境。两个任务启动相同端口的服务仍可能冲突，使用共同的外部缓存也可能互相影响。需要独立进程范围时，按 <a href="../isolation-overview/index.html">隔离怎么选</a> 选择容器策略。</p>
+<h2 id="找到最终交付">找到最终交付</h2>
+<p>子成员返回的完成文本可以包含工作树 diff。声明采纳工具的入口成员需要显式采用成功 Coder 的结果，之后新的 Tester 才会从已经更新的交付内容开始检查。单独创建的工作树对象由调用方管理，导出需要的改动后再清理。遇到补丁捕获失败或保留提示时，先按 <a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a> 导出完整材料。</p>
+<p>具体创建路径见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/_env_worktree.py">工作树环境</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/worktree_pool.py">工作树池</a>，交付入口见 <a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>。</p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/worktree-workspaces.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%B7%A5%E4%BD%9C%E5%8C%BA%E4%BB%8E%E5%93%AA%E9%87%8C%E5%BC%80%E5%A7%8B">工作区从哪里开始</a><a href="#%E6%99%AE%E9%80%9A%E7%9B%AE%E5%BD%95%E5%AD%90%E6%A8%A1%E5%9D%97%E4%B8%8E%E5%85%B1%E4%BA%AB%E8%B5%84%E6%BA%90">普通目录、子模块与共享资源</a><a href="#%E6%89%BE%E5%88%B0%E6%9C%80%E7%BB%88%E4%BA%A4%E4%BB%98">找到最终交付</a></aside>
+</div>
+</body>
+</html>

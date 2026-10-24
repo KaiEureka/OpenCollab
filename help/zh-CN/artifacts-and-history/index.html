@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>找到运行记录、会话和交付文件 · OpenCollab 帮助中心</title>
+<meta name="description" content="运行结束后定位对应目录，区分产物、原始会话、轨迹和可再生缓存。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/artifacts-and-history/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<nav class="language-switch" aria-label="Language"><a href="../index.html" lang="zh-CN" hreflang="zh-CN" aria-current="true">中文</a><a href="../../en/index.html" lang="en" hreflang="en">English</a></nav>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details open><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="index.html" aria-current="page">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">结果、轨迹与评测</p>
+<h1 id="找到运行记录会话和交付文件">找到运行记录、会话和交付文件</h1>
+<p>运行记录需要按一次运行归档。会话保存模型与工具历史，轨迹描述执行事件，工作流清单和结果描述组织与交付。这些文件用途不同，结合运行标识阅读才能还原一次任务。</p>
+<h2 id="指定产物目录">指定产物目录</h2>
+<p>SDK 的 <code>artifacts=</code> 接受用于当前运行的新目录或空目录。建议应用根据任务标识分配独立目录，避免两个运行共用结果文件。运行结束后，从 <code>RunResult.artifacts</code> 获取实际位置。</p>
+<pre><code class="language-python">result = await oc.agent(
+    &quot;阅读项目并给出修改建议&quot;,
+    artifacts=&quot;artifacts/review-parser&quot;,
+)
+print(result.artifacts)
+</code></pre>
+<p>示例放在异步函数中。重复使用目录前先处理已有内容，保留正式结果与待恢复材料。</p>
+<h2 id="保存选项的区别">保存选项的区别</h2>
+<p>Workflow 默认保存会话并记录编排过程。CLI 的 <code>--no-trace</code> 保留会话与工作流清单，<code>--no-save</code> 关闭通常的运行产物保存。交互 CLI 的 <code>--trace</code> 开启轨迹，<code>/save</code> 保存主会话。</p>
+<p>关闭普通轨迹与发生恢复故障时需要保留候选，是两个独立行为。隔离入口或候选交付失败时可能生成恢复目录，应以结果和错误中返回的真实位置为准。</p>
+<h2 id="文件之间怎样对应">文件之间怎样对应</h2>
+<p>先找到运行的 <code>run_id</code>，再按 Agent 或 Session 标识关联模型调用和工具回执。Team 清单描述角色和拓扑，Workflow 清单描述工作流及其执行记录。动态子 Workflow 的产物归入父运行，并保留子运行身份。</p>
+<p>查看同一角色多次运行时，角色名称只能描述职责，具体会话标识才能区分每次实际执行。汇总费用时同样应避免重复累计一份记录的不同展示形式。</p>
+<h2 id="该保留什么">该保留什么</h2>
+<p>源码、候选补丁、正式测试结果与解释结论所依赖的原始记录具有恢复和复核价值。<code>.pytest_cache</code>、<code>.ruff_cache</code>、有对应源码的字节码，以及能够从锁文件重建的旧依赖环境通常属于可再生文件。</p>
+<p>清理时先确认运行已经结束、目录没有使用句柄，并限定到明确的路径。隔离资源仍在保留状态时，先导出恢复补丁或完成必要核对，再执行清理。当前文章只负责解释文件用途，具体生命周期步骤见恢复与清理指南。</p>
+<h2 id="源码与进一步阅读">源码与进一步阅读</h2>
+<p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">opencollab/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md">docs/evaluation-runtime.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/result.py">opencollab/sdk/result.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/workflow_runtime.py">opencollab/bootstrap/workflow_runtime.py</a></p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/artifacts-and-history.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%8C%87%E5%AE%9A%E4%BA%A7%E7%89%A9%E7%9B%AE%E5%BD%95">指定产物目录</a><a href="#%E4%BF%9D%E5%AD%98%E9%80%89%E9%A1%B9%E7%9A%84%E5%8C%BA%E5%88%AB">保存选项的区别</a><a href="#%E6%96%87%E4%BB%B6%E4%B9%8B%E9%97%B4%E6%80%8E%E6%A0%B7%E5%AF%B9%E5%BA%94">文件之间怎样对应</a><a href="#%E8%AF%A5%E4%BF%9D%E7%95%99%E4%BB%80%E4%B9%88">该保留什么</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
+</div>
+</body>
+</html>

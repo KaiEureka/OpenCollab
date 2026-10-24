@@ -1,0 +1,79 @@
+---
+{
+  "id": "tool-selection",
+  "title": "选择 Agent 能使用的工具",
+  "category": "extensions",
+  "summary": "按任务给 Agent 配置文件、命令、协作或技能工具并理解权限边界。",
+  "aliases": [
+    "tools",
+    "builtin_tools",
+    "evidence_tools",
+    "六工具",
+    "只读Agent",
+    "工具没出现"
+  ],
+  "keywords": [
+    "工具",
+    "工具列表",
+    "工具权限"
+  ],
+  "questions": [
+    "按任务给 Agent 配置文件、命令、协作或技能工具并理解权限边界？"
+  ],
+  "related": [],
+  "verified_ref": "e7946a42"
+}
+---
+
+# 选择 Agent 能使用的工具
+
+工具集合决定 Agent 可以请求哪些操作。OC 将普通编码工具与需要调度器、技能存储或交互能力的工具分别组装。配置前先确定任务需要读取、修改、运行命令还是与成员协作。
+
+## 工具类别
+
+| 类别 | 常见名称 | 作用 |
+| --- | --- | --- |
+| 文件与检索 | `file_read`、`grep` | 读取项目文件和寻找信息 |
+| 编辑与差异 | `file_write`、`apply_patch`、`git_diff` | 修改文件并查看变化 |
+| 命令执行 | `bash` | 在指定环境执行命令 |
+| Team 协作 | `spawn_agent`、`message_agent`、`team_status`、`adopt_agent` | 派发、通信、状态与交付 |
+| 扩展与组合 | `use_skill`、`run_workflow`、`manage_workflow` | 载入指导或执行工作单元 |
+
+公开 `builtin_tools` 构造普通编码工具。协作工具由 Team 的运行环境接线，应在团队角色中声明。
+
+## 给 SDK 选择工具
+
+```python
+import asyncio
+from opencollab import OpenCollab
+from opencollab.tools import builtin_tools
+
+async def main():
+    tools = builtin_tools("file_read", "grep", "git_diff")
+    result = await OpenCollab(".").agent(
+        "阅读项目并说明测试入口，保留现有文件。",
+        tools=tools,
+        budget=50_000,
+    )
+    print(result.status, result.output)
+
+asyncio.run(main())
+```
+
+示例只授予读取与差异工具，模型没有原生写入或 Bash 工具。要观察实际选中的工具，可查看运行指标 `agent_tool_names`。`profile_tool_names("base")` 返回的是 profile 默认列表，显式传入工具后应以实际运行记录为准。
+
+## 工具存在还需要运行条件
+
+`builtin_tools` 的 `headless=True` 会要求 shell 工具运行在提供进程隔离的环境中。明确选择 `headless=False` 会允许相应宿主 shell 路径，应结合实际调用环境确认。工作树解决目录分离，宿主权限与网络仍由父环境决定。
+
+`allow_file_creation=False` 控制原生文件创建能力。它与整个运行的命令权限是不同设置，Bash 能执行的内容需要通过独立的权限与环境策略管理。
+
+## 常见配置错误
+
+工具名称重复会被拒绝。`limits` 中出现未选中的工具也会报错。把 `spawn_agent` 交给 `builtin_tools` 构造会失败，因为该 helper 支持的名称由普通工具集合定义。Team 中需要使用注册名，并确保通信拓扑允许相关操作。
+
+模型只输出文字时，先检查实际发出的工具 schema，再判断提示与工具选择设置。工具列表中有某项能力，只说明该调用可以请求它，是否真正使用应看工具回执。
+
+## 源码与进一步阅读
+
+[opencollab/tools.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/tools.py) · [opencollab/bootstrap/tool_registry.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/tool_registry.py) · [opencollab/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md)

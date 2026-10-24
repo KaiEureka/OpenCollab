@@ -1,0 +1,116 @@
+{
+  "verified_ref": "e7946a42",
+  "categories": [
+    {
+      "id": "orientation",
+      "title": "认识 OC"
+    },
+    {
+      "id": "setup",
+      "title": "安装与开始使用"
+    },
+    {
+      "id": "models",
+      "title": "模型接入与配置"
+    },
+    {
+      "id": "isolation",
+      "title": "执行环境与隔离"
+    },
+    {
+      "id": "team",
+      "title": "Team 与子 Agent"
+    },
+    {
+      "id": "workflow",
+      "title": "Workflow 与子 Workflow"
+    },
+    {
+      "id": "operations",
+      "title": "预算、上下文与运行恢复"
+    },
+    {
+      "id": "extensions",
+      "title": "工具、Skill 与扩展"
+    },
+    {
+      "id": "observability",
+      "title": "结果、轨迹与评测"
+    },
+    {
+      "id": "architecture",
+      "title": "架构、集成与维护"
+    }
+  ],
+  "topic_order": [
+    "concepts-and-modes",
+    "choose-working-mode",
+    "install-source-checkout",
+    "first-run-workspace",
+    "interactive-cli-controls",
+    "python-sdk-entrypoints",
+    "base-single2",
+    "configuration-precedence",
+    "provider-endpoint-credentials",
+    "model-routing-request-capacity",
+    "wire-protocol-streaming",
+    "thinking-reasoning-sampling",
+    "isolation-overview",
+    "isolation-configuration",
+    "worktree-workspaces",
+    "docker-isolation",
+    "execution-environments",
+    "custom-environment-providers",
+    "candidate-delivery",
+    "workspace-recovery",
+    "configure-team",
+    "dispatch-team-agents",
+    "message-team-agents",
+    "wait-for-team-results",
+    "adopt-team-changes",
+    "run-registered-workflow",
+    "workflow-programming-model",
+    "workflow-capabilities-boundaries",
+    "author-custom-workflow",
+    "workflow-public-api-map",
+    "workflow-control-granularity",
+    "workflow-dataflow-structured-io",
+    "workflow-agent-calls",
+    "workflow-parallel-pipeline",
+    "workflow-composition-hierarchy",
+    "compose-workflow-candidates",
+    "workflow-failure-recovery-lifecycle",
+    "workflow-testing-debugging",
+    "team-run-workflow",
+    "member-authored-workflow",
+    "duo-workflow",
+    "weave-workflow",
+    "reconstruct-workflow",
+    "context-compaction",
+    "token-step-concurrency-limits",
+    "timeouts-retries",
+    "session-save-resume",
+    "cancellation-cleanup",
+    "configuration-diagnostics",
+    "tool-selection",
+    "custom-tools",
+    "skills-on-demand",
+    "team-hooks",
+    "file-editing-safe-workspace",
+    "shell-permissions-execution",
+    "run-results",
+    "artifacts-and-history",
+    "trace-and-events",
+    "token-cache-cost",
+    "native-test-evidence",
+    "collaboration-adherence",
+    "evaluation-boundary",
+    "runtime-execution-model",
+    "session-state-lifecycle",
+    "extension-and-evaluation-boundaries",
+    "service-integration-lifecycle",
+    "upgrade-existing-integration",
+    "report-problem-and-request-help"
+  ],
+  "source_commit_url": "https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41"
+}

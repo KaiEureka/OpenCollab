@@ -1,0 +1,74 @@
+---
+{
+  "id": "file-editing-safe-workspace",
+  "title": "安全地查找读取和修改文件",
+  "category": "extensions",
+  "summary": "在 Agent 实际工作区内定位文件、准确编辑内容并理解路径或覆盖错误。",
+  "aliases": [
+    "越界路径",
+    "符号链接",
+    "file_read",
+    "file_write",
+    "grep",
+    "apply_patch",
+    "str_replace",
+    "line_replace",
+    "unified_diff",
+    "overwrite"
+  ],
+  "keywords": [
+    "文件工具",
+    "读写文件",
+    "路径限制"
+  ],
+  "questions": [
+    "在 Agent 实际工作区内定位文件、准确编辑内容并理解路径或覆盖错误？"
+  ],
+  "related": [
+    "execution-environments",
+    "worktree-workspaces",
+    "shell-permissions-execution"
+  ],
+  "verified_ref": "e7946a42"
+}
+---
+
+# 安全地查找读取和修改文件
+
+文件工具以 Agent 的执行工作区解释路径。先确认 Agent 所在目录，再读取、定位并修改具体内容，可以减少把改动写到错误候选或父目录的情况。
+
+## 读取与定位
+
+`file_read` 使用 `path`，并提供 `offset` 和 `limit` 进行分页读取。大文件返回时要看实际显示范围及下一段位置，再继续读取。`grep` 根据模式、路径和 glob 搜索，可先定位函数再读取相邻内容。
+
+下面是模型工具调用中的参数形状，用于理解字段，执行由 OC 工具运行器负责。
+
+```json
+{"path": "src/parser.py", "offset": 1, "limit": 120}
+```
+
+读取结果过长时，单工具输出上限和历史压缩可能限制当前模型看到的内容。完整文件仍在执行环境中，可以用更窄的范围重新读取。
+
+## 编辑文件
+
+`file_write` 提供创建、整体写入和字符串替换等模式。字符串替换要提供可定位的原文与新文，整体覆盖要确认已有内容与覆盖授权。`apply_patch` 更适合清楚表达若干局部变更。具体参数可通过所选工具的 schema 查看，避免把其它编辑器的格式直接套入。
+
+编辑之后使用 `git_diff` 或原生 Git 命令确认修改范围，并执行与变更相关的测试。文件写入成功说明写操作已经完成，功能行为还需要项目的实际验证。
+
+## 工作区边界与链接
+
+内置本地文件适配器对路径、链接和普通文件类型有检查，当前容器文件路径也沿用对应环境的边界处理。遇到链接或越出工作区的路径被拒绝时，应先确认目标是否属于任务需要的文件，再通过环境配置安排正确的工作目录或资产挂载。
+
+宿主 Bash 仍具有宿主进程权限，原生文件工具的路径限制与 shell 的实际权限范围应分别理解。执行未知项目代码时，优先配置适合任务的进程与网络隔离。
+
+## 多个 Agent 同时修改
+
+共享目录中的成员会看到同一份文件。文件写锁有助于保护一次原生编辑，多个任务的业务修改仍可能互相影响。希望先独立实现再挑选结果时，应使用工作树或候选环境，通过明确的采用动作交付。
+
+出现“Agent 已改好但源目录没变”，先查看当前环境和候选交付状态，再排查编辑工具。隔离任务在自己的目录修改后，需要通过采用或恢复补丁把结果带回目标目录。
+
+## 源码与进一步阅读
+
+[opencollab/adapters/tools/fs.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/fs.py#L42) · [opencollab/adapters/tools/apply_patch.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/apply_patch.py#L28) · [opencollab/adapters/safe_anchored_files.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/safe_anchored_files.py#L27) · [opencollab/adapters/_env_docker.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/_env_docker.py#L748)
+
+[让任务在指定目录或现有容器里执行](../isolation/execution-environments.md) · [多个任务怎样在独立工作区改代码](../isolation/worktree-workspaces.md) · [管理终端权限并确认命令结果](shell-permissions-execution.md)

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>使用 Base 单 Agent 与 Single2 配置 · OpenCollab 帮助中心</title>
+<meta name="description" content="直接运行一个 Agent，理解 Base 默认配置并按任务选择工具和执行环境。">
+<link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/base-single2/index.html">
+<link rel="stylesheet" href="../../assets/help.css">
+<script type="module" src="../../assets/help.mjs"></script>
+</head>
+<body data-search-index="../search-index.json">
+<a class="skip" href="#content">跳到正文</a>
+<header class="topbar">
+<a class="brand" href="../index.html">OpenCollab <span>帮助中心</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">搜索帮助文档</label>
+<input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+<div id="search-results" class="results" hidden></div>
+<div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
+</div>
+<nav class="language-switch" aria-label="Language"><a href="../index.html" lang="zh-CN" hreflang="zh-CN" aria-current="true">中文</a><a href="../../en/index.html" lang="en" hreflang="en">English</a></nav>
+<a class="project-link" href="../../../index.html">项目主页</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="帮助分类">
+<div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">新用户与面试问题</a></div>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details open><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="index.html" aria-current="page">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>5</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+</nav>
+<main id="content" tabindex="-1">
+<p class="category">安装与开始使用</p>
+<h1 id="使用-base-单-agent-与-single2-配置">使用 Base 单 Agent 与 Single2 配置</h1>
+<p><code>OpenCollab.agent()</code> 可以直接运行一个 Agent。当前 Base 默认配置映射到 Single2，<code>agent2()</code> 则明确选择 Single2。选择 Base 适合跟随框架默认实现，指定 <code>profile=&quot;single2&quot;</code> 适合需要在运行记录中固定实现名称的程序。这个映射自 OpenCollab 0.8 起采用，查看旧版本时应结合对应标签的文档。</p>
+<h2 id="先完成一次只读任务">先完成一次只读任务</h2>
+<p>安装并配置模型后，在希望 Agent 读取的项目根目录保存下面的脚本。<code>OpenCollab(&quot;.&quot;)</code> 把该目录作为工作区，模型设置沿用该客户端构造时解析到的配置。示例的 <code>tools=&quot;read&quot;</code> 选择 <code>file_read</code>、<code>grep</code> 和 <code>git_diff</code>，适合先理解项目结构。</p>
+<pre><code class="language-python">import asyncio
+from opencollab import OpenCollab
+
+async def main() -&gt; None:
+    client = OpenCollab(&quot;.&quot;)
+    result = await client.agent(
+        &quot;阅读项目入口和测试配置，说明主要模块及建议执行的测试命令。&quot;,
+        tools=&quot;read&quot;,
+        budget=100_000,
+        max_steps=40,
+        artifacts=&quot;artifacts/first-agent&quot;,
+    )
+    print(result.status, result.reason)
+    print(result.output)
+    print(result.metrics.get(&quot;agent_profile&quot;))
+
+asyncio.run(main())
+</code></pre>
+<p>在已安装 OpenCollab 的 Python 环境运行脚本后，应看到完成状态、回答和实际 profile。<code>artifacts</code> 目录必须为新目录或空目录。第二次运行时换一个目录名，便于把结果和会话对应起来。<code>completed</code> 表示执行正常结束，任务要求的测试结果仍应从实际命令输出中判断。若任务以 <code>stopped</code> 结束，先结合 <code>reason</code> 查看是步数、token 还是期限触发，再决定后续额度。<code>failed</code> 则应查看错误和已有产物。</p>
+<h2 id="需要修改和执行命令时">需要修改和执行命令时</h2>
+<p>默认 <code>tools=&quot;coding&quot;</code> 提供按顺序排列的 <code>bash</code>、<code>file_read</code>、<code>file_write</code>、<code>apply_patch</code>、<code>git_diff</code> 和 <code>grep</code>。Single2 默认最多运行 200 步。Bash 每个输出流保留最多 10,000 字符，较大的工具结果在上下文视图中保留头尾，总字符限额为 16,000。</p>
+<p>默认 Bash 要求能够隔离操作系统进程的环境，例如 Docker。使用本地环境读写文件时，文件工具仍然可用。若任务确实需要直接在宿主项目中执行命令，可显式构造工具。下面的代码放在已有 <code>async</code> 函数中，<code>client</code> 沿用前面的客户端。</p>
+<pre><code class="language-python">from opencollab.tools import builtin_tools, profile_tool_limits
+
+tools = builtin_tools(
+    &quot;bash&quot;, &quot;file_read&quot;, &quot;file_write&quot;, &quot;apply_patch&quot;, &quot;git_diff&quot;, &quot;grep&quot;,
+    headless=False,
+    limits=profile_tool_limits(&quot;base&quot;),
+)
+result = await client.agent2(
+    &quot;修复目标测试，运行仓库规定的验证命令，并说明改动。&quot;,
+    tools=tools,
+    budget=150_000,
+    max_steps=80,
+)
+</code></pre>
+<p><code>headless=False</code> 允许这些工具使用宿主 shell，应在预期承载命令执行的工作区中使用。进程隔离和 Git 工作树解决不同问题，环境选择见相关指南。</p>
+<h2 id="调整提示与执行额度">调整提示与执行额度</h2>
+<p><code>system_prompt=</code> 会替换这次调用的默认系统提示。明确的工具对象保留自己的配置，模型、采样与请求超时由客户端设置。<code>budget</code> 限制会话累计输入与输出 token，<code>max_steps</code> 限制执行步数，单次模型输出另由 <code>max_output_tokens</code> 控制。旧参数 <code>steps</code> 是步数别名，同一次调用同时提供它和 <code>max_steps</code> 会报错。</p>
+<p><code>OPENCOLLAB_UNBOUNDED_LIMITS=true</code> 时，Base 和 Single2 仍遵守调用中显式给出的正数预算和步数，省略的限制采用无限制设置。查看 <code>result.status</code>、<code>result.reason</code> 与保存记录可以区分完成、额度停止和失败。需要成员自行决定交接时进入 Team，需要 Python 明确控制阶段时进入 Workflow。</p>
+<h2 id="来源">来源</h2>
+<p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/single2.md">docs/single2.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/agent_profiles.py">opencollab/bootstrap/agent_profiles.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py">opencollab/sdk/client.py</a></p>
+<h2 id="相关指南">相关指南</h2>
+<p><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a>　<a href="../tool-selection/index.html">选择 Agent 能使用的工具</a>　<a href="../isolation-overview/index.html">隔离怎么选</a>　<a href="../run-results/index.html">读取运行结果与判断任务是否完成</a></p>
+
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/base-single2.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+</main>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%85%88%E5%AE%8C%E6%88%90%E4%B8%80%E6%AC%A1%E5%8F%AA%E8%AF%BB%E4%BB%BB%E5%8A%A1">先完成一次只读任务</a><a href="#%E9%9C%80%E8%A6%81%E4%BF%AE%E6%94%B9%E5%92%8C%E6%89%A7%E8%A1%8C%E5%91%BD%E4%BB%A4%E6%97%B6">需要修改和执行命令时</a><a href="#%E8%B0%83%E6%95%B4%E6%8F%90%E7%A4%BA%E4%B8%8E%E6%89%A7%E8%A1%8C%E9%A2%9D%E5%BA%A6">调整提示与执行额度</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+</div>
+</body>
+</html>
