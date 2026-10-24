@@ -334,17 +334,20 @@ async def test_route_capability_checks_use_physical_model(tmp_path, monkeypatch,
     assert requests == []
 
 
-def test_cli_resolves_route_before_credential_selection(tmp_path, monkeypatch):
-    from opencollab.adapters.cli.config_resolve import missing_api_key_for, resolve_config
+def test_cli_keeps_role_defaults_while_resolving_default_credentials(tmp_path, monkeypatch):
+    from opencollab.adapters.cli.config_resolve import missing_api_key_for, resolve_config, resolve_model_route
 
     monkeypatch.setenv("OPENCOLLAB_MODEL", "worker")
     monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({
         "worker": {"model": "local-physical", "api_key": "local", "base_url": "http://localhost:9999/v1"},  # pragma: allowlist secret
     }))
     config = resolve_config(str(tmp_path), None, None, None, None, None)
-    assert config["model"] == "local-physical"
-    assert config["logical_model"] == "worker"
-    assert not missing_api_key_for(config["provider"], config["api_key"], config["base_url"])
+    assert config["model"] == "worker"
+    assert config["logical_model"] is None
+    selected = resolve_model_route(config)
+    assert selected["model"] == "local-physical"
+    assert selected["logical_model"] == "worker"
+    assert not missing_api_key_for(selected["provider"], selected["api_key"], selected["base_url"])
 
 
 def test_resolved_config_keeps_physical_identity_across_bootstrap_paths(tmp_path):
@@ -381,3 +384,75 @@ def test_resolved_config_keeps_physical_identity_across_bootstrap_paths(tmp_path
     assert captured[0]["agent"].base_url == "https://worker.example/v1"
     explicit = OpenCollab(tmp_path, config=config, model="physical-worker")
     assert resolve_model_route(explicit._config)["model"] == "unrelated-model"
+
+
+@pytest.mark.parametrize("entry", ["sdk_team", "cli_team", "sdk_workflow", "cli_workflow"])
+@pytest.mark.parametrize("physical_model", [None, "gpt-4o"])
+def test_cli_and_sdk_keep_unrouted_models_on_the_default_backend(
+    tmp_path, monkeypatch, entry, physical_model,
+):
+    from typer.testing import CliRunner
+
+    from opencollab.adapters.cli.main import app
+
+    requests = []
+
+    def respond(request):
+        requests.append((str(request.url), dict(request.headers), json.loads(request.content)))
+        return completion_http_response(request, text="finished")
+
+    install_sdk_transport(monkeypatch, "openai", respond)
+    install_sdk_transport(monkeypatch, "anthropic", respond)
+    routes = {"writer": {
+        "model": "claude-sonnet-4-6", "provider": "anthropic", "base_url": "https://writer.example",
+        "auth_token": "route-token",
+    }}
+    model = "writer" if entry.endswith("team") else physical_model or "writer"
+    monkeypatch.setenv("OPENCOLLAB_MODEL", model)
+    monkeypatch.setenv("OPENCOLLAB_API_KEY", "default-key")
+    monkeypatch.setenv("OPENCOLLAB_BASE_URL", "https://default.example/v1")
+    monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps(routes))
+    monkeypatch.setenv("OPENCOLLAB_THINKING_PARAMS", "{}")
+    monkeypatch.setenv("OPENCOLLAB_MAX_OUTPUT_TOKENS", "4096")
+    team = tmp_path / "team.yaml"
+    team.write_text(
+        "entry: reader\nroles:\n  reader:\n    prompt: Finish.\n    tools: []\n"
+        + (f"    model: {physical_model}\n" if physical_model else ""),
+    )
+    if entry.startswith("sdk"):
+        client = OpenCollab(tmp_path)
+        if entry == "sdk_team":
+            result = asyncio.run(client.team("finish", config=team, use_worktrees=False, trace=False))
+        else:
+            async def flow(ctx, _inputs):
+                return await ctx.agent("finish", tools=[])
+
+            result = asyncio.run(client.workflow(flow, trace=False))
+        assert result.ok
+        assert result.output == "finished"
+    else:
+        if entry == "cli_team":
+            arguments = ["--team-config", str(team), "--no-worktrees", "--prompt", "finish"]
+        else:
+            workflows = tmp_path / "workflows"
+            workflows.mkdir()
+            (workflows / "finish.py").write_text(
+                "from opencollab.application.workflow_registry import workflow\n"
+                "@workflow(name='finish')\n"
+                "async def run(ctx, args):\n"
+                "    return await ctx.agent('finish', tools=[])\n",
+            )
+            arguments = ["workflow", "run", "finish", "--no-save", "--no-trace"]
+        result = CliRunner().invoke(app, [*arguments, "--workspace", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        assert "finished" in result.output
+    assert len(requests) == 1
+    url, headers, body = requests[0]
+    if physical_model:
+        assert url == "https://default.example/v1/chat/completions"
+        assert headers["authorization"] == "Bearer default-key"
+        assert body["model"] == physical_model
+    else:
+        assert url == "https://writer.example/v1/messages"
+        assert headers["authorization"] == "Bearer route-token"
+        assert body["model"] == "claude-sonnet-4-6"

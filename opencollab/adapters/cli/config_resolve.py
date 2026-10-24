@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from opencollab.bootstrap.config import accepted_api_key_envs, missing_api_key
+from opencollab.bootstrap.config import resolve_model_route as resolve_model_route
 
 
 def missing_api_key_for(
@@ -32,7 +33,7 @@ def print_missing_key_hint(
 def resolve_config(workspace: str, model: str | None, provider: str | None,
                    api_key: str | None, base_url: str | None, budget: int | None) -> dict:
     """Merge CLI args with .env defaults. CLI args take precedence."""
-    from opencollab.bootstrap.config import build_config, resolve_model_route
+    from opencollab.bootstrap.config import build_config
 
     # ``filter_messages`` remains a compatibility input.
     try:
@@ -48,4 +49,4 @@ def resolve_config(workspace: str, model: str | None, provider: str | None,
         ).model_dump()
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(f"Cannot load configuration: {exc}") from exc
-    return resolve_model_route(cfg)
+    return cfg
