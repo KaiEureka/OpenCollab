@@ -31,7 +31,7 @@ _ENVIRONMENT = {"exec_cmd", "read_file", "read_text_range", "write_file", "write
 
 def _write_json(path: Path, value: Any) -> None:
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(value, allow_nan=False), encoding="utf-8")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
     temporary.replace(path)
 
 
@@ -173,7 +173,12 @@ class AuthoredWorkflowBridge:
         try:
             if request.get("cancel"):
                 raise asyncio.CancelledError
-            reply = {"value": await self._dispatch(identity, request)}
+            payload = json.loads(await await_owned_operation(self._environment.read_file(
+                posixpath.join(self._directory, f"{identity}.request.json"),
+            ), propagate_cancellation=True))
+            if not isinstance(payload, dict):
+                raise ValueError("bridge request payload must be an object")
+            reply = {"value": await self._dispatch(identity, {**payload, **request})}
         except BaseException as exc:
             if not isinstance(exc, (Exception, asyncio.CancelledError)):
                 raise
@@ -184,7 +189,7 @@ class AuthoredWorkflowBridge:
                     error[name] = to_plain_data(value)
             reply = {"error": error}
         await await_owned_operation(self._environment.write_file(
-            posixpath.join(self._directory, f"{identity}.json"), json.dumps(reply),
+            posixpath.join(self._directory, f"{identity}.json"), json.dumps(reply, ensure_ascii=False),
         ))
 
     async def _dispatch(self, identity: str, request: dict[str, Any]) -> Any:
@@ -323,9 +328,11 @@ class BridgeClient:
     def _begin(self, action: str, arguments: dict[str, Any], environment: int, edit: str | None = None) -> str:
         self._next += 1
         identity = str(self._next)
-        self._pending[identity] = {"action": action, "arguments": arguments, "environment": environment}
+        payload: dict[str, Any] = {"action": action, "arguments": arguments}
         if edit is not None:
-            self._pending[identity]["edit"] = edit
+            payload["edit"] = edit
+        _write_json(self.directory / f"{identity}.request.json", payload)
+        self._pending[identity] = {"environment": environment}
         self._publish()
         return identity
 
@@ -334,6 +341,7 @@ class BridgeClient:
         reply = json.loads(path.read_text(encoding="utf-8"))
         del self._pending[identity]
         self._publish()
+        (self.directory / f"{identity}.request.json").unlink(missing_ok=True)
         if "error" in reply:
             raise _restore_error(reply["error"])
         return reply["value"]

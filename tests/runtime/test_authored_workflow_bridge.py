@@ -277,6 +277,60 @@ async def test_bridge_acknowledges_request_cancelled_before_first_poll(tmp_path,
         await environment.cleanup()
 
 
+async def test_bridge_reads_concurrent_large_request_payloads_independently(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    environment = LocalEnvironment(str(tmp_path))
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    bridge = AuthoredWorkflowBridge(
+        environment, str(artifacts),
+        SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=environment),
+        {}, ToolRuntime(environment, None, None), allow_unisolated_shell=True,
+    )
+    received = []
+
+    class Model:
+        async def complete(self, messages):
+            received.append(len(messages[0]["content"]))
+            return LLMResponse(content=str(received[-1]), usage=Usage(3, 2))
+
+        async def close(self):
+            pass
+
+    bridge._llm = Model()
+    client = BridgeClient(artifacts, bridge.options())
+    prompts = ["x" * (1536 * 1024), "x" * (1536 * 1024), "中" * (512 * 1024)]
+    identities = [client._begin("complete", {"messages": [{"role": "user", "content": prompt}]}, 0)
+                  for prompt in prompts]
+    payload_reads = []
+    native_read = environment.read_file
+
+    async def remember_read(path):
+        if path.endswith(".request.json"):
+            payload_reads.append(path)
+        return await native_read(path)
+
+    monkeypatch.setattr(environment, "read_file", remember_read)
+    try:
+        payloads = list(client.directory.glob("*.request.json"))
+        assert len(payloads) == 3
+        assert sum(path.stat().st_size for path in payloads) > 4 * 1024 * 1024
+        assert (client.directory / f"{identities[-1]}.request.json").stat().st_size < 2 * 1024 * 1024
+        assert (client.directory / "requests.json").stat().st_size < 1024
+        await bridge.poll()
+        await asyncio.wait_for(asyncio.gather(*bridge._tasks.values()), 5)
+        await bridge.poll()
+        results = [client._result(identity) for identity in identities]
+        assert sorted(received) == sorted(map(len, prompts))
+        assert [result["content"] for result in results] == [str(len(prompt)) for prompt in prompts]
+        assert len(payload_reads) == 3
+        assert bridge.tokens == 15 and not client._pending
+        assert not list(client.directory.glob("*.request.json"))
+    finally:
+        await bridge.aclose()
+        await environment.cleanup()
+
+
 @pytest.mark.parametrize("error_usage", [False, True])
 async def test_cancelled_bridge_call_waits_for_native_slot_and_retains_late_usage(tmp_path, monkeypatch, error_usage):
     monkeypatch.chdir(tmp_path)
