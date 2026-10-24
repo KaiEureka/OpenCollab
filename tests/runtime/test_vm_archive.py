@@ -88,3 +88,13 @@ def test_directory_publication_rejects_existing_content(tmp_path):
     with pytest.raises(FileExistsError, match="empty"):
         publish(source, target, directory=True)
     assert (target / "existing").read_text() == "keep"
+
+
+def test_publication_accepts_only_its_owned_staging_inside_empty_destination(tmp_path):
+    target = tmp_path / "destination"
+    payload = target / ".oc-vm-import-owned" / "contents" / "payload"
+    payload.mkdir(parents=True)
+    (payload / "file").write_text("copied")
+    publish(payload, target, directory=True)
+    assert (target / "file").read_text() == "copied"
+    assert (target / ".oc-vm-import-owned").is_dir()

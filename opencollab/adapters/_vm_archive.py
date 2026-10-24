@@ -146,7 +146,16 @@ def publish(payload: Path, destination: str | Path, *, directory: bool) -> None:
             os.chmod(source_name, source_mode | 0o700, dir_fd=source_parent, follow_symlinks=False)
             source = os.open(source_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=source_parent)
             try:
-                if os.listdir(target):
+                entries = set(os.listdir(target))
+                owned_staging = payload.parent.parent
+                staging_parent = os.stat(owned_staging.parent, follow_symlinks=False)
+                target_info = os.fstat(target)
+                if (staging_parent.st_dev, staging_parent.st_ino) == (target_info.st_dev, target_info.st_ino):
+                    staged = os.stat(owned_staging.name, dir_fd=target, follow_symlinks=False)
+                    expected = os.stat(owned_staging, follow_symlinks=False)
+                    if (staged.st_dev, staged.st_ino) == (expected.st_dev, expected.st_ino):
+                        entries.discard(owned_staging.name)
+                if entries:
                     raise FileExistsError("VM directory transfer requires an empty destination")
                 for child in os.listdir(source):
                     os.rename(child, child, src_dir_fd=source, dst_dir_fd=target)

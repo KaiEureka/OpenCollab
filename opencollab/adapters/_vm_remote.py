@@ -186,9 +186,10 @@ async def _perform(request: dict[str, Any], directory: Path) -> Any:
                 _write(directory, "lock.json", True)
                 await asyncio.Future()
         if action == "import":
-            destination = Path(args["destination"])
+            destination = Path(validate_vm_path(args["destination"]))
             destination.parent.mkdir(parents=True, exist_ok=True)
-            staging = Path(tempfile.mkdtemp(prefix=".oc-vm-import-", dir=destination.parent))
+            staging_parent = destination if args["directory"] and destination.is_dir() else destination.parent
+            staging = Path(tempfile.mkdtemp(prefix=".oc-vm-import-", dir=staging_parent))
             _write(directory, "staging.json", str(staging))
             payload = unpack(directory / "archive.tar", staging / "contents", directory=args["directory"])
             publish(payload, destination, directory=args["directory"])

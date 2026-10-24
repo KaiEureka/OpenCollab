@@ -341,7 +341,8 @@ class VMEnvironment(Environment):
         await self.setup()
         target = Path(target).absolute()
         target.parent.mkdir(parents=True, exist_ok=True)
-        staging = Path(tempfile.mkdtemp(prefix=".oc-vm-download-", dir=target.parent))
+        staging_parent = target if directory and target.is_dir() else target.parent
+        staging = Path(tempfile.mkdtemp(prefix=".oc-vm-download-", dir=staging_parent))
         archive = staging / "archive.tar"
         try:
             async with self._transfer_process("download") as (process, stderr):
