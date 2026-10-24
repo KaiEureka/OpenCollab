@@ -15,10 +15,12 @@ from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.tools.bash import BashTool
 from opencollab.application.event_bus import EventBus
 from opencollab.application.tool_execution import ToolRuntime
+from opencollab.application.workflow_registry import Registry, WorkflowSpec
 from opencollab.bootstrap import container
 from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
 from opencollab.bootstrap.context_builder import SpawnConfig
 from opencollab.bootstrap.session_factory import build_session
+from opencollab.bootstrap.team_workflow import TeamWorkflowTool
 from opencollab.bootstrap.workflow_runtime import run_workflow
 from opencollab.domain.agent import Agent
 from opencollab.sdk import OpenCollab
@@ -460,3 +462,69 @@ async def test_member_shell_isolation_requirement_is_retained(local_environment_
     with pytest.raises(PermissionError, match="OS process sandbox"):
         await _launch(tool, runtime)
     await parent.aclose()
+
+
+@pytest.mark.parametrize("budget", [1000, None])
+async def test_registered_workflow_honors_live_managed_reservations(local_environment_factory, tmp_path, budget):
+    (tmp_path / "authored.py").write_text('''import asyncio
+from pathlib import Path
+async def main(ctx, args):
+    Path("entered").write_text("ready")
+    while not Path("release").exists():
+        await asyncio.sleep(0.01)
+    return await ctx.agent("Return a result", tools=[])
+''')
+    registered_limits = []
+
+    class RegisteredModel:
+        def context_window(self):
+            return 200_000
+
+        def estimate_request_tokens(self, messages, tools=None, **kwargs):
+            return 5
+
+        async def complete(self, messages, **kwargs):
+            registered_limits.append(kwargs["max_output_tokens"])
+            return LLMResponse(content="registered answer", finish_reason="stop", usage=Usage(
+                input_tokens=5, output_tokens=min(695, kwargs["max_output_tokens"]),
+            ))
+
+    def reply(body):
+        assert body["max_tokens"] >= 50
+        return {"role": "assistant", "content": "managed answer"}, {
+            "prompt_tokens": 300, "completion_tokens": 50, "total_tokens": 350,
+        }
+
+    async def regular(ctx, args):
+        return {"budget": ctx.budget.total, "answer": await ctx.agent("Return a result", tools=[])}
+
+    with _serve_model(reply) as (url, requests):
+        parent, tool, runtime = _manager(
+            local_environment_factory(str(tmp_path)), budget=budget, llm=RegisteredModel(),
+        )
+        parent.agent.base_url = url
+        parent.agent.api_key = "offline-test"  # pragma: allowlist secret
+        registry = Registry()
+        registry.register(WorkflowSpec(name="regular", description="Return an answer", fn=regular))
+        registered = TeamWorkflowTool(lambda: parent, registry, tool._config, None)
+        parent.agent.tools.append(registered)
+        try:
+            child = await _launch(tool, runtime, budget=400)
+            await _wait_file(tmp_path / "entered")
+            parent_limit = parent.runner._request_output_limit(
+                [{"role": "user", "content": "Return a result"}], None, thinking=False,
+            )
+            value = json.loads(await registered.execute_with_runtime({"name": "regular", "args": {}}, runtime))
+            assert value["output"]["budget"] == (600 if budget is not None else None)
+            assert value["output"]["answer"] == "registered answer"
+            assert registered_limits == [parent_limit]
+            assert tool._reserved_tokens() == 400
+            (tmp_path / "release").write_text("go")
+            result = json.loads(await tool.execute_with_runtime({"action": "wait", "id": child["id"]}, runtime))
+            assert result["result"]["output"] == "managed answer"
+            assert result["tokens"] == 350
+            assert parent.used_tokens == value["tokens"] + result["tokens"]
+            assert parent.used_tokens == (950 if budget is not None else 1050)
+            assert len(requests) == 1
+        finally:
+            await parent.aclose()

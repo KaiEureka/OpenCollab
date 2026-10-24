@@ -139,8 +139,8 @@ class AuthoredWorkflowTool(Tool):
         budget = params.get("budget")
         if budget is not None and (isinstance(budget, bool) or not isinstance(budget, int) or budget < 1):
             raise ValueError("budget must be a positive integer")
-        if parent.max_budget_tokens is not None:
-            remaining = parent.max_budget_tokens - parent.used_tokens - self._reserved_tokens()
+        remaining = parent.runner.remaining_budget_tokens
+        if remaining is not None:
             if remaining <= 0:
                 raise ValueError("Team session token budget is exhausted or reserved by child runs")
             budget = max(1, remaining // 2) if budget is None else min(budget, remaining)

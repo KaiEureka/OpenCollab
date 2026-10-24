@@ -62,8 +62,8 @@ class TeamWorkflowTool(Tool):
         parent = self._get_session()
         cancel_event = parent.runner.default_cancel_event or parent.runner._run_cancel_event
         budget = params.get("budget")
-        if parent.max_budget_tokens is not None:
-            remaining = parent.max_budget_tokens - parent.used_tokens
+        remaining = parent.runner.remaining_budget_tokens
+        if remaining is not None:
             if remaining <= 0:
                 return "Error: Team session token budget is exhausted."
             budget = remaining if budget is None else min(budget, remaining)

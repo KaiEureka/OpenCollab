@@ -60,7 +60,8 @@ simultaneously active children and the parent's subsequent model requests.
 A child with an omitted budget receives half the unreserved remainder so the
 parent can coordinate its runs. Unbounded parents can launch unbounded
 children. An explicit child `budget` limits that child. The parent's step limit
-also applies to its child sessions.
+supplies the default for child sessions. A Workflow may select a per-call step
+limit with `ctx.agent_run(max_steps=...)`.
 
 A launch lasts until its Workflow finishes or its parent stops. Ordinary
 parent completion stops any remaining children before saving the final parent
