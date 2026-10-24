@@ -13,6 +13,7 @@ from contextlib import nullcontext
 from contextvars import ContextVar
 
 from opencollab.adapters._candidate_physical import _physical_paths
+from opencollab.adapters._env_vm import VMEnvironment
 from opencollab.adapters._git_patch_bytes import _complete
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
 from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace, _apply_increment
@@ -100,7 +101,7 @@ class WorktreePool:
         source_owner = None
         try:
             async with (self._delivery_lock if self._enable_adoption else nullcontext()):
-                if self._enable_adoption or source is not None:
+                if self._enable_adoption or source is not None or isinstance(base, VMEnvironment):
                     candidate_source = self._delivery_environment() if source is None else source
                     if source is not None:
                         if getattr(source, "revoked", False):
@@ -120,6 +121,12 @@ class WorktreePool:
                                     container_id=container_id, repo_root=candidate_source.workspace,
                                     command_prefix=candidate_source.command_prefix,
                                     timeout_returncode=candidate_source._timeout_returncode,
+                                )
+                                candidate_source = source_owner
+                            elif isinstance(candidate_source, VMEnvironment):
+                                source_owner = VMEnvironment(
+                                    candidate_source.connection, candidate_source.workspace,
+                                    state_directory=candidate_source.state_directory,
                                 )
                                 candidate_source = source_owner
                     probe = await candidate_source.exec_cmd(
