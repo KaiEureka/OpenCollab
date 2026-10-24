@@ -37,7 +37,9 @@ python -m http.server 8000 --bind 127.0.0.1
 
 Preview `/help/` through the local server. Generated HTML and the search
 index are committed because GitHub Pages publishes this branch directly. CSS
-and JavaScript are maintained in `help/assets/`. The `.nojekyll` file preserves
+and JavaScript are maintained in `help/assets/`. Increment `HELP_ASSET_VERSION`
+in `tools/build_help.py` when changing shared styles, scripts, or search content,
+then rebuild the pages so browsers request the matching asset version. The `.nojekyll` file preserves
 the site's existing static publishing behavior.
 
 ## Validation and publication

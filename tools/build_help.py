@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "help-src" / "zh-CN"
 OUTPUT = ROOT / "help" / "zh-CN"
 SITE_URL = "https://rise-x-lab.github.io/OpenCollab/"
+HELP_ASSET_VERSION = "2"
 MD = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 
@@ -111,8 +112,8 @@ def head_assets(destination: Path) -> str:
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="{fonts}" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="{css}">
-<script type="module" src="{script}"></script>'''
+<link rel="stylesheet" href="{css}?v={HELP_ASSET_VERSION}">
+<script type="module" src="{script}?v={HELP_ASSET_VERSION}"></script>'''
 
 
 def render_header(destination: Path, language: str) -> str:
@@ -129,14 +130,14 @@ def render_header(destination: Path, language: str) -> str:
     return f'''<header class="topbar"><div class="topbar-inner">
 <a class="brand" href="{home}"><img src="{mark}" alt="" width="32" height="32"><span>OpenCollab<small>{'Help Center' if english else '帮助中心'}</small></span></a>
 <div class="searchbox">
-<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+<svg class="search-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
 <label class="sr-only" for="help-search">{label}</label>
 <input id="help-search" type="search" placeholder="{placeholder}"{input_options}>
 {results}
 </div>
 <div class="header-actions">
 {language_switch(destination, language)}
-<a class="project-link" href="{project}" aria-label="{'Project home' if english else '项目主页'}"><span>{'Project home' if english else '项目主页'}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+<a class="project-link" href="{project}" aria-label="{'Project home' if english else '项目主页'}"><span>{'Project home' if english else '项目主页'}</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
 <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">{'Menu' if english else '目录'}</button>
 </div>
 </div></header>'''
@@ -146,7 +147,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
     title = page.metadata["title"]
     home = relative(OUTPUT / "index.html", page.destination)
     project = relative(ROOT / "index.html", page.destination)
-    search_index = relative(OUTPUT / "search-index.json", page.destination)
+    search_index = relative(OUTPUT / "search-index.json", page.destination) + f"?v={HELP_ASSET_VERSION}"
     paths = relative(OUTPUT / "reading-paths" / "index.html", page.destination)
     questions = relative(OUTPUT / "questions" / "index.html", page.destination)
     source_path = relative(page.source, page.destination)
