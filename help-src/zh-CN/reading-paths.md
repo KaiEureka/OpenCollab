@@ -26,7 +26,7 @@
 
 想让 Agent 在独立目录或容器里干活。
 
-[隔离怎么选](topics/isolation/isolation-overview.md) → [默认隔离与单次覆盖怎么配](topics/isolation/isolation-configuration.md) → [让多个任务在独立工作区改代码](topics/isolation/worktree-workspaces.md) → [在容器中运行任务](topics/isolation/docker-isolation.md) → [让任务在指定目录或现有容器里执行](topics/isolation/execution-environments.md) → [把候选结果采纳到交付目录](topics/isolation/candidate-delivery.md) → [找回隔离任务的改动并清理资源](topics/isolation/workspace-recovery.md)
+[隔离怎么选](topics/isolation/isolation-overview.md) → [默认隔离与单次覆盖怎么配](topics/isolation/isolation-configuration.md) → [让多个任务在独立工作区改代码](topics/isolation/worktree-workspaces.md) → [在容器中运行任务](topics/isolation/docker-isolation.md) → [在现有 Linux VM 中运行任务](topics/isolation/vm-environment-extension.md) → [让任务在指定目录或现有容器里执行](topics/isolation/execution-environments.md) → [把候选结果采纳到交付目录](topics/isolation/candidate-delivery.md) → [找回隔离任务的改动并清理资源](topics/isolation/workspace-recovery.md)
 
 ## 配置模型与运行参数
 
@@ -45,3 +45,9 @@
 想知道 OC 内部是怎么运转的。
 
 [一次任务是怎么跑起来的](topics/architecture/runtime-execution-model.md) → [Session 怎样保存进度和继续执行](topics/architecture/session-state-lifecycle.md) → [工作流就是普通 Python：编程模型入门](topics/workflow/workflow-programming-model.md) → [工作流能做什么、不能做什么](topics/workflow/workflow-capabilities-boundaries.md) → [隔离怎么选](topics/isolation/isolation-overview.md) → [OpenCollab 管什么，我的需求该从哪里扩展](topics/architecture/extension-and-evaluation-boundaries.md) → [检查团队是否真的按分工协作](topics/observability/collaboration-adherence.md) → [用实际测试验证 Agent 的交付](topics/observability/native-test-evidence.md)
+
+## 让每个成员编写并运行自己的子 Workflow
+
+想让 Team 成员现场写一段 Workflow 代码，在自己的执行环境里并行调用多个 Agent，再把结论交回团队。先选好成员在哪执行，再准备 VM，然后学写子 Workflow。多个子运行同时请求模型时，用共享请求容量控制额度。最后用团队消息把结论发给队友。
+
+[隔离怎么选](topics/isolation/isolation-overview.md) → [在现有 Linux VM 中运行任务](topics/isolation/vm-environment-extension.md) → [让成员自己写并运行子 Workflow](topics/workflow/member-authored-workflow.md) → [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) → [向队友发消息并继续协作](topics/team/message-team-agents.md)

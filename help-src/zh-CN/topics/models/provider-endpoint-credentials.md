@@ -41,7 +41,7 @@
     "model-routing-request-capacity",
     "configuration-diagnostics"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -138,6 +138,17 @@ print(client.configuration["model"])
 - 能不能连上：只能通过实际请求观察。
 
 报告问题时，记下状态码、出错阶段，以及去掉凭据后的有效配置。
+
+## 成员自编 Workflow 与远端环境
+
+成员用 `manage_workflow` 启动自己写的子 Workflow 时，子 Workflow 跑在一个单独的 Python 子进程里。模型请求由控制端（运行 OC 主进程的机器）转发，所以端点地址、API 密钥和请求槽位都只留在控制端。子进程只拿到模型名称和温度、思考设置这类不敏感的生成参数。
+
+注意下面两点：
+
+1. OC 会按快照规则把工作区文件复制给子运行。所以不要把含密钥的 env 文件放进项目目录。把它放在项目外面，再用 `OPENCOLLAB_CONFIG_FILE` 指向它在控制端的绝对路径。
+2. 连接 VM 的 SSH 私钥只由控制端的 OpenSSH 使用。`identity_file` 填控制端本地的私钥路径，私钥不会复制到来宾机。
+
+操作步骤见 [在现有 Linux VM 中运行任务](../isolation/vm-environment-extension.md)。
 
 ## 来源
 

@@ -33,7 +33,7 @@
     "duo-workflow",
     "weave-workflow"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -96,6 +96,8 @@ Team 和 Workflow 只管"怎么组织任务"。文件和命令实际在哪里运
 - 设计新的协作流程：先读 Workflow 编程模型，再查公开 API、数据流和调试方法。
 
 Skill 只提供任务上的指导。真正的流程要通过程序和运行接口来实现。
+
+隔离策略里还有两种 VM 策略。`vm-group` 让一次运行里的所有会话共用一台 VM。`vm-session` 让每个 Session 各领一台 VM。成员自己写的子 Workflow 可以选 `worktree` 隔离，在成员自己的 VM 里再开独立的工作树。具体见 [让成员自己写并运行子 Workflow](../workflow/member-authored-workflow.md)。
 
 ## 源码与进一步阅读
 

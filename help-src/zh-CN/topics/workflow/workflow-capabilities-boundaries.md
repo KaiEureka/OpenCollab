@@ -18,7 +18,11 @@
     "Workflow 能力范围",
     "执行边界",
     "Python 编排",
-    "环境扩展"
+    "环境扩展",
+    "动态 DW",
+    "多个 Agent",
+    "request_capacity",
+    "VM"
   ],
   "questions": [
     "工作流里能用任意 Python 库吗？",
@@ -26,15 +30,20 @@
     "支持多台机器分布式运行吗？",
     "运行中断后能自动接着跑吗？",
     "Docker 隔离到底隔离了哪些东西？",
-    "Team 成员能在运行时自己写工作流再启动吗？"
+    "Team 成员能在运行时自己写工作流再启动吗？",
+    "成员能在现场编写 DW 并调度多个 Agent 吗？",
+    "Python 编排、工具和模型请求分别在哪里执行？",
+    "工作流局部并发与模型共享容量有什么关系？"
   ],
   "related": [
     "workflow-programming-model",
     "workflow-composition-hierarchy",
     "workflow-failure-recovery-lifecycle",
-    "member-authored-workflow"
+    "member-authored-workflow",
+    "workflow-parallel-pipeline",
+    "vm-environment-extension"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -63,11 +72,12 @@
 | 依赖图和 DAG | Python 或 Weave 分组 | 自己写依赖执行逻辑，或用 Weave 的分组规划 |
 | Agent 返回结构化结果 | OC 内置 | `ctx.agent` 的 schema 捕获和校验 |
 | 子函数和子流程 | Python 与候选接口 | 共用 `ctx`，或用 `candidate_workflow` 建立候选环境 |
-| Team 调用已注册工作流 | OC 内置 | `run_workflow` 等完整结果返回，角色要显式获得权限 |
-| 成员运行自己生成的源文件 | OC 内置 | `manage_workflow`，创建归成员管理的子进程 |
+| Team 调用已注册工作流 | OC 内置 | 先 `run_workflow describe` 看输入说明，再 `run` 等完整结果。角色要显式获得这个工具 |
+| 成员运行自己生成的源文件 | OC 内置 | 先 `manage_workflow describe` 看能用什么，再 `launch` 启动子进程，由该成员管理 |
 | 工作流里组合独立 Team | 宿主 SDK | 显式调用 `OpenCollab.team`，自己连接资源和取消 |
 | 内置和自定义工具 | OC 扩展 | `builtin_tools`、公开的 `Tool` 和 `VerificationTool` |
-| 工作区与容器策略 | OC 环境策略 | `shared`、`worktree`、`docker-group`、`docker-session` 或自定义 provider |
+| 工作区、容器与 VM 策略 | OC 环境策略 | `shared`、`worktree`、Docker、已配置 VM 或自定义 provider |
+| 共享模型服务容量 | 宿主模型配置 | 用 `request_pool` 和 `request_capacity` 限制同时发出的原生请求 |
 | 业务失败重试 | Python 与传输层各管一部分 | 步骤按副作用自己决定是否重试；模型客户端处理已分类的传输重试 |
 | 调试与交付验证 | OC 观察工具加应用检查 | `phase`、`log`、`label`、trace、实际工具和验证器 |
 | 中断后跨进程自动接着跑 | 调用方自己设计 | 保存已完成步骤和业务状态，重建依赖后继续 |
@@ -116,11 +126,13 @@ Weave 已经提供了分组依赖规划。依赖成环的几个组会合并到�
 | 宿主 SDK + `worktree` | 调用方进程 | 父环境中的一个独立 checkout |
 | 宿主 SDK + `docker-group` | 调用方进程 | 本次策略运行的容器，每个会话有私有工作区 |
 | 宿主 SDK + `docker-session` | 调用方进程 | 每个会话一个独立容器和工作区 |
-| `manage_workflow` 启动源文件 | 成员环境里的 Python 子进程 | 按继承的策略或单次指定的策略执行 |
+| 宿主 SDK + `vm-group` | 调用方进程 | 本次策略运行租用一台 Linux VM，每个会话有私有工作区 |
+| 宿主 SDK + `vm-session` | 调用方进程 | 每个会话各租一台 Linux VM |
+| `manage_workflow` 启动源文件 | 成员环境里的 Python 子进程 | 默认用 `launch.isolation`，省略时继承成员策略。单次调用可以另行指定 |
 
 术语说明：
 
-- `worktree` 策略基于 git worktree，和原目录共用操作系统和 Git 对象存储。在容器里创建的 worktree 仍在那个容器内。
+- `worktree` 策略基于 git worktree，和原目录共用操作系统和 Git 对象存储。在容器里创建的 worktree 仍在那个容器内。在 VM 里创建的 worktree 也仍在那台 guest 里。
 - Docker 策略需要可用的 Docker daemon 和合适的镜像。默认网络为 `none`，挂载和网络按 provider 配置。
 
 一个容易误会的点：Docker 配置主要决定 Agent 工具的环境。你在宿主 Python 里直接用 `Path` 或 `subprocess`，操作的仍是宿主进程所在的位置。
@@ -138,6 +150,31 @@ Team 成员可以用编辑工具写一个 Python 文件，再用 `manage_workflo
 - 子会话要用的工具已获授权。
 
 启动后立刻返回一个 id。创建者之后可以查询、等待或停止它。父成员结束时，会清理还在运行的子运行。
+
+### 多个 Agent、VM 与模型请求容量
+
+成员写的子 Workflow（本站叫 DW，动态工作单元）里可以并行调用多个 Agent。典型做法：
+
+1. 成员先调用 `manage_workflow describe`，查看当前配置的隔离策略、自己有哪些工具权限，以及入口示例。
+2. 成员在代码里现场生成任务，比如三项，交给 `ctx.parallel` 并行执行。每个任务要不要调用 Agent，由 Python 代码决定。
+3. 成员调用 `launch` 启动这个文件。
+
+并发由两层设置控制：
+
+| 设置 | 谁来设 | 限制什么 |
+| --- | --- | --- |
+| `launch.concurrency` | 成员，在 `launch` 时 | 这个子 DW 里同时活跃的 Agent 会话。`ctx.parallel` 的任务容量默认也用它 |
+| `request_capacity` | 宿主，在模型配置里 | 共享模型服务同时处理的原生请求。多个 Team 和 DW 可以共用同一个请求池 |
+
+如果父成员用的是 `vm-session`，它自己已经占了一台 VM。这时子 DW 用 `isolation="worktree"` 启动，子 Agent 的工具就在这台 guest 里的独立工作树中执行。如果某个子会话另选 `vm-session`，就需要再租一台空闲 VM。VM 资源、SSH、guest 里的软件和 reset 操作都由你（人类调用方）准备，见[VM 环境扩展](../isolation/vm-environment-extension.md)。
+
+凭据和配置放在哪：
+
+- 模型凭据、端点和请求池留在宿主的桥接层，子进程拿不到。
+- 子进程的标准输入只传非敏感的生成设置、输入和工具限制。
+- 项目文件会按快照规则复制到子环境，所以凭据配置要放在控制端进程的环境变量里，或者工作区之外。
+
+完整用法见[成员自编 DW 教程](member-authored-workflow.md)。
 
 ### 需要你自己搭的部分
 
@@ -160,7 +197,7 @@ Team 成员可以用编辑工具写一个 Python 文件，再用 `manage_workflo
 
 ## 源码依据
 
-[opencollab/sdk/client.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L408)、[docs/session-isolation.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/session-isolation.md#L5)、[examples/member-authored-workflow/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/examples/member-authored-workflow/README.md#L3)。
+[opencollab/sdk/client.py](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/sdk/client.py#L408)、[docs/session-isolation.md](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/docs/session-isolation.md#L5)、[examples/member-authored-workflow/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/examples/member-authored-workflow/README.md#L3)。
 
 ## 相关章节
 

@@ -33,7 +33,7 @@
     "execution-environments",
     "workspace-recovery"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -124,7 +124,7 @@ asyncio.run(main())
 
 ## 文件、临时目录与挂载
 
-两种模式都会把源内容复制到容器的私有存储，并准备好容器里能用的 Git 信息。源工作区可以在本机，也可以来自已有的 Docker 环境。
+两种模式都会把源内容复制到容器的私有存储，并准备好容器里能用的 Git 信息。源工作区可以在本机，也可以来自已有的 Docker 或 VM 环境。
 
 组模式里，各会话的工作树是分开的，但容器里的进程和公共临时目录是共用的。想连这些也分开，就用会话模式。
 
@@ -156,7 +156,7 @@ from opencollab.environments import DockerMount
 
 - 如果容器里连不上网：默认网络是 `none`。改成 `bridge` 或已有网络名，或者把依赖预装进镜像。
 - 如果补丁导出失败或结果被截断：工作区和容器会被保留，恢复位置带完整容器 ID。按 [找回隔离任务的改动并清理资源](workspace-recovery.md) 先收集改动，再清理资源。完整补丁本来会在运行拥有的容器被移除前捕获。
-- 如果想接一个已经在跑的容器：见 [让任务在指定目录或现有容器里执行](execution-environments.md)。
+- 如果想接一个已经在跑的容器：见 [让任务在指定目录、容器或 VM 中执行](execution-environments.md)。
 
 ## 参考
 

@@ -41,7 +41,7 @@
     "workspace-recovery",
     "run-results"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -129,6 +129,27 @@ asyncio.run(main())
 4. 仍在收尾的任务继续由该运行追踪，工具结果会带出清理失败信息。
 
 这三个进程变量在模块导入时读取。要调整，就在启动 Python 或 CLI 之前导出有限正数。单 Agent 或 `ctx.agent_run` 里的 `RunControl.tool_cancellation_cleanup_timeout` 可以只覆盖本次会话的第 1 段等待。SDK 的 `cleanup_timeout` 管的是运行结束后的资源清理，调用方应根据返回的清理状态安排下一步。具体实现见[工具取消与环境中止实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution_runtime.py)。
+
+## VM 清理等待
+
+VM 清理比本地清理慢，所以配置了 VM（`config["vm"]` 或 `OPENCOLLAB_VM`）后，清理等待时间改用 `vm.cleanup_timeout`，默认 60 秒。
+
+| 情况 | 清理等待时间 |
+| --- | --- |
+| 配置了 VM，Team、Workflow、CLI 或成员自编子运行 | `vm.cleanup_timeout`，默认 60 秒 |
+| SDK 调用或子运行 `launch` 显式传了值 | 用显式值 |
+| 没配置 VM 的 Team | 10 秒 |
+| 没配置 VM 的 Workflow | 2 秒 |
+| `agent()` | 2 秒 |
+
+OC 清理一台 VM 时按顺序做这几件事：
+
+1. 停止还在运行的命令。
+2. 把改动和产物导出到控制端。
+3. 运行你配置的重置命令，把 VM 恢复到干净状态。
+4. 释放这台 VM 的租约，让别的会话可以领用。
+
+如果某一步失败，OC 会保留租约和现场，方便你排查。对同一个对象再调用一次清理即可重试。控制进程重启后怎样回收资源，见 [在现有 Linux VM 中运行任务](../isolation/vm-environment-extension.md)。
 
 ## 来源
 

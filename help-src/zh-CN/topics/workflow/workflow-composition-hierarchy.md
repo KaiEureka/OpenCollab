@@ -17,22 +17,30 @@
     "Workflow 组合",
     "run_workflow",
     "manage_workflow",
-    "candidate_workflow"
+    "candidate_workflow",
+    "DW 内多个 Agent",
+    "vm-session",
+    "worktree"
   ],
   "questions": [
     "Workflow 里面能再调用另一个 Workflow 吗？",
     "Team 成员怎样运行一个 Workflow？",
     "在 Workflow 里怎么启动一个 Team？",
-    "嵌套运行时预算算谁的？"
+    "嵌套运行时预算算谁的？",
+    "Team 成员写出的 DW 怎样继续创建多个 Agent？",
+    "Workflow 局部并发和模型共享请求容量由谁管理？",
+    "VM 成员的子工作树位于哪里？"
   ],
   "related": [
     "choose-working-mode",
     "team-run-workflow",
     "member-authored-workflow",
     "compose-workflow-candidates",
-    "workflow-failure-recovery-lifecycle"
+    "workflow-failure-recovery-lifecycle",
+    "workflow-parallel-pipeline",
+    "vm-environment-extension"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -111,15 +119,36 @@ Team 成员有两种工具可以启动 Workflow。两种都要在角色配置里
 
 怎么选：
 
-- 如果成员只是要跑一个已知流程并等结果，就用 `run_workflow`。见[让 Team 成员调用已注册的 Workflow](team-run-workflow.md)。
-- 如果成员要先自己写代码再启动，就用 `manage_workflow`。启动后用 `status`、`wait`、`result`、`stop` 管理那个 child id。成员需要有 bash 权限，目标环境里还要有装了 OpenCollab 的 Python 解释器。见[让成员自己写并运行子 Workflow](member-authored-workflow.md)。
+- 如果成员要跑一个已知流程并等结果，就用 `run_workflow`。成员先用 `describe` 查看输入说明，再用 `run` 执行。见[让 Team 成员调用已注册的 Workflow](team-run-workflow.md)。
+- 如果成员要先自己写代码再启动，就用 `manage_workflow`。成员先用 `describe` 查看隔离策略、工具授权和入口示例，再写源码并 `launch`。启动后用 `status`、`wait`、`result`、`stop` 管理那个 child id。成员需要有 bash 权限，目标环境里还要有装了 OpenCollab 的 Python 解释器。见[让成员自己写并运行子 Workflow](member-authored-workflow.md)。
 
 `manage_workflow` 的预算规则：
 
 - 给了有限的子预算，就会从父成员的余额里预留出这部分。
 - 不给预算时，取父成员未预留余额的一半。
 - 父成员完成或停止时，它还在运行的子 Workflow 会被一并停止。
-- 把 child id 发给其他成员，对方只能看。管理操作仍要由原来创建它的成员执行。
+- 只有创建 child id 的成员能查询和停止它。其他成员要通过 Team 已授权的通信关系联系创建者。
+
+### 自编 DW 里调用多个 Agent
+
+DW（动态工作单元）指成员用程序安排步骤的一段子 Workflow。成员可以现场生成三个或一百个任务，再交给 `ctx.parallel` 并行执行。
+
+并发由两层设置控制：
+
+- `launch.concurrency` 由成员设置。它限制这个子 DW 里同时活跃的 Agent 会话，也是 `ctx.parallel` 默认的任务容量。
+- `request_capacity` 由宿主设置。它限制共享模型服务同时处理的原生请求。
+
+模型路由、凭据和请求池都由宿主的 bridge 管理。凭据配置要放在控制端进程的环境变量里，或者项目工作区之外。
+
+隔离策略分三层，后面的覆盖前面的：
+
+1. 成员自己的策略。`launch` 不写 `isolation` 时，子 DW 继承它。
+2. `launch.isolation`，作为整个子 DW 的默认策略。
+3. 单次 `ctx.agent(..., isolation=...)`，只对这一次调用生效。
+
+一个常见组合：父成员用 `vm-session` 拿到一台 VM，再用 `worktree` 启动子 DW。这样多个子 Agent 都在同一台 guest 里，各自用独立工作树执行工具。如果某次调用改选 `vm-session`，就需要另一台可租用的 VM。
+
+完整的三 Agent、SDK 与 guest 解释器示例见[成员自编 DW 教程](member-authored-workflow.md)，资源准备见[VM 环境扩展](../isolation/vm-environment-extension.md)。
 
 ## 在 Workflow 里启动 Team
 
@@ -140,9 +169,9 @@ Team 成员有两种工具可以启动 Workflow。两种都要在角色配置里
 
 ## 源码依据
 
-[opencollab/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L121)、[opencollab/workflows.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/workflows.py#L21)、[examples/member-authored-workflow/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/examples/member-authored-workflow/README.md#L42)。
+[opencollab/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/README.md#L121)、[opencollab/workflows.py](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/workflows.py#L21)、[examples/member-authored-workflow/README.md](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/examples/member-authored-workflow/README.md#L42)。
 
-[opencollab/sdk/client.py](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py)。
+[opencollab/sdk/client.py](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/sdk/client.py)。
 
 ## 相关章节
 

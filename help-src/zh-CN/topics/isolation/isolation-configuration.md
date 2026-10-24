@@ -13,7 +13,11 @@
     "ctx.agent",
     "ctx.agent_run",
     "OpenCollab.team",
-    "OpenCollab.workflow"
+    "OpenCollab.workflow",
+    "vm-group",
+    "vm-session",
+    "OPENCOLLAB_VM",
+    "cleanup_timeout"
   ],
   "keywords": [
     "隔离配置",
@@ -30,9 +34,11 @@
   "related": [
     "isolation-overview",
     "worktree-workspaces",
-    "candidate-delivery"
+    "candidate-delivery",
+    "vm-environment-extension",
+    "member-authored-workflow"
   ],
-  "verified_ref": "e7946a42"
+  "verified_ref": "0c47f74a"
 }
 ---
 
@@ -116,11 +122,46 @@ await client.team(task, config="team.yaml", isolation="docker-session")
 - 只在子角色里写隔离时，入口仍用原工作目录。
 - `--no-worktrees` 对应原来那种子成员目录选择方式。团队文件里显式写的策略，仍按上面的优先级生效。
 
+## VM 配置与子运行继承
+
+在 SDK 里写 `OpenCollab(".", config={"vm": profile})`，OC 就会注册 `vm-group` 和 `vm-session` 两个策略名。`profile` 是一个字典，写明：
+
+- 有哪些来宾 VM 可用；
+- 控制端用哪个 SQLite 文件记录机器占用；
+- 没有空闲机器时等多久（`wait_timeout`）；
+- 运行结束后等清理多久（`cleanup_timeout`）。
+
+可以直接改的 JSON 和完整调用见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。如果 `environment_providers` 里也注册了同名工厂，以 `environment_providers` 为准。
+
+子 Workflow 怎么继承策略：
+
+1. `group` 的范围是一次运行里的一个环境池。成员用 `manage_workflow` 启动自己写的子 Workflow 时，子运行有自己的环境池。
+2. 想让子 Agent 留在成员当前的 VM 里，在 `manage_workflow` 的 `launch` 里写 `isolation="worktree"`。
+3. 不写 `launch.isolation` 时，子运行继承成员的策略。子 Workflow 里单次调用仍可以再覆盖。
+4. 单次调用用 `vm-session` 申请另一台来宾时，池里要有父 VM 之外的空闲机器。
+
+示例见 [让成员编写并管理自己的子 Workflow](../workflow/member-authored-workflow.md)。
+
+两个超时别混：
+
+| 参数 | 管什么 | 默认值 | 谁能覆盖 |
+| --- | --- | --- | --- |
+| `cleanup_timeout` | 运行结束后等清理多久 | `60` 秒 | SDK 运行参数、子运行 `launch.cleanup_timeout` |
+| `wait_timeout` | 没有空闲机器时等多久 | `0`，立刻报错 | 在 VM profile 或 `vm_isolation_provider` 参数里设置 |
+
 ## 命令行
 
-- Workflow：`workflow run NAME` 后面加 `--isolation shared` 或 `--isolation worktree`。
+- Workflow：`workflow run NAME` 后面用 `--isolation` 指定策略名，例如 `shared`、`worktree`、`vm-group` 或 `vm-session`。
 - Team：根命令从 `--team-config team.yaml` 读取隔离配置。
 - 需要 DockerOptions 或自定义环境提供器时，用 SDK 组合。见 [在容器中运行任务](docker-isolation.md)。
+
+用 VM 策略时：
+
+- CLI 从环境变量 `OPENCOLLAB_VM` 读完整的 VM 配置 JSON。
+- Workflow 命令可以用 `--cleanup-timeout` 覆盖清理等待时间。
+- Team 文件里写的 VM 策略，用的也是这份配置。
+
+来宾怎么准备、JSON 怎么写，见 [在现有 Linux VM 中运行任务](vm-environment-extension.md)。
 
 ## 设置后怎样确认生效
 
@@ -136,7 +177,8 @@ await client.team(task, config="team.yaml", isolation="docker-session")
 - 如果策略名报错：名字只能用字母、数字、连字符和下划线，首尾带空格也会报错。
 - 如果提示该策略需要 environment provider：名字格式没问题，但还没注册对应的提供器。见 [接入自己的执行环境](custom-environment-providers.md)。
 - 如果环境申请成功了，却在准备工作区时失败：比如普通工作树的源目录有未提交改动。检查工作区内容和走的是哪种创建方式，处理方法见 [让多个任务在独立工作区改代码](worktree-workspaces.md)。
+- 如果选了 `vm-group` 或 `vm-session`，却报错要求提供 `config.vm` 或 environment provider：说明还没配 VM 资源。在 SDK 里传 `config={"vm": ...}`，或在命令行设置 `OPENCOLLAB_VM`。
 
 ## 参考
 
-这些规则分别来自[入口策略解析](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/isolation.py)、[策略名解析](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/isolation.py)和[隔离指南](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/session-isolation.zh-CN.md)。
+这些规则分别来自[入口策略解析](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/bootstrap/isolation.py)、[策略名解析](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/opencollab/application/isolation.py)和[隔离指南](https://github.com/RISE-X-Lab/OpenCollab/blob/0c47f74a27441888286a22012b23b658185f8b8f/docs/session-isolation.zh-CN.md)。
