@@ -531,7 +531,7 @@ async def test_verified_write_threads_stdin_and_digest(monkeypatch) -> None:
             return _result(stdout=f"{CONTAINER_ID}\n".encode())
         if command[1] == "exec":
             if "opencollab-file-parent" in command[-1]:
-                return _result(stdout=b"\0/workspace\0")
+                return _result(stdout=b"\0/workspace\0/workspace\0")
             assert kwargs["input_bytes"] == payload
             return _result(stdout=f"5\t{digest}\n".encode())
         raise AssertionError(command)
@@ -550,7 +550,7 @@ async def test_write_half_input_failure_keeps_old_target_and_cleans_temp(monkeyp
 
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER in args:
             assert input_bytes is not None
             if 'cat > "$target"' in args[-1]:
@@ -584,7 +584,7 @@ async def test_write_timeout_keeps_old_target_and_cleans_temp(monkeypatch) -> No
 
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER in args:
             assert input_bytes is not None
             if 'cat > "$target"' in args[-1]:
@@ -616,7 +616,7 @@ async def test_cancelled_write_keeps_old_target_and_cleans_temp(monkeypatch) -> 
 
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER in args:
             assert input_bytes is not None
             if 'cat > "$target"' in args[-1]:
@@ -654,7 +654,7 @@ async def test_concurrent_same_container_path_writes_are_serialized(monkeypatch)
     async def fake_docker(*args, input_bytes=None, **_kwargs):
         nonlocal target, active, max_active
         if "opencollab-file-parent" in args[-1]:
-            return _result(stdout=b"\0/repo\0")
+            return _result(stdout=b"\0/repo\0/repo\0")
         if docker_module._EXEC_WRAPPER not in args:
             raise AssertionError(args)
         assert input_bytes is not None

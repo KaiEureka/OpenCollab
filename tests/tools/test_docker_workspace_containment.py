@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -66,3 +67,38 @@ async def test_directory_symlink_cannot_read_or_write_outside_the_workspace(tmp_
         await env.write_file("alias/pwned.txt", "owned\n")
     assert not (outside / "pwned.txt").exists()
     assert secret.read_text() == "TOP-SECRET-BODY"
+
+
+@pytest.mark.asyncio
+async def test_owned_temporary_file_is_created_outside_the_workspace(tmp_path):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (workspace / "alias").symlink_to(outside, target_is_directory=True)
+    transport = LocalDockerTransport(workspace)
+    env = _environment(workspace, transport, command_prefix="echo PROFILE-OUT")
+    path: str | None = None
+    stray = Path("/tmp/oc-not-owned.txt")
+    try:
+        path = await env.write_temp_file("payload\n", prefix="oc-temp-", suffix=".txt")
+        assert path.startswith("/tmp/oc-temp-")
+        assert not Path(path).is_relative_to(workspace)
+        assert Path(path).read_text(encoding="utf-8") == "payload\n"
+
+        await env.write_file("note.txt", "kept\n")
+        assert (workspace / "note.txt").read_text(encoding="utf-8") == "kept\n"
+        assert await env.read_file("note.txt") == "kept\n"
+
+        with pytest.raises(PermissionError, match="escapes workspace"):
+            await env.write_file("/tmp/oc-not-owned.txt", "nope\n")
+        assert not stray.exists()
+        with pytest.raises(PermissionError, match="escapes workspace"):
+            await env.write_file("alias/pwned.txt", "owned\n")
+        assert not (outside / "pwned.txt").exists()
+    finally:
+        if path is not None and path in env._temporary_files:
+            await env.remove_file(path)
+        if path is not None:
+            Path(path).unlink(missing_ok=True)
+        stray.unlink(missing_ok=True)

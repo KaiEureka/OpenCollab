@@ -692,7 +692,12 @@ class DockerEnvironment(Environment):
         return await self._write_file(path, content, observe_change=True)
 
     @contextlib.asynccontextmanager
-    async def file_write_lock(self, path: str) -> AsyncIterator[str]:
+    async def file_write_lock(
+        self,
+        path: str,
+        *,
+        containment_root: str | None = None,
+    ) -> AsyncIterator[str]:
         """Hold the target lock across a native edit, including its final write."""
         self._ensure_active()
         await self._bind_attached()
@@ -700,7 +705,7 @@ class DockerEnvironment(Environment):
         if container_id is None:
             raise RuntimeError("Container not started. Call setup() first.")
         target = self._validate_container_path(path)
-        target = await self._resolve_write_target(target)
+        target = await self._resolve_write_target(target, containment_root=containment_root)
         key = f"{container_id}\0{target}"
         task = asyncio.current_task()
         assert task is not None
@@ -738,16 +743,28 @@ class DockerEnvironment(Environment):
                 if entry.users == 0:
                     del _WRITE_LOCKS[key]
 
-    async def _write_file(self, path: str, content: str, *, observe_change: bool) -> bool | None:
+    async def _write_file(
+        self,
+        path: str,
+        content: str,
+        *,
+        observe_change: bool,
+        containment_root: str | None = None,
+    ) -> bool | None:
         payload = content.encode("utf-8")
         if len(payload) > ENV_FILE_WRITE_LIMIT_BYTES:
             raise OSError(
                 f"docker file exceeds write limit of {ENV_FILE_WRITE_LIMIT_BYTES} bytes: {path}"
             )
-        async with self.file_write_lock(path) as target:
+        async with self.file_write_lock(path, containment_root=containment_root) as target:
             return await self._write_file_atomic(target, payload, observe_change=observe_change)
 
-    async def _resolve_write_target(self, target: str) -> str:
+    async def _resolve_write_target(
+        self,
+        target: str,
+        *,
+        containment_root: str | None = None,
+    ) -> str:
         # Resolve the parent through the file execution wrapper, including its
         # cwd and command prefix. Keep the final component so atomic writes
         # replace a file symlink rather than modifying its referent.
@@ -765,27 +782,35 @@ class DockerEnvironment(Environment):
         parent = directory or "."
         if not posixpath.isabs(parent):
             parent = "./" + parent
+        if containment_root not in (None, "/tmp"):
+            raise ValueError("container temporary files must stay under /tmp")
+        root = self.workspace if containment_root is None else containment_root
         result = await self._exec(
             "bash -c "
             f"{shlex.quote(command)} opencollab-file-parent {shlex.quote(parent)} "
-            f"{shlex.quote(self.workspace)}",
+            f"{shlex.quote(root)}",
             timeout=DOCKER_CONTROL_TIMEOUT_SECONDS,
             login=False,
         )
         parts = result.stdout.rsplit("\0", 3)
-        workspace_root = parts[-3] if len(parts) == 4 else ""
+        resolved_root = parts[-3] if len(parts) == 4 else ""
         resolved = parts[-2] if len(parts) == 4 else ""
         if (
             result.returncode != 0
             or result.stdout_truncated
-            or not posixpath.isabs(workspace_root)
+            or not posixpath.isabs(resolved_root)
             or not posixpath.isabs(resolved)
         ):
             raise OSError("cannot resolve container file execution directory")
-        self._resolved_workspace = posixpath.normpath(workspace_root)
+        resolved_root = posixpath.normpath(resolved_root)
+        # Owned /tmp files must not replace the cached workspace root. A later
+        # workspace write would then treat the temporary directory as the project.
+        if containment_root is None:
+            self._resolved_workspace = resolved_root
         resolved_target = posixpath.normpath(posixpath.join(resolved, filename))
-        if not _within_directory(self._resolved_workspace, resolved_target):
-            raise PermissionError(f"container file path escapes workspace: {target}")
+        if not _within_directory(resolved_root, resolved_target):
+            boundary = "workspace" if containment_root is None else "temporary directory"
+            raise PermissionError(f"container file path escapes {boundary}: {target}")
         return resolved_target
 
     async def _physical_workspace(self) -> str:
@@ -962,7 +987,9 @@ class DockerEnvironment(Environment):
         if any(character in prefix + suffix for character in ("/", "\0")):
             raise ValueError("temporary file prefix and suffix must be path components")
         path = f"/tmp/{prefix}{uuid.uuid4().hex}{suffix}"
-        await self.write_file(path, content)
+        # Patch staging owns this path. It is outside the project on purpose;
+        # workspace containment would reject it and drop the binary patch.
+        await self._write_file(path, content, observe_change=False, containment_root="/tmp")
         self._temporary_files.add(path)
         return path
 
