@@ -62,6 +62,8 @@ async def test_import_rebuilds_linked_git_metadata_and_keeps_physical_contents(
 ) -> None:
     source = tmp_path / "source"
     _repository(source, object_format=object_format)
+    _git(source, "tag", "v1.0.0")
+    _git(source, "tag", "-a", "v1.1.0", "-m", "release")
     linked = tmp_path / "linked"
     _git(source, "worktree", "add", "--quiet", "--detach", str(linked))
     (linked / "answer.py").write_text("answer = 2\r\n")
@@ -77,6 +79,9 @@ async def test_import_rebuilds_linked_git_metadata_and_keeps_physical_contents(
     assert (Path(target.workspace) / "answer.py").read_bytes() == b"answer = 2\r\n"
     assert (Path(target.workspace) / "new.bin").read_bytes() == b"\0\xff"
     assert _git(Path(target.workspace), "rev-parse", "--show-object-format") == object_format
+    assert _git(Path(target.workspace), "describe", "--tags", "--dirty") == "v1.1.0-dirty"
+    assert _git(Path(target.workspace), "cat-file", "-t", "refs/tags/v1.0.0") == "commit"
+    assert _git(Path(target.workspace), "cat-file", "-t", "refs/tags/v1.1.0") == "tag"
     _git(source, "worktree", "remove", "--force", str(linked))
     assert _git(Path(target.workspace), "show", "HEAD:answer.py") == "answer = 1"
     assert "answer.py" in _git(Path(target.workspace), "diff", "--name-only")
@@ -272,6 +277,34 @@ async def test_lost_process_group_stops_owned_container_and_revokes_sibling_tool
     assert owner.revoked and sibling.revoked
     with pytest.raises(RuntimeError, match="aborted"):
         await sibling.exec_cmd("printf forbidden")
+
+
+@pytest.mark.parametrize("scope", ["group", "session"])
+async def test_docker_sessions_preserve_tagged_build_versions(tmp_path: Path, scope: str) -> None:
+    image = os.environ.get("OPENCOLLAB_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("OPENCOLLAB_DOCKER_TEST_IMAGE selects a local image with bash and git")
+    source = tmp_path / "source"
+    _repository(source)
+    _git(source, "tag", "v1.0.0")
+    (source / "answer.py").write_text("answer = 2\n")
+    _git(source, "commit", "--quiet", "-am", "second")
+    _git(source, "tag", "-a", "v1.1.0", "-m", "release")
+    (source / "answer.py").write_text("answer = 3\n")
+    _git(source, "commit", "--quiet", "-am", "third")
+    version = _git(source, "describe", "--tags", "--dirty")
+    pool = DockerIsolationPool(str(source), scope=scope, options=DockerOptions(image=image))
+    try:
+        environment = await pool.acquire("builder")
+        result = await environment.exec_cmd(
+            "git describe --tags --dirty && git describe --dirty && "
+            "git show v1.0.0:answer.py && git show v1.1.0:answer.py && "
+            "git cat-file -t refs/tags/v1.0.0 && git cat-file -t refs/tags/v1.1.0"
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines() == [version, version, "answer = 1", "answer = 2", "commit", "tag"]
+    finally:
+        await pool.release()
 
 
 @pytest.mark.parametrize("scope", ["group", "session"])

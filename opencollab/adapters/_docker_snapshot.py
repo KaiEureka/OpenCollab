@@ -68,7 +68,7 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                 bundle = directory / "repository.bundle"
                 async with _patch_temporary(source, root, "", prefix=".docker-import-", suffix=".bundle") as remote:
                     _complete(await source.exec_cmd(
-                        f"git -C {shlex.quote(source_root)} bundle create {shlex.quote(remote)} HEAD",
+                        f"git -C {shlex.quote(source_root)} bundle create {shlex.quote(remote)} --tags HEAD",
                         timeout=900,
                     ), "Docker source Git bundle")
                     await _copy_to_host(source, remote, bundle)
@@ -80,7 +80,7 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                     )
                     command = (
                         f"{git} init --quiet --object-format={shlex.quote(object_format)} && "
-                        f"{git} fetch --quiet {shlex.quote(str(bundle))} HEAD && "
+                        f"{git} fetch --quiet --tags {shlex.quote(str(bundle))} HEAD && "
                         f"{git} reset --mixed --quiet FETCH_HEAD"
                     )
                     _complete(await local.exec_cmd(command, timeout=900), "Docker private repository metadata")
