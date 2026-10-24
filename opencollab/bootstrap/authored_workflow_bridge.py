@@ -341,10 +341,29 @@ class BridgeLLM:
     def requires_thinking_prefix(self) -> bool:
         return self.client.metadata("requires_thinking_prefix")
 
-    def __getattr__(self, name: str) -> Any:
-        if name not in self.client.options["metadata"]:
-            raise AttributeError(name)
-        return lambda *args, **kwargs: self.client.metadata(name, *args, **kwargs)
+    def context_window(self) -> int | None:
+        return self.client.metadata("context_window")
+
+    def estimate_request_tokens(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
+        *, thinking: bool = False, thinking_params: dict[str, Any] | None = None,
+    ) -> int:
+        return self.client.metadata("estimate_request_tokens", messages, tools,
+                                    thinking=thinking, thinking_params=thinking_params)
+
+    def estimate_context_tokens(
+        self, messages: list[dict[str, Any]], *, thinking: bool = False,
+        thinking_params: dict[str, Any] | None = None,
+    ) -> int:
+        return self.client.metadata("estimate_context_tokens", messages,
+                                    thinking=thinking, thinking_params=thinking_params)
+
+    def minimum_output_tokens(
+        self, *, max_output_tokens: int, thinking: bool = False,
+        thinking_params: dict[str, Any] | None = None,
+    ) -> int:
+        return self.client.metadata("minimum_output_tokens", max_output_tokens=max_output_tokens,
+                                    thinking=thinking, thinking_params=thinking_params)
 
     async def complete(self, messages: list[dict[str, Any]], *, on_admitted: Any = None, **kwargs: Any) -> LLMResponse:
         result = await self.client.call(

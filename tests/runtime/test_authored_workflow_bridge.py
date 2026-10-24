@@ -1,16 +1,65 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 from opencollab.adapters.env import LocalEnvironment
+from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.errors import TransientProviderError
 from opencollab.adapters.llm.request_admission import request_slot
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.session_environments import SessionEnvironmentPool
+from opencollab.application._session_run_shared import _TokenBudgetStop
+from opencollab.application.ports import (
+    ContextTokenEstimatorPort,
+    RequestOutputRequirementPort,
+    RequestTokenEstimatorPort,
+)
 from opencollab.application.tool_execution import ToolRuntime
 from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge, BridgeClient, BridgeLLM
+from opencollab.bootstrap.session_factory import build_session
+from opencollab.domain.agent import Agent
+
+
+async def test_bridge_retains_native_budget_protocols_and_thinking_output_floor(tmp_path):
+    native = LLMClient(model="claude-sonnet-4-5", provider="anthropic",
+                       api_key="offline-test")  # pragma: allowlist secret
+    client = SimpleNamespace(
+        options={"supports_response_session_identity": False, "supports_request_admission": False},
+        metadata=lambda name, *args, **kwargs: getattr(native, name)(*args, **kwargs),
+    )
+    llm = BridgeLLM(client, None)
+    thinking_params = {"thinking": {"type": "enabled", "budget_tokens": 1024}}
+    environment = LocalEnvironment(str(tmp_path))
+    session = build_session(
+        agent=Agent(name="child", system_prompt="child", tools=[], model=native.model,
+                    provider="anthropic", max_tokens_per_step=4096,
+                    thinking=True, thinking_params=thinking_params),
+        env=environment, llm=llm, max_budget_tokens=1024,
+    )
+    messages = [
+        {"role": "user", "content": "Return an answer."},
+        {"role": "assistant", "content": "Prior answer", "reasoning_content": "discarded " * 1000},
+    ]
+    try:
+        configured, minimum, reserved = session.runner._request_budget_requirements(
+            messages, None, thinking=True,
+        )
+        assert configured == 4096 and minimum == 1025
+        assert reserved == native.estimate_request_tokens(messages, thinking=True, thinking_params=thinking_params)
+        assert session.runner._estimate_context_message(messages[-1]) == native.estimate_context_tokens(
+            [messages[-1]], thinking=True, thinking_params=thinking_params,
+        )
+        with pytest.raises(_TokenBudgetStop):
+            session.runner._request_output_limit(messages, None, thinking=True)
+        for protocol in (RequestTokenEstimatorPort, ContextTokenEstimatorPort, RequestOutputRequirementPort):
+            assert isinstance(native, protocol) and isinstance(llm, protocol)
+    finally:
+        await session.aclose()
+        await native.close()
+        await environment.cleanup()
 
 
 @pytest.mark.parametrize("error_usage", [False, True])
