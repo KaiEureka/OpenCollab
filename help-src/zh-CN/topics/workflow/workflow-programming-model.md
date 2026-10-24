@@ -1,16 +1,18 @@
 ---
 {
   "id": "workflow-programming-model",
-  "title": "理解 Workflow 的编程模型与自由度",
+  "title": "工作流就是普通 Python：编程模型入门",
   "category": "workflow",
-  "summary": "明确普通 Python 代码与 ctx 操作各自承担的职责，设计由运行结果驱动的协作流程。",
+  "summary": "工作流是一个普通的异步 Python 函数，流程用 Python 写，调用 Agent 用 ctx。",
   "aliases": [
     "工作流到底能写什么",
     "if 和 for 能直接用吗",
     "能写 while 循环吗",
     "可以动态决定下一步吗",
     "一定要固定流程图吗",
-    "工作流是不是特殊语法"
+    "工作流是不是特殊语法",
+    "工作流编程模型",
+    "ctx 是什么"
   ],
   "keywords": [
     "Workflow 编程模型",
@@ -19,7 +21,10 @@
     "WorkflowContext"
   ],
   "questions": [
-    "明确普通 Python 代码与 ctx 操作各自承担的职责，设计由运行结果驱动的协作流程？"
+    "工作流里能直接用 if、for、while 吗？",
+    "工作流可以根据上一步结果动态决定下一步吗？",
+    "ctx 和普通 Python 代码各负责什么？",
+    "工作流的代码到底在哪个进程里运行？"
   ],
   "related": [
     "author-custom-workflow",
@@ -33,25 +38,38 @@
 }
 ---
 
-# 理解 Workflow 的编程模型与自由度
+# 工作流就是普通 Python：编程模型入门
 
-Workflow 的控制者是一个普通异步 Python 函数。函数按代码决定先做什么、根据什么继续、何时返回，Agent 处理被交给它的具体任务。`ctx` 提供建立会话和管理环境资源的方法，Python 本身提供变量、函数、条件、循环、异常处理和模块导入。编写流程时，用 Python 表达控制逻辑，用 ctx 调用会话并取得结果。
+OC 的 Workflow 没有图声明或 DSL，它就是一个 `async def fn(ctx, args)`。分支、循环、并发、何时结束都写成普通 Python 控制流；需要模型干活时调用 `ctx.agent`，每次调用开一个新会话。与 LangGraph 这类先定义节点和边的框架不同，OC 的“图”是在运行时由代码动态展开的。本篇说明 Python 和 `ctx` 各管什么，以及代码实际在哪个进程执行。
 
-## 从普通计算到 Agent 调用
+## 一句话分工
 
-以下文件包含一个可直接传给 SDK 的异步函数。任务数由输入决定，后续解释是否执行由结果决定。
+| 谁负责 | 做什么 |
+| --- | --- |
+| Python 本身 | 变量、函数、条件判断、循环、异常处理、导入模块 |
+| `ctx`（工作流上下文对象） | 创建 Agent 会话、查询剩余额度和时间、管理运行环境 |
+
+`ctx` 是 OC 在调用你的函数时传进来的第一个参数，类型是 `WorkflowContext`。
+
+## 最小示例：先算，再按需调用 Agent
+
+下面这个函数可以直接传给 SDK 运行。它先用 Python 求和，再逐个让 Agent 解释每个数字。
 
 ```python
 async def explain_numbers(ctx, args):
+    # 纯 Python：转换和求和
     values = [int(value) for value in args['values']]
     total = sum(values)
+    # 纯 Python：总和为 0 就直接返回，不调用 Agent
     if total == 0:
         return {'total': 0, 'explanations': []}
 
     explanations = []
     for index, value in enumerate(values):
+        # ctx 读取运行资源：时间不够或额度不足就停下
         if ctx.time_low() or ctx.tokens_remaining() < 2000:
             break
+        # ctx 创建一次 Agent 会话
         answer = await ctx.agent(
             f'用一句话解释 {value} 在总和 {total} 中的作用。',
             label=f'item-{index}', tools=[], budget=2000,
@@ -60,20 +78,48 @@ async def explain_numbers(ctx, args):
     return {'total': total, 'explanations': explanations}
 ```
 
-列表转换、求和、`if`、`for`、`break` 和最终字典都是 Python 行为。`ctx.agent` 创建模型会话，`ctx.tokens_remaining` 和 `ctx.time_low` 读取运行资源。输入改变时，实际调用数随之改变。同样的写法也适用于探索、修复和收集任务。
+这里可以看出：
 
-## 用结果形成反馈循环
+- 列表转换、求和、`if`、`for`、`break` 和最后的字典，都是普通 Python。
+- `ctx.agent` 创建模型会话。
+- `ctx.tokens_remaining` 和 `ctx.time_low` 读取剩余额度和时间。
+- 输入有几个数字，就会调用几次 Agent。调用次数由输入决定，不是事先写死的。
 
-`while` 可以根据检查结果继续推进。例如每轮让 Agent 修改文件，随后调用真实验证器，验证通过时返回，失败时把报告放入下一轮提示词。循环需要明确的结束条件，如轮数、剩余时间、额度和检查结果。固定次数的 `for` 循环适合重试或有限候选探索。
+同样的写法也适合“先探索、再修复、再收集结果”这类任务。
 
-结构化输出可把 Agent 的判断变成可访问的字典字段，之后的分支仍由 Python 执行。模型返回了 `needs_fix=true` 时，只有代码读取该字段并调用修复步骤，才会真的进入修复。模型在回答中承诺运行检查时，后续还需看到工具执行与检查回执。
+## 根据结果决定下一步
 
-动态任务也可通过列表推导、输入分组和闭包创建。用 `ctx.parallel` 接收异步函数列表，用 `ctx.pipeline` 处理逐项阶段，具体依赖关系可以由自己的 Python 数据结构维护。DAG 的节点、就绪条件和失败策略由作者定义，Weave 提供了分组依赖规划这一现成实现。
+### 用 `while` 做“修改、检查、再修改”
 
-## 函数与上下文的分工
+典型做法：
+
+1. 让 Agent 修改文件。
+2. 调用真实的验证器（例如跑测试）。
+3. 如果通过，就返回。
+4. 如果失败，就把失败报告放进下一轮的提示词，回到第 1 步。
+
+循环一定要有结束条件，比如最多几轮、剩余时间、剩余额度，或检查结果。如果只是重试几次，或试几个有限的候选方案，用固定次数的 `for` 就够了。
+
+### 让 Agent 返回结构化结果，再由 Python 判断
+
+`ctx.agent` 可以按 schema 返回字典，比如 `{"needs_fix": true}`。OC 不会根据字段自动路由，注意两点：
+
+- 模型返回 `needs_fix=true`，并不会自动触发修复。只有你的代码读到这个字段，并调用修复步骤，才会真的去修。
+- 模型在回答里说“我已经跑过测试”，不等于真的跑过。要看到工具执行记录和检查结果才算数。
+
+### 动态生成任务
+
+你可以用列表推导、按输入分组、闭包等方式，临时造出一批任务：
+
+- 一批互不相关的任务：用 `ctx.parallel` 同时执行，它接收一个异步函数列表。
+- 每一项都要经过几个阶段：用 `ctx.pipeline`。
+- 任务之间有依赖关系（DAG）：OC 没有内置通用图执行器，用你自己的 Python 数据结构记录依赖。节点是什么、什么时候可以开始、失败了怎么办，都由你定义。如果想要现成实现，Weave 提供了按组规划依赖的方案。
+
+## 把流程拆成多个函数
 
 ```python
 def normalize_goal(text):
+    # 普通函数：直接调用
     return ' '.join(text.split())
 
 async def describe(ctx, args):
@@ -81,25 +127,56 @@ async def describe(ctx, args):
     return await ctx.agent(goal, label='describe', tools=[])
 
 async def composite(ctx, args):
+    # 异步函数：用 await 等待，并把同一个 ctx 传下去
     first = await describe(ctx, args)
     if first is None:
         return {'summary': None}
     return {'summary': first, 'length': len(first)}
 ```
 
-普通函数可以直接调用，异步函数用 `await` 等待。共享 `ctx` 的函数组合沿用同一环境和资源。需要完整候选环境时才选择 `candidate_workflow`，需要独立 Team 时由宿主明确调用 SDK 的 `team` 入口并管理其资源。这样的组合深度取决于具体调用路径和后端能力。
+- 普通函数直接调用，异步函数用 `await` 等待。
+- 传同一个 `ctx` 的函数，共用同一套环境和资源。
+- 如果需要一个完整的候选环境，用 `candidate_workflow`。
+- 如果需要一个独立的 Team，由宿主程序显式调用 SDK 的 `team` 入口，并自己管理它的资源。
 
-## 异步代码实际在哪里执行
+能嵌套多深，取决于具体调用路径和后端是否支持。
 
-`await` 在等待模型、工具或其他异步操作时让出执行机会，事件循环可继续推进其他任务。普通同步计算仍在当前进程执行。较长的阻塞网络、磁盘或 CPU 调用会占用事件循环，影响并发和取消响应，适合改用相应异步库、`asyncio.to_thread` 或由应用安排独立进程。
+## 进阶：代码实际在哪里运行
 
-宿主直接运行的 Workflow，其 Python 编排位于调用方进程。配置 Docker 会话策略时，Agent 的文件和 shell 工具进入容器，普通 Python 文件操作仍在宿主解释器执行。Team 成员通过 `manage_workflow` 启动源文件时，该 Python 进程则位于成员执行环境。写文件或运行任意业务库前，应先确定代码所处的进程及路径含义。
+### `await` 与事件循环
 
-## 声明与执行
+`await` 在等待模型、工具或其它异步操作时，会把执行机会让出去，让其它任务继续推进。但普通的同步计算仍在当前进程里执行。
 
-`@workflow` 附着名称、说明和描述性阶段，便于按名称发现。运行时真正执行的是 `await fn(ctx, args)`。`phases` 元数据描述流程，`ctx.phase` 产生阶段事件，二者都由作者安排。
+如果你写了耗时较长的阻塞操作（网络、磁盘或大量 CPU 计算），它会卡住事件循环，导致并发变慢、取消也不及时。解决办法：
 
-开发时，先把步骤写成可执行控制流，为每次会话选择工具和环境，再通过实际检查确认交付。需要更多控制时，可以逐步加入分支、循环和并行集合。
+- 改用对应的异步库；
+- 用 `asyncio.to_thread` 放到线程里；
+- 或者由应用另开一个独立进程。
+
+### 不同启动方式下的位置
+
+| 启动方式 | Python 编排代码在哪 | 说明 |
+| --- | --- | --- |
+| 宿主程序直接运行工作流 | 调用方进程 | 默认情况 |
+| 配置了 Docker 会话策略 | 仍在宿主进程 | 只有 Agent 的文件和 shell 工具进容器，你自己写的 Python 文件操作仍在宿主执行 |
+| Team 成员通过 `manage_workflow` 启动源文件 | 成员所在的执行环境 | Python 进程在成员那边 |
+
+写文件或调用业务库之前，先弄清楚代码在哪个进程里跑，以及路径指向哪里。
+
+## 进阶：`@workflow` 只是声明
+
+`@workflow` 给函数附上名称、说明和描述性的阶段列表，方便按名称找到它。真正运行时，OC 做的就是 `await fn(ctx, args)`。
+
+- `phases` 元数据只是描述流程。
+- `ctx.phase` 才会真正发出阶段事件。
+- 两者都由作者自己安排。
+
+## 小结
+
+1. 先把步骤写成能跑的 Python 控制流。
+2. 为每次 Agent 会话选好工具和环境。
+3. 用真实检查确认交付。
+4. 需要更多控制时，再逐步加分支、循环和并行。
 
 ## 源码依据
 
@@ -107,4 +184,4 @@ async def composite(ctx, args):
 
 ## 相关章节
 
-[编写第一个自定义 Workflow](author-custom-workflow.md)、[选择 Workflow 的入口与控制粒度](workflow-control-granularity.md)、[设计 Workflow 的输入输出与步骤间数据流](workflow-dataflow-structured-io.md)、[在 Workflow 中并行处理多项任务](workflow-parallel-pipeline.md)、[按开发任务查找 Workflow 公开 API](workflow-public-api-map.md)、[判断 Workflow 能实现的范围与运行边界](workflow-capabilities-boundaries.md)。
+[编写第一个自定义 Workflow](author-custom-workflow.md)、[在哪一层调整 Workflow：从 CLI 参数到单次调用回调](workflow-control-granularity.md)、[Workflow 里的数据怎么传：输入、步骤结果、文件与输出](workflow-dataflow-structured-io.md)、[在 Workflow 中并行处理多项任务](workflow-parallel-pipeline.md)、[Workflow 公开 API 速查](workflow-public-api-map.md)、[工作流能做什么、不能做什么](workflow-capabilities-boundaries.md)。

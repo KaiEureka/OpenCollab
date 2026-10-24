@@ -1,9 +1,9 @@
 ---
 {
   "id": "run-registered-workflow",
-  "title": "Workflow 完整指南与运行入口",
+  "title": "运行一个工作流（Workflow）",
   "category": "workflow",
-  "summary": "从 CLI 或 Python SDK 选择内置与工作区工作流，传入任务并获取运行结果。",
+  "summary": "用命令行或 Python 找到一个工作流，交给它一项任务，然后查看结果。",
   "aliases": [
     "运行工作流",
     "工作流在哪",
@@ -12,7 +12,9 @@
     "--args",
     "OPENCOLLAB_WORKFLOWS_DIR",
     "@workflow",
-    "工作流重名"
+    "工作流重名",
+    "怎么跑工作流",
+    "workflow 入门"
   ],
   "keywords": [
     "workflow list",
@@ -23,7 +25,9 @@
   "questions": [
     "Workflow 是什么，怎样启动？",
     "自己写的工作流为什么没有出现在列表里？",
-    "Duo、Weave 和 Reconstruct 分别适合什么任务？"
+    "Duo、Weave 和 Reconstruct 分别适合什么任务？",
+    "怎样用命令行运行一个工作流？",
+    "运行完去哪里看结果？"
   ],
   "related": [
     "author-custom-workflow",
@@ -37,22 +41,45 @@
 }
 ---
 
-# Workflow 完整指南与运行入口
+# 运行一个工作流（Workflow）
 
-Workflow 把一次任务写成可执行的 Python 程序。程序决定何时调用 Agent、怎样使用返回值、哪些分支同时执行，以及何时结束。每次 Agent 调用有自己的会话历史，普通 Python 变量负责在步骤之间传递信息。需要双候选比较时可以直接运行 Duo，需要分组执行并核验交付时可以选择 Weave，已有明确控制逻辑时可以编写自己的异步函数。
+OC 的 Workflow 是用 Python 显式编排 Agent 调用的方式：一个 `async def` 函数决定何时开会话、怎样用返回值、哪些分支并发。它不像 LangGraph 那样先声明图，流程就是函数里的普通控制流。与之相对，OC 的 Team 是由模型自主派发的多 Agent。每次 `ctx.agent` 调用都是一个独立会话，有自己的历史，步骤之间靠 Python 变量传递信息。
 
-## 找到工作流
+最小用法：`opencollab workflow run duo --workspace DIR --task '...'`，或在 Python 里 `await OpenCollab(DIR).workflow('duo', {'goal': '...'})`。下文依次讲怎样找到工作流、传参、读结果。
 
-先在配置好模型的环境中运行以下命令。把示例工作区替换为已有目录。
+## 先选一个现成的工作流
+
+OC 自带几个工作流，可以直接用：
+
+| 名称 | 适合什么任务 |
+| --- | --- |
+| Duo | 想要两个候选方案，再比较选出一个 |
+| Weave | 任务能拆成几组，分组执行，最后检查交付 |
+| Reconstruct | 已有输入和输出样例，想重建出对应程序 |
+
+如果这些都不合适，而你已经清楚每一步该怎么做，可以自己写一个异步函数，见 [编写第一个自定义 Workflow](author-custom-workflow.md)。
+
+## 第 1 步：列出可用的工作流
+
+在已经配置好模型的环境里运行下面的命令。把示例路径换成你自己已有的目录。
 
 ```bash
+# 列出内置工作流和工作区里自己写的工作流
 opencollab workflow list --workspace /path/to/workspace
+# 查看 duo 接受哪些参数
 opencollab workflow run duo --help
 ```
 
-名称查找合并已安装的内置工作流与工作区的 `workflows/` 目录。发现器加载目录顶层的 Python 模块，读取 `@workflow` 附着的名称和说明。`OPENCOLLAB_WORKFLOWS_DIR` 可以改用另一个目录，相对路径仍从工作区解析。自定义名称与内置名称重复会产生注册错误，修改装饰器的 `name` 即可区分。
+列表里有两类工作流：
 
-## 交给 CLI 一项任务
+1. 安装 OC 时自带的内置工作流。
+2. 工作区（`--workspace` 指定的项目目录）下 `workflows/` 目录里的工作流。
+
+OC 只加载 `workflows/` 顶层的 Python 文件，并读取每个函数上 `@workflow` 写的名称和说明。
+
+如果想换一个目录存放工作流，设置环境变量 `OPENCOLLAB_WORKFLOWS_DIR`。写相对路径时，它仍按工作区来解析。
+
+## 第 2 步：用命令行交给它一项任务
 
 ```bash
 opencollab workflow run duo \
@@ -62,15 +89,29 @@ opencollab workflow run duo \
   --budget 100000 --concurrency 2 --task-concurrency 2
 ```
 
-示例中的 `allow_unisolated_shell` 明确允许可信本地工作区使用宿主 shell。容器环境可保持默认的 shell 隔离要求。`--task` 把文字写进工作流输入的 `goal`，`--task-file task.md` 从 UTF-8 文件读取同一个字段，文件上限为 4 MiB。两种任务入口互斥，它们也与 `--args` 已有的 `goal` 互斥。`--args` 必须是 JSON 对象。
+各参数的意思：
 
-自定义工作流可以采用 `task`、`items` 等自己的输入字段，此时在 `--args` 中传入相应字段。`--task` 只填充 `goal`，字段如何解释由所选工作流决定。模型、工作区、额度和并发选项放在 `workflow run NAME` 后面，`--isolation` 选择角色执行环境，`--agent-profile` 选择所有角色采用的 Agent 配置。
+| 参数 | 作用 |
+| --- | --- |
+| `--task` | 任务文字，会写进工作流输入的 `goal` 字段 |
+| `--task-file task.md` | 从 UTF-8 文件读取任务，同样写进 `goal`，文件最大 4 MiB |
+| `--args` | 其它输入，必须是一个 JSON 对象 |
+| `--budget` | 本次运行最多用多少 token |
+| `--concurrency` | 同时活跃的 Agent 会话上限 |
+| `--task-concurrency` | `parallel` 和 `pipeline` 最多同时处理几项，默认等于 `--concurrency` |
+| `--isolation` | 选择角色在什么环境里执行 |
+| `--agent-profile` | 选择所有角色使用的 Agent 配置 |
 
-CLI 省略 `--budget` 时会把配置中的额度提高到至少 1,000,000，显式传入额度可控制本次运行规模。`concurrency` 限制活跃 Agent 会话，`task_concurrency` 限制 `parallel` 与 `pipeline` 的活跃集合单元，后者默认等于前者。顺序流程的执行顺序由 Python 代码决定，提高并发上限后顺序步骤仍逐个执行。
+几条使用规则：
 
-## 从 Python 启动
+- `--task` 和 `--task-file` 只能二选一。如果 `--args` 里已经有 `goal`，这两个也都不能再用。
+- 模型、工作区、额度和并发这些选项，都写在 `workflow run NAME` 后面。
+- 示例里的 `allow_unisolated_shell` 表示允许 Agent 直接用本机的 shell。只在你信任的本地工作区这样做。在容器里运行时，保持默认的隔离要求即可。
+- 自己写的工作流可能不用 `goal`，而用 `task`、`items` 等字段。这时请把这些字段写在 `--args` 里。`--task` 只会填 `goal`，字段怎么用由工作流自己决定。
 
-以下是完整的 SDK 调用脚本。工作区应已经存在，模型配置由 `OpenCollab` 读取。
+## 第 3 步（可选）：用 Python 启动
+
+下面是完整的 Python 脚本。工作区目录要事先存在，模型配置由 `OpenCollab` 自己读取。
 
 ```python
 import asyncio
@@ -78,13 +119,13 @@ from opencollab import OpenCollab
 
 async def main():
     result = await OpenCollab('/path/to/workspace').workflow(
-        'duo',
-        {'goal': '修复配置读取错误并验证', 'allow_unisolated_shell': True},
-        budget=100000,
-        concurrency=2,
-        timeout=900,
-        artifacts='/path/to/new-run-artifacts',
-        limit_mode='explicit',
+        'duo',                       # 工作流名称
+        {'goal': '修复配置读取错误并验证', 'allow_unisolated_shell': True},  # 输入
+        budget=100000,               # token 额度
+        concurrency=2,               # 同时活跃的 Agent 会话数
+        timeout=900,                 # 超时秒数
+        artifacts='/path/to/new-run-artifacts',  # 产物目录，应为新目录或空目录
+        limit_mode='explicit',       # 按这里显式写的额度执行
     )
     print(result.status, result.reason, result.tokens)
     print(result.agent_failures)
@@ -93,13 +134,50 @@ async def main():
 asyncio.run(main())
 ```
 
-`flow` 接受名称、普通异步函数、装饰后的异步函数，也接受带有可调用 `fn` 的 `WorkflowSpec`。`inputs` 接受字符串键的 Mapping，并转成字典传给入口。`limit_mode='explicit'` 让本次额度遵循显式设置，环境中的无限模式开关由默认的 `environment` 模式读取。产物目录应为新目录或空目录。
+补充说明：
 
-## 读结果与记录
+- 第一个参数 `flow` 可以是名称，也可以是普通异步函数、加了装饰器的异步函数，或带有可调用 `fn` 的 `WorkflowSpec`。
+- 第二个参数 `inputs` 是键为字符串的 Mapping，会转成字典交给工作流。
+- `limit_mode='explicit'` 表示额度以你写的为准。默认的 `environment` 模式会读取环境里的“无限额度”开关。
 
-SDK 返回 `RunResult`，其中 `output` 是入口函数返回的值，`status` 为 `completed`、`stopped` 或 `failed`，`reason` 解释停止原因。`raise_for_status()` 在完成时返回原结果，其他状态抛出带有该结果的 `RunError`。流程可以在某次 Agent 失败后返回已有数据，这次失败会保存在 `agent_failures` 中。读取结果时，同时查看该字段、交付文件与实际测试。
+## 第 4 步：看结果
 
-CLI 打印工作流 `output` 的 JSON，并在工作流有停止原因时返回非零退出码。默认 `--save` 保存 `.opencollab/sessions/` 下的本次运行目录，包含会话和工作流清单。默认 `--trace` 在保存目录记录 `orchestration.jsonl`，便于对应阶段、日志和步骤消耗。`--no-save` 关闭保存，`--no-trace` 可关闭编排轨迹。SDK 的 `artifacts` 和 `trace` 则控制对应持久记录。保存的执行证据适合调试，跨进程继续运行所需的业务状态由工作流作者管理。
+Python 调用返回一个 `RunResult`，常用字段如下：
+
+| 字段 | 含义 |
+| --- | --- |
+| `output` | 工作流函数返回的值 |
+| `status` | `completed`（完成）、`stopped`（被停下）或 `failed`（失败） |
+| `reason` | 为什么停下 |
+| `agent_failures` | 过程中失败过的 Agent 调用 |
+| `tokens` | 用掉的 token |
+
+`raise_for_status()` 的行为：状态是完成时，返回结果本身；其它状态会抛出 `RunError`，异常里带着这份结果。
+
+注意：工作流可能在某个 Agent 失败后，仍返回手头已有的数据。所以 `status` 是完成，不代表每一步都成功。请同时检查 `agent_failures`、交付的文件，并实际跑一遍测试。
+
+命令行这边：
+
+- 运行结束后会打印 `output` 的 JSON。
+- 如果工作流有停止原因，命令返回非零退出码。
+
+## 运行记录保存在哪里
+
+| 选项 | 默认 | 作用 |
+| --- | --- | --- |
+| `--save` / `--no-save` | 保存 | 把本次运行目录存到 `.opencollab/sessions/`，里面有会话和工作流清单 |
+| `--trace` / `--no-trace` | 记录 | 在保存目录写 `orchestration.jsonl`，可以对照每个阶段、日志和每步消耗 |
+
+Python 里对应的是 `artifacts` 和 `trace` 参数。
+
+这些记录适合事后调试。如果你想在另一个进程里接着上次运行继续做，需要的业务状态要由工作流作者自己保存。
+
+## 常见问题
+
+- 如果自己写的工作流没出现在列表里：确认文件放在 `workflows/` 顶层（或 `OPENCOLLAB_WORKFLOWS_DIR` 指定的目录），并且函数上有 `@workflow`。
+- 如果报注册错误：可能是你的工作流和内置工作流重名。改一下装饰器里的 `name` 即可。
+- 如果没写 `--budget`：命令行会把配置里的额度提高到至少 1,000,000。想控制本次规模，就显式写上 `--budget`。
+- 如果调高了并发，速度却没变：并发只影响同时执行的部分。代码里一步接一步写的步骤，仍然逐个执行，顺序由 Python 代码决定。
 
 ## 源码依据
 
@@ -107,4 +185,4 @@ CLI 打印工作流 `output` 的 JSON，并在工作流有停止原因时返回�
 
 ## 相关章节
 
-[编写第一个自定义 Workflow](author-custom-workflow.md)、[让 Team 成员调用已注册 Workflow](team-run-workflow.md)、[使用 Duo 生成并选择双候选方案](duo-workflow.md)、[使用 Weave 分组执行并检查交付](weave-workflow.md)、[使用 Reconstruct 从输入输出重建程序](reconstruct-workflow.md)、[读取运行结果与判断任务是否完成](../observability/run-results.md)。
+[编写第一个自定义 Workflow](author-custom-workflow.md)、[让 Team 成员调用已注册的 Workflow](team-run-workflow.md)、[用 Duo 跑两个候选方案并选出一个](duo-workflow.md)、[用 Weave 分组接力完成任务并检查交付](weave-workflow.md)、[用 Reconstruct 从输入输出反推程序](reconstruct-workflow.md)、[读取运行结果与判断任务是否完成](../observability/run-results.md)。

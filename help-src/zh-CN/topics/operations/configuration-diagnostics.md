@@ -1,9 +1,9 @@
 ---
 {
   "id": "configuration-diagnostics",
-  "title": "检查有效配置与定位常见启动故障",
+  "title": "检查生效配置与排查启动故障",
   "category": "operations",
-  "summary": "查看有效配置、模型能力和错误记录，定位 CLI 参数与端点连接中的常见问题。",
+  "summary": "按报错阶段选检查入口：读客户端生效配置、离线查模型能力、检查团队和工作流加载、发一次真实请求测连接。",
   "aliases": [
     "怎么排错",
     "缺 API key",
@@ -25,7 +25,10 @@
     "RunResult.agent_failures"
   ],
   "questions": [
-    "用可核对的信息定位配置、模型能力、CLI 参数和端点连接中的常见问题？"
+    "改了配置为什么没生效？",
+    "怎么不发请求就查看某个模型的上下文窗口和错误分类？",
+    "unknown workflow 或根选项位置错误怎么处理？",
+    "怎么测试端点和 API key 能不能连通？"
   ],
   "related": [
     "configuration-precedence",
@@ -40,19 +43,30 @@
 }
 ---
 
-# 检查有效配置与定位常见启动故障
+# 检查生效配置与排查启动故障
 
-根据报错阶段选择检查入口。配置加载失败时查看生效设置和字段类型，命令解析失败时查看选项位置，找不到工作流时查看加载目录，模型请求失败时查看协议和错误分类。执行开始后的问题可结合 `RunResult.reason`、子 Agent 故障和轨迹定位。
+这篇是 OC 启动失败时的排错索引。先看错误出在哪个阶段，再用对应的本地检查入口：读客户端生效配置、离线查模型能力表、检查团队和工作流加载、最后才发一次真实请求测连接。执行开始之后的问题，看 `RunResult.reason`、子 Agent 故障记录和轨迹。
+
+## 按症状找入口
+
+| 症状 | 先做什么 |
+| --- | --- |
+| `Cannot load configuration` 或参数没生效 | [读取客户端生效配置](#先读取客户端生效设置)，再看[格式错误](#处理常见格式与入口错误) |
+| 根选项位置错误 | 把模型、预算选项放到 `workflow run NAME` 后面 |
+| `unknown workflow` | 用同一工作区执行 `workflow list`，核对 `OPENCOLLAB_WORKFLOWS_DIR` |
+| 模型不支持、`context length exceeded`、限流 | [离线查看模型能力](#离线查看模型和角色能力) |
+| 配置看起来都对但请求失败 | [显式执行一次连接检查](#显式执行一次连接检查) |
+| 运行中途失败 | [保留故障记录](#保留故障记录) |
 
 ## 先读取客户端生效设置
 
-构造客户端会解析工作区、进程变量、env 文件和显式覆盖。下面的程序只查询本地配置，适合确认修改是否进入新客户端。
+构造 `OpenCollab` 客户端时会合并工作区、进程环境变量、env 文件和显式覆盖。下面的程序只查询本地配置，不发请求，适合确认修改是否进入了新客户端。
 
 ```python
 from opencollab import OpenCollab
 
 client = OpenCollab(".")
-settings = client.configuration
+settings = client.configuration  # 只读、已筛选的元数据
 for key in (
     "provider", "model", "wire_protocol", "context_window",
     "llm_timeout", "llm_max_retries", "provider_error_time_budget",
@@ -60,18 +74,19 @@ for key in (
     print(key, settings.get(key))
 ```
 
-`configuration` 提供经过筛选的只读元数据，凭据被排除，端点通过 `base_url_sha256` 标识。嵌套值与内部配置隔离。改了文件但值未改变时，检查进程同名变量、工作区搜索顺序，以及客户端是否仍是修改前构造的实例。
+- `configuration` 不含凭据。端点用 `base_url_sha256` 标识。嵌套值与内部配置隔离。
+- 改了文件但值没变，依次检查：进程里是否有同名环境变量、工作区搜索顺序、客户端是否还是修改前构造的旧实例。
 
 ## 离线查看模型和角色能力
 
-模型能力检查查询已安装运行时的本地表，还可以给错误样例运行现有分类器。以下脚本会显示窗口、历史阈值、错误分类和 Base 默认工具。
+`inspect_model_runtime` 查询已安装版本的本地能力表，不发请求。它还能把错误样例交给现有分类器，看 OC 会把某条报错归为上下文溢出还是可重试错误。下面脚本输出窗口、历史阈值、错误分类和 Base profile 的默认工具。
 
 ```python
 from opencollab.models import inspect_model_runtime
 from opencollab.tools import profile_tool_names
 
 settings = inspect_model_runtime(
-    "gpt-4o",
+    "gpt-4o",  # 换成你的物理模型名
     overflow_samples=[{
         "label": "context",
         "message": "context length exceeded",
@@ -90,9 +105,9 @@ print(settings["retry"])
 print(profile_tool_names("base"))
 ```
 
-将模型名换成自己的物理模型。能力字段描述安装版本的默认设置，显式窗口和本次 reasoning 配置仍应读取客户端。实际运行工具可从 `metrics["agent_tool_names"]` 核对。
+能力字段描述的是安装版本的默认值。显式设置的窗口和本次 reasoning 配置仍以客户端 `configuration` 为准。实际运行时用到的工具从 `metrics["agent_tool_names"]` 核对。
 
-团队角色和关系可先通过本地命令检查。工作流列表按工作区目录加载调用方模块，名字冲突会报错。
+团队角色、关系和工作流可以先用本地命令检查。工作流列表按工作区目录加载调用方模块，名字冲突会报错。
 
 ```bash
 opencollab team show --team-config team.yaml
@@ -100,27 +115,36 @@ opencollab workflow list --workspace /path/to/application
 opencollab workflow run duo --help
 ```
 
-需要在自己的 Python 程序里读取团队声明时，使用 `opencollab.teams`。公开查询函数按团队加载规则返回角色名、声明工具、profile、角色额度和上下文策略，入口角色排在首位。配置编辑器可以用这些信息展示待运行的团队。实际运行后再从成员记录确认工具过滤与交接行为，完整示例见 [检查团队是否真的按分工协作](../observability/collaboration-adherence.md)。
+在自己的 Python 程序里读团队声明，用 `opencollab.teams`。公开查询函数按团队加载规则返回角色名、声明工具、profile、角色额度和上下文策略，入口角色排第一。配置编辑器可以用它展示待运行的团队。实际运行后，再从成员记录确认工具过滤和交接行为，完整示例见[检查团队是否真的按分工协作](../observability/collaboration-adherence.md)。
 
 ## 处理常见格式与入口错误
 
-SDK `config` 使用小写字段名，未知字段会被拒绝。团队 YAML 也按 schema 检查，字段拼写错误应直接修正。`thinking_params` 与 CLI `--args` 需要 JSON 对象，数组和残缺 JSON 会失败。预算为正整数，超时为有限正数，空凭据与空地址视为未设置。
-
-模型与预算选项属于具体运行入口。`workflow run NAME --workspace PATH --model MODEL` 是有效位置，把这些选项放在 `workflow` 前会触发根选项位置错误。名称未知时，先用相同工作区执行 `workflow list`，再核对 `OPENCOLLAB_WORKFLOWS_DIR`。
+- SDK `config` 用小写字段名，未知字段直接拒绝。
+- 团队 YAML 按 schema 检查，字段拼错就改正。
+- `thinking_params` 和 CLI `--args` 必须是 JSON 对象。数组和残缺 JSON 会失败。
+- 预算是正整数，超时是有限正数。
+- 空凭据、空地址都当作未设置。
+- 模型和预算选项属于具体运行入口。`workflow run NAME --workspace PATH --model MODEL` 是正确位置。把它们放在 `workflow` 前面会触发根选项位置错误。
+- 工作流名称未知时，先用相同工作区执行 `workflow list`，再核对 `OPENCOLLAB_WORKFLOWS_DIR`。
 
 ## 显式执行一次连接检查
 
-源码中的 `scripts/check_dashscope.py` 按常规配置执行一次真实 completion，适合已经准备好端点和凭据后确认连接。脚本名称来自最初用途，实际使用当前所选 provider。下面命令在 OpenCollab 源码根目录执行，`--workspace` 指向应读取配置的项目。
+端点和凭据都准备好后，用源码里的 `scripts/check_dashscope.py` 按常规配置发一次真实 completion。脚本名来自最初用途，实际走的是当前选中的 provider。在 OpenCollab 源码根目录执行，`--workspace` 指向要读取配置的项目：
 
 ```bash
 uv run python scripts/check_dashscope.py --workspace /path/to/application
 ```
 
-它会输出服务返回的一段文本，并在结束时关闭客户端。该步骤会产生真实请求与用量，离线能力查询则只读取本地元数据。
+它会打印服务返回的一段文本，结束时关闭客户端。注意这一步会产生真实请求和用量，前面的离线能力查询只读本地元数据。
 
 ## 保留故障记录
 
-运行结束后保留 `status`、`reason`、`metrics` 与产物路径。`agent_failures` 保留已脱敏的子 provider 故障类型、HTTP 状态等信息。`exception_chain` 提供类型、模块、整数 errno 和状态码，适合定位嵌套或 OS 故障。利用同一 `run_id` 关联会话、manifest 和轨迹，再检查对应模型调用与清理记录。
+运行结束后保留 `status`、`reason`、`metrics` 和产物路径。
+
+- `agent_failures`：已脱敏的子 provider 故障类型、HTTP 状态等。
+- `exception_chain`：类型、模块、整数 errno 和状态码，适合定位嵌套异常或 OS 故障。
+
+用同一个 `run_id` 关联会话、manifest 和轨迹，再检查对应的模型调用和清理记录。
 
 ## 来源
 

@@ -3,7 +3,7 @@
   "id": "token-step-concurrency-limits",
   "title": "设置 token 预算、步数与运行并发",
   "category": "operations",
-  "summary": "为单 agent、团队和工作流设置合适的执行额度，并解释预算拒绝、等待与停止。",
+  "summary": "OC 用 budget（累计 token）、max_steps 和 concurrency 分别限制运行；团队从共享池分额度，还可以用软额度回调按进展放宽。",
   "aliases": [
     "token 上限",
     "最多跑几步",
@@ -35,7 +35,11 @@
     "limit_mode"
   ],
   "questions": [
-    "为单 agent、团队和工作流设置合适的执行额度，并解释预算拒绝、等待与停止？"
+    "怎么限制一次运行最多用多少 token 和多少步？",
+    "团队成员的 token 额度是怎么分的？",
+    "工作流的 concurrency 和 task_concurrency 有什么区别？",
+    "OPENCOLLAB_UNBOUNDED_LIMITS 对不同入口有什么影响？",
+    "怎么关掉每步的预算提示或读多了要求修改的提示？"
   ],
   "related": [
     "context-compaction",
@@ -50,11 +54,9 @@
 
 # 设置 token 预算、步数与运行并发
 
-`budget` 控制累计输入与输出 token，`max_steps` 控制会话执行步数，`concurrency` 控制工作流同时运行的 Agent 会话数。先按任务规模设置有限额度，再根据实际用量和完成证据调整。token 预算与美元花费分别记录，单次输出上限也有独立配置。
+OC 用三个独立的旋钮限制一次运行：`budget` 是累计输入加输出 token，`max_steps` 是会话执行步数，`concurrency` 是工作流里同时运行的 Agent 会话数。和很多框架不同，这里的 token 预算按整个会话累计（每次重发历史都计入输入），而且团队成员从同一个池里分额度。美元花费另外记录，单次输出上限 `max_output_tokens` 也是单独配置。先按任务规模设有限额度，再按实际用量和完成证据调整。
 
-## 给单 Agent 明确额度
-
-下面是一个可直接运行的脚本。只读任务使用较小步数，模型设置沿用本地配置。
+## 最小用法：单 Agent
 
 ```python
 import asyncio
@@ -64,8 +66,8 @@ async def main() -> None:
     result = await OpenCollab(".").agent2(
         "阅读测试配置，说明应执行哪些验证以及依据。",
         tools="read",
-        budget=80_000,
-        max_steps=30,
+        budget=80_000,  # 累计输入+输出 token
+        max_steps=30,   # 只读任务用较小步数
         timeout=300,
     )
     print(result.status, result.reason, result.tokens)
@@ -74,17 +76,37 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`budget` 和 `max_steps` 接受正整数。旧参数 `steps` 与 `max_steps` 互斥。客户端的 `max_output_tokens` 默认 8,192，限制每次模型调用的输出，较大的整次预算会支持更多次调用。每次重复发送历史都会增加累计输入用量。
+## 参数一览
+
+| 参数 | 默认值 / 取值 | 说明 |
+| --- | --- | --- |
+| `budget` / `--budget` / `OPENCOLLAB_BUDGET` | 正整数 | 累计输入加输出 token |
+| `max_steps` | 正整数 | 会话执行步数。旧参数 `steps` 与它互斥 |
+| `max_output_tokens` | 8,192 | 每次模型调用的输出上限。整次预算越大，能支撑的调用次数越多 |
+| `concurrency` / `--concurrency` | | 工作流同时运行的 Agent 会话数 |
+| `task_concurrency` / `--task-concurrency` | 省略时继承 `concurrency` | 活跃的 parallel 或 pipeline 单元数 |
+| `limit_mode` | `workflow()` 默认 `"environment"` | 见[无限制模式](#无限制模式) |
+| `OPENCOLLAB_BUDGET_NUDGE_MODE` | `every-step` | 预算状态提示频率 |
+| `OPENCOLLAB_WRITE_NUDGE_MODE` | `on` | "一直读不改"时的行动提示 |
 
 ## 团队怎样分配 token
 
-动态团队从同一个池中分配额度。创建子成员时同步保留至多 `min(total, max(10_000, total // 4))`，同时受尚未分配余额限制。入口 Agent 的当前轮次可以使用剩余池，成员尚未结算的请求继续占用相应保留量。
+动态团队（由入口 Agent 运行时派生子成员）：
 
-预建团队共享池时，每个已声明席位还有累计上限，当前按总池除以席位数分配。也可以在团队文件顶层或角色的 `budget` 对象中设置 `tokens`。一旦某个角色设置独立额度，全部角色都必须有额度，团队总额为各角色之和。此模式需要 `prebuild_team=True`，由文件提供额度，同时传 SDK `budget=` 会报错。
+- 所有成员从同一个池里取额度。
+- 创建子成员时同步保留至多 `min(total, max(10_000, total // 4))`，同时不超过尚未分配的余额。
+- 入口 Agent 的当前轮次可以用剩余池。成员尚未结算的请求继续占着各自的保留量。
 
-两种团队用法的示例放在已有 `async` 函数中，`client` 是已经构造的客户端。选择其中一种调用。
+预建团队（`prebuild_team=True`，席位事先声明）：
+
+- 共享池时，每个已声明席位还有累计上限，目前是总池除以席位数。
+- 也可以在团队文件顶层或角色的 `budget` 对象里设 `tokens`。只要有一个角色设了独立额度，所有角色都必须设，团队总额是各角色之和。
+- 这种按角色分额度的模式需要 `prebuild_team=True`，额度由文件提供。此时再传 SDK `budget=` 会报错。
+
+两种写法如下，放在已有 `async` 函数里，`client` 是已构造的客户端，二选一：
 
 ```python
+# 共享池
 result = await client.team(
     "完成指定实现并验证。",
     config="team.yaml",
@@ -94,6 +116,7 @@ result = await client.team(
 ```
 
 ```python
+# 按角色声明额度，不传 budget
 result = await client.team(
     "完成指定实现并验证。",
     config="team-with-role-budgets.yaml",
@@ -102,9 +125,13 @@ result = await client.team(
 )
 ```
 
-## 工作流有两类并发
+## 工作流的两类并发
 
-`concurrency` 限制 Agent 会话，`task_concurrency` 独立限制活跃的 parallel 或 pipeline 单元，包括候选子工作流，省略时继承前者。混合 Agent 与任务工作时，峰值可以达到两个限制之和。共享后端请求数还可由模型请求池单独限制。下面的 Duo 命令显式允许宿主工作区执行 shell，按本次任务需要选择执行环境。
+- `concurrency` 限制 Agent 会话。`task_concurrency` 单独限制活跃的 parallel 或 pipeline 单元，包括候选子工作流。
+- 两者独立，混合 Agent 和任务工作时，峰值可以达到两者之和。
+- 发往后端的共享请求数还可以由模型请求池另外限制。
+
+下面的 Duo 命令显式允许在宿主工作区执行 shell，执行环境请按任务需要选：
 
 ```bash
 opencollab workflow run duo --workspace /path/to/application \
@@ -113,11 +140,19 @@ opencollab workflow run duo --workspace /path/to/application \
   --budget 300000 --concurrency 2 --task-concurrency 2
 ```
 
-Duo 按 A 再 B 的顺序运行候选，提高并发限制后仍保留这一次序。工作流调用在执行前从工作流池保留预算，实际授权可能因为其它调用占有份额而低于请求值。清理完成后返还未使用的保留量。预算拒绝表示无法取得执行额度，等待并发槽表示暂时没有可用席位。根据结果状态区分预算不足与并发等待。
+- Duo 按先 A 后 B 的顺序跑候选。提高并发也不会改变这个顺序。
+- 工作流调用在执行前从工作流池保留预算。其它调用占着份额时，实际授权可能低于请求值。清理完成后返还未用的保留量。
+- 预算拒绝表示拿不到执行额度，等待并发槽表示暂时没有空位。看结果状态区分这两种情况。
 
 ## 按进展扩展软额度
 
-`RunControl` 支持在硬授权内先给较小软额度，再由 `decide_budget` 返回 `BudgetDecision` 保持或增加额度。回调可读取实际消耗、步数、输入保留量和最低输出需求，并结合应用中的执行证据决定是否继续。增加值必须覆盖实际消耗且不超过硬授权，减少现有软额度会导致策略错误。硬额度耗尽后按预算限制停止。下面的片段放在已有 `async` 函数中，沿用 `client`，按消耗阈值扩展一次软额度。应用可根据实际执行和验证进展设置触发条件。
+`RunControl` 可以在硬授权（`budget`）之内先给一个较小的软额度，再由回调 `decide_budget` 返回 `BudgetDecision` 决定保持还是增加。
+
+- 回调能读到实际消耗、步数、输入保留量和最低输出需求，可以结合应用里的执行证据决定是否继续。
+- 新额度必须覆盖已有消耗，且不超过硬授权。减少现有软额度会导致策略错误。
+- 硬额度耗尽后按预算限制停止。
+
+下面的片段放在已有 `async` 函数里，沿用 `client`，消耗到阈值时把软额度扩到硬额度一次。实际触发条件可以按执行和验证进展来定。
 
 ```python
 from opencollab import BudgetDecision, RunControl
@@ -139,13 +174,9 @@ result = await client.agent2(
 )
 ```
 
-`OPENCOLLAB_UNBOUNDED_LIMITS=true` 对入口有不同影响。Base 和 Single2 的显式预算与步数继续生效，省略的限制变为无限制。`workflow()` 默认 `limit_mode="environment"` 会采用无限 token 和角色步数，即使传入了数值。需要保留明确限制时用 `limit_mode="explicit"`。`team()` 继续使用共享或声明额度及其 `max_steps`。时间和清理限制继续生效。
+### 在额度内安排最后一次交接
 
-额度检查发生在调用边界，已经进行中的请求可能超过剩余额度。停止后查看 `reason`、部分产物和最终用量，再判断是否继续任务。
-
-## 在额度内安排最后一次交接
-
-预算回调也可以通过 `BudgetDecision(..., final_prompt=...)` 给当前模型请求补充交接要求。该提示会重新计入输入预留量，因此应在尚有输出空间时发出。下面的回调沿用上例的 `BudgetDecision` 导入，并可替换 `RunControl` 中的 `decide_budget`。它保留软额度，接近额度时请 Agent 交付已有证据。
+回调还可以用 `BudgetDecision(..., final_prompt=...)` 给当前模型请求追加交接要求。这段提示会重新计入输入预留量，所以要在还有输出空间时发出。下面的回调可以替换上例 `RunControl` 里的 `decide_budget`：它保持软额度，接近额度时要求 Agent 交付已有证据。
 
 ```python
 def finish_when_low(snapshot):
@@ -157,22 +188,51 @@ def finish_when_low(snapshot):
     return BudgetDecision(allowance, final_prompt=final_prompt)
 ```
 
-这段回调用于已经设置有限软额度的调用。回调可以同步返回，也可以异步等待应用中的进展判断。运行时会在执行检查和请求输入估算时调用回调。单次响应超过软额度后，运行时也可能以 `after_response` 为原因再次调用回调。硬额度耗尽时按预算限制停止。最终提示会加入当前请求，任务完成程度从保存的文件与验证结果判断。
+- 只用于已设置有限软额度的调用。
+- 回调可以同步返回，也可以异步等待应用里的进展判断。
+- 运行时在执行检查和估算请求输入时调用回调。单次响应超过软额度后，也可能以 `after_response` 为原因再调用一次。
+- 最终提示加入当前请求。任务完成到什么程度，看保存的文件和验证结果。
 
-## 调整预算状态与行动提示
+## 无限制模式
 
-运行时默认每步向模型提供预算状态。进程变量 `OPENCOLLAB_BUDGET_NUDGE_MODE` 可以设为 `every-step`、`thresholds` 或 `off`。`thresholds` 在累计消耗跨过有限预算的 20%、40%、60% 和 80% 时提示，恢复会话后从已有消耗继续比较。阈值提示用于有限预算，`every-step` 还会在无限预算运行中显示累计用量。
+`OPENCOLLAB_UNBOUNDED_LIMITS=true` 对不同入口效果不同：
 
-`OPENCOLLAB_WRITE_NUDGE_MODE` 默认 `on`。Agent 具备写入工具且持续读取时，运行时会在 8 次读取后建议修改，在 16 次后要求一次工具调用。具备结构化提交工具且适合提交时，8 次读取后可以要求结构化提交。设为 `off` 可用于观察模型自行选择阅读、修改和提交时机的任务。预算状态与行动提示分别设置，实际 token 和步数限制继续按运行参数执行。
+| 入口 | 效果 |
+| --- | --- |
+| Base、Single2 | 显式传入的预算和步数仍生效，省略的限制变为无限 |
+| `workflow()` | 默认 `limit_mode="environment"`，即使传了数值也采用无限 token 和角色步数。要保留明确限制，用 `limit_mode="explicit"` |
+| `team()` | 继续使用共享或声明的额度及其 `max_steps` |
 
-以下命令在启动进程前选择按阈值提示预算，保留默认行动提示。模型配置继续沿用该工作区的设置。
+时间和清理限制在任何情况下都继续生效。
+
+额度检查发生在调用之间，已经在进行中的请求可能超出剩余额度。停止后看 `reason`、部分产物和最终用量，再决定是否继续。
+
+## 预算状态与行动提示
+
+这两类提示是 OC 注入给模型的 steering 消息，和实际的 token、步数限制分开设置。限制始终按运行参数执行。
+
+`OPENCOLLAB_BUDGET_NUDGE_MODE`（默认每步提示预算状态）：
+
+| 值 | 行为 |
+| --- | --- |
+| `every-step` | 每步提示。无限预算运行中也显示累计用量 |
+| `thresholds` | 累计消耗跨过有限预算的 20%、40%、60%、80% 时提示。恢复会话后从已有消耗继续比较 |
+| `off` | 不提示 |
+
+`OPENCOLLAB_WRITE_NUDGE_MODE`（默认 `on`）：
+
+- Agent 有写入工具却一直在读时，8 次读取后建议修改，16 次后要求一次工具调用。
+- 有结构化提交工具且适合提交时，8 次读取后可以要求结构化提交。
+- 设为 `off`，适合观察模型自己选择阅读、修改、提交时机的任务。
+
+两个变量都从进程环境读取，未知值分别回到 `every-step` 和 `on`。下面在启动前选择按阈值提示预算，行动提示保持默认，模型配置沿用该工作区设置：
 
 ```bash
 OPENCOLLAB_BUDGET_NUDGE_MODE=thresholds \
   opencollab --workspace /path/to/application --budget 200000
 ```
 
-提示模式由进程环境读取，未知值分别回到 `every-step` 和 `on`。实现与阈值见[运行提示策略](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/steering.py)，预算回调和最终提示见[运行控制](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/run_control.py)。
+实现与阈值见[运行提示策略](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/steering.py)，预算回调和最终提示见[运行控制](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/run_control.py)。
 
 ## 来源
 
@@ -180,4 +240,4 @@ OPENCOLLAB_BUDGET_NUDGE_MODE=thresholds \
 
 ## 相关指南
 
-[上下文窗口与自动压缩](context-compaction.md)　[超时、重试与请求卡住诊断](timeouts-retries.md)　[逻辑模型路由与共享请求容量](../models/model-routing-request-capacity.md)　[中断任务与检查资源清理](cancellation-cleanup.md)　[统计 token、缓存命中和费用](../observability/token-cache-cost.md)
+[上下文窗口与自动压缩](context-compaction.md)　[超时、重试与请求卡住诊断](timeouts-retries.md)　[逻辑模型路由与共享请求容量](../models/model-routing-request-capacity.md)　[停止任务并确认清理完成](cancellation-cleanup.md)　[统计 token、缓存命中和费用](../observability/token-cache-cost.md)

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>在自己的项目中完成第一次运行 · OpenCollab 帮助中心</title>
-<meta name="description" content="选好项目目录，接通模型，并完成一次可观察的终端任务。">
+<meta name="description" content="配好模型，用 --workspace 指向自己的项目，在终端跑通第一个任务并找到运行记录。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/first-run-workspace/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,56 +35,119 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details open><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="index.html" aria-current="page">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details open><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="index.html" aria-current="page">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="../weave-workflow/index.html">用 Weave 分组接力完成任务并检查交付</a><a href="../reconstruct-workflow/index.html">用 Reconstruct 从输入输出反推程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="../report-problem-and-request-help/index.html">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">安装与开始使用</p>
 <h1 id="在自己的项目中完成第一次运行">在自己的项目中完成第一次运行</h1>
-<p>从 OpenCollab 源码根目录启动 CLI，并用 <code>--workspace</code> 指向自己的项目，就能在终端完成第一次任务。根命令默认启动 Self-Collaboration 团队，入口是 Analyst，内部成员使用 Coder 和 Tester。工作区决定 Agent 操作的项目文件，启动命令所在目录则决定使用哪个源码环境。</p>
-<h2 id="准备项目与模型设置">准备项目与模型设置</h2>
-<p>按安装指南准备好源码环境，再把下面的 <code>/path/to/application</code> 换成已有项目目录。CLI 和 SDK 都要求工作区已经存在，并从该目录读取项目文件。</p>
-<p>在 OpenCollab 源码根目录复制配置示例，然后用编辑器填写所用服务的 provider、base URL、物理模型名称和凭据。</p>
+<p>最小用法：在 OpenCollab 源码根目录执行 <code>uv run opencollab --workspace /path/to/your-project</code>。这会以你的项目为工作区，启动内置的 Self-Collaboration 团队：入口角色是 Analyst，它可以把实现交给 Coder、把验证交给 Tester。下面依次是配模型、启动、找运行记录和试一个 Workflow。</p>
+<p>两个目录别搞混：</p>
+<table>
+<thead>
+<tr>
+<th>目录</th>
+<th>决定什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--workspace</code> 指向的目录</td>
+<td>Agent 读写的项目文件。必须已经存在。</td>
+</tr>
+<tr>
+<td>执行命令时所在的目录</td>
+<td>用哪个 OpenCollab 源码环境（<code>uv run</code> 找哪个项目环境）。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="第一步配置模型">第一步：配置模型</h2>
+<p>前提：已按安装指南装好源码环境。</p>
+<ol>
+<li>在 OpenCollab 源码根目录复制配置示例：</li>
+</ol>
 <pre><code class="language-bash">cp configs/.env.example configs/.env
 </code></pre>
-<p>例如支持 Chat Completions 的兼容服务使用以下结构。占位值需替换成服务实际提供的内容，凭据文件保持在本地。</p>
+<ol start="2">
+<li>编辑 <code>configs/.env</code>，填写 provider、base URL、物理模型名称和凭据。下面是兼容 Chat Completions 的服务的写法，占位值换成服务实际提供的内容。凭据文件只留在本地。</li>
+</ol>
 <pre><code class="language-dotenv">OPENCOLLAB_PROVIDER=openai
 OPENCOLLAB_BASE_URL=https://your-endpoint.example/v1
 OPENCOLLAB_MODEL=your-model-id
 OPENCOLLAB_API_KEY=your-api-key
 </code></pre>
-<p>配置搜索先读取工作区下的 <code>configs/.env</code> 和 <code>.env</code>，再读取启动目录下的同名位置。若两处已有不同设置，按配置优先级指南确认生效值。需要直接选定某一文件时，可在命令前设置 <code>OPENCOLLAB_CONFIG_FILE</code>。</p>
-<h2 id="启动并观察一次任务">启动并观察一次任务</h2>
-<p>先运行交互入口，在终端里输入一个范围清晰的任务，例如查看项目入口并说明测试命令。</p>
+<p>配置文件的查找顺序：先找工作区下的 <code>configs/.env</code> 和 <code>.env</code>，再找启动目录下的同名文件。两处设置不同时，按配置优先级指南确认哪个生效。想直接指定某个文件，在命令前设置 <code>OPENCOLLAB_CONFIG_FILE</code>。</p>
+<h2 id="第二步交互式启动">第二步：交互式启动</h2>
 <pre><code class="language-bash">uv run opencollab --workspace /path/to/application
 </code></pre>
-<p>会话从 agent 0 开始。内置 Analyst 可把实现交给独立工作区中的 Coder，采用其完成改动后再安排 Tester。具体交接由 Agent 的实际工具调用决定，可以用 Tab 和 Shift+Tab 查看成员消息。项目理解任务也可能直接由入口角色完成。</p>
-<p>希望输入固定任务并在该轮结束后退出时，使用 <code>--prompt</code>。在下面的命令中，<code>--trace</code> 开启轨迹记录。</p>
+<p>进入后输入一个范围清楚的任务，例如&quot;查看项目入口并说明测试命令&quot;。</p>
+<ul>
+<li>会话从 agent 0（入口角色 Analyst）开始。</li>
+<li>Analyst 可以把实现交给 Coder。Coder 在独立工作区里改代码，Analyst 采用改动后再安排 Tester。</li>
+<li>实际怎么交接，取决于 Agent 真正发出的工具调用。只是理解项目的任务，入口角色也可能自己就做完了。</li>
+<li>用 Tab 和 Shift+Tab 切换查看各成员的消息。</li>
+</ul>
+<h2 id="或者一次性任务">或者：一次性任务</h2>
+<p>只跑一轮就退出，用 <code>--prompt</code>。下面的 <code>--trace</code> 开启轨迹记录。</p>
 <pre><code class="language-bash">uv run opencollab --workspace /path/to/application \
   --prompt '阅读项目入口和测试配置，说明如何运行最小验证。' \
   --trace
 </code></pre>
-<p>较长任务可以写入 UTF-8 文本文件，然后改用 <code>--prompt-file /absolute/path/task.txt</code>。这两个输入选项互斥，输入文件最大为 4 MiB。添加 <code>--hold</code> 会在一次性任务结束后保留查看界面，此时可以切换成员，输入 <code>q</code> 或 <code>exit</code> 离开。<code>--hold</code> 需要配合其中一个任务输入选项。</p>
-<h2 id="找到运行记录">找到运行记录</h2>
-<p>终端会显示本次会话位置。团队自动保存目录位于项目的 <code>.opencollab/sessions/</code> 下，每个成员有自己的 JSON 会话，另有 <code>team.json</code> 描述该次团队运行。先查看 Agent 的回答，再核对文件改动和实际验证输出。希望继续主会话时，使用保存恢复指南中的 <code>--session</code>。</p>
-<h2 id="尝试工作流入口">尝试工作流入口</h2>
-<p>工作流使用另一组子命令，选项放在对应子命令后。先列出该工作区能够发现的名称，再查看具体工作流的帮助。</p>
+<p>相关选项：</p>
+<table>
+<thead>
+<tr>
+<th>选项</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--prompt</code></td>
+<td>直接在命令行给任务。</td>
+</tr>
+<tr>
+<td><code>--prompt-file /absolute/path/task.txt</code></td>
+<td>从 UTF-8 文本文件读任务，适合长任务。文件最大 4 MiB。与 <code>--prompt</code> 互斥。</td>
+</tr>
+<tr>
+<td><code>--hold</code></td>
+<td>一次性任务结束后保留查看界面，可以切换成员，输入 <code>q</code> 或 <code>exit</code> 离开。必须配合 <code>--prompt</code> 或 <code>--prompt-file</code> 之一。</td>
+</tr>
+<tr>
+<td><code>--trace</code></td>
+<td>开启轨迹记录。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="第三步找到运行记录">第三步：找到运行记录</h2>
+<ul>
+<li>终端会显示本次会话的保存位置。</li>
+<li>团队运行自动保存在项目的 <code>.opencollab/sessions/</code> 下。每个成员一个 JSON 会话文件，另有 <code>team.json</code> 描述这次团队运行。</li>
+<li>检查顺序：先看 Agent 的回答，再核对文件改动和实际的验证输出。</li>
+<li>想接着主会话继续，用保存恢复指南里的 <code>--session</code>。</li>
+</ul>
+<h2 id="试一下-workflow-入口">试一下 Workflow 入口</h2>
+<p>Workflow 走单独的子命令，选项要写在子命令后面。先列出这个工作区能发现的工作流，再看具体某个的帮助：</p>
 <pre><code class="language-bash">uv run opencollab workflow list --workspace /path/to/application
 uv run opencollab workflow run duo --help
 </code></pre>
-<p>下面的命令允许 Duo 在宿主项目中执行 shell 命令。</p>
+<p>下面的命令运行 Duo，并允许它直接在宿主项目里执行 shell 命令：</p>
 <pre><code class="language-bash">uv run opencollab workflow run duo --workspace /path/to/application \
   --task '修复指定问题，并运行项目验证。' \
   --args '{&quot;allow_unisolated_shell&quot;:true}'
 </code></pre>
-<p><code>--task</code> 写入工作流的 <code>goal</code> 参数。如果已在 <code>--args</code> 中提供 <code>goal</code>，命令中省略 <code>--task</code>。需要进程隔离时，按执行环境指南准备环境后再运行。</p>
+<ul>
+<li><code>--task</code> 会写入工作流的 <code>goal</code> 参数。如果 <code>--args</code> 里已经给了 <code>goal</code>，就别再写 <code>--task</code>。</li>
+<li>需要进程隔离时，先按执行环境指南准备好环境再运行。</li>
+</ul>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/README.zh-CN.md#L47">README.zh-CN.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L44">opencollab/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/cli/main.py#L58">opencollab/adapters/cli/main.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L123">opencollab/sdk/client.py</a></p>
 <h2 id="相关指南">相关指南</h2>
-<p><a href="../install-source-checkout/index.html">安装前提与版本选择</a>　<a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a>　<a href="../session-save-resume/index.html">保存会话与恢复历史</a></p>
+<p><a href="../install-source-checkout/index.html">安装 OpenCollab</a>　<a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a>　<a href="../session-save-resume/index.html">保存会话与恢复历史</a></p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/first-run-workspace.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%87%86%E5%A4%87%E9%A1%B9%E7%9B%AE%E4%B8%8E%E6%A8%A1%E5%9E%8B%E8%AE%BE%E7%BD%AE">准备项目与模型设置</a><a href="#%E5%90%AF%E5%8A%A8%E5%B9%B6%E8%A7%82%E5%AF%9F%E4%B8%80%E6%AC%A1%E4%BB%BB%E5%8A%A1">启动并观察一次任务</a><a href="#%E6%89%BE%E5%88%B0%E8%BF%90%E8%A1%8C%E8%AE%B0%E5%BD%95">找到运行记录</a><a href="#%E5%B0%9D%E8%AF%95%E5%B7%A5%E4%BD%9C%E6%B5%81%E5%85%A5%E5%8F%A3">尝试工作流入口</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%AC%AC%E4%B8%80%E6%AD%A5%E9%85%8D%E7%BD%AE%E6%A8%A1%E5%9E%8B">第一步：配置模型</a><a href="#%E7%AC%AC%E4%BA%8C%E6%AD%A5%E4%BA%A4%E4%BA%92%E5%BC%8F%E5%90%AF%E5%8A%A8">第二步：交互式启动</a><a href="#%E6%88%96%E8%80%85%E4%B8%80%E6%AC%A1%E6%80%A7%E4%BB%BB%E5%8A%A1">或者：一次性任务</a><a href="#%E7%AC%AC%E4%B8%89%E6%AD%A5%E6%89%BE%E5%88%B0%E8%BF%90%E8%A1%8C%E8%AE%B0%E5%BD%95">第三步：找到运行记录</a><a href="#%E8%AF%95%E4%B8%80%E4%B8%8B-workflow-%E5%85%A5%E5%8F%A3">试一下 Workflow 入口</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>
 </body>
 </html>

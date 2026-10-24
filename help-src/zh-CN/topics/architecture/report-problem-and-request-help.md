@@ -1,9 +1,9 @@
 ---
 {
   "id": "report-problem-and-request-help",
-  "title": "反馈问题、请求帮助与提交改进建议",
+  "title": "遇到问题怎么反馈、求助或提建议",
   "category": "architecture",
-  "summary": "选择正确反馈入口，用最小复现和必要记录让维护者理解遇到的问题。",
+  "summary": "选对 GitHub 反馈入口，附上最小复现和脱敏后的记录，让维护者能快速重现你遇到的问题。",
   "aliases": [
     "怎么提 issue",
     "找谁帮忙",
@@ -13,7 +13,9 @@
     "提供哪些日志",
     "脱敏",
     "安全漏洞",
-    "Security Advisories"
+    "Security Advisories",
+    "怎么反馈问题",
+    "提问模板"
   ],
   "keywords": [
     "问题反馈",
@@ -26,7 +28,11 @@
     "logs"
   ],
   "questions": [
-    "选择正确反馈入口，用最小复现和必要记录让维护者理解遇到的问题？"
+    "选择正确反馈入口，用最小复现和必要记录让维护者理解遇到的问题？",
+    "遇到 bug 该在哪里提？",
+    "提 issue 要附哪些信息？",
+    "发现安全漏洞怎么私下报告？",
+    "分享日志前要删掉什么？"
   ],
   "related": [
     "configuration-diagnostics",
@@ -39,21 +45,45 @@
 }
 ---
 
-# 反馈问题、请求帮助与提交改进建议
+# 遇到问题怎么反馈、求助或提建议
 
-遇到报错可以提交 Bug report，配置或用法疑问可以选择 Question or support，需要新能力时使用 Feature request。反馈中先写想完成的任务、预期结果和实际观察，再提供足以重复问题的最小命令或 SDK 调用。疑似安全漏洞通过私密安全报告入口提交。
+OC 的反馈走 GitHub Issues，有三个模板：Bug report、Question or support、Feature request。安全漏洞走私密的 Security Advisories。写法很简单：先写目标、预期和实际观察，再给最小复现，附上 `run_id` 等运行记录，提交前脱敏。下面按步骤说明。
 
-## 选择反馈入口
+## 第一步：选对入口
 
-[GitHub Issues 模板选择页](https://github.com/RISE-X-Lab/OpenCollab/issues/new/choose)提供这三类入口。Bug report 适合可观察的错误行为，使用问题适合解释目标与卡住的位置，功能建议应描述现有工作中具体遇到的困难，以及建议能力怎样改善它。
+| 你的情况 | 选哪个 | 入口 |
+| --- | --- | --- |
+| 看到了错误行为或报错 | Bug report | [Issues 模板选择页](https://github.com/RISE-X-Lab/OpenCollab/issues/new/choose) |
+| 不知道怎么配置、怎么用 | Question or support | 同上 |
+| 希望增加新能力 | Feature request | 同上 |
+| 疑似安全漏洞 | 私密安全报告 | [Security Advisories](https://github.com/RISE-X-Lab/OpenCollab/security/advisories/new) |
 
-安全问题使用 [Security Advisories 私密报告](https://github.com/RISE-X-Lab/OpenCollab/security/advisories/new)。框架涉及模型生成代码执行、凭据和容器资源，报告应说明触发条件、影响范围与复现材料。仓库安全策略中给出的目标是在 72 小时内确认收到。
+各类写法要点：
 
-## 让维护者复现同一个问题
+- Bug report：写清可以观察到的错误行为。
+- 使用问题：写清你的目标，以及卡在哪一步。
+- 功能建议：写清你现在工作中遇到的具体困难，以及这个能力会怎样改善它。
+- 安全问题：不要发公开 issue。框架会执行模型生成的代码，也涉及凭据和容器资源，所以要走私密入口。报告里说明触发条件、影响范围和复现材料。仓库安全策略给出的目标是 72 小时内确认收到。
 
-Bug 模板需要实际行为、复现步骤、编排模式和调用接口。补充模型与 provider、包版本或 Git 提交，能帮助区分配置问题与执行路径差异。命令应包含关键选项，SDK 示例保留触发错误的最小函数及参数，团队文件则保留相关角色、工具与拓扑。
+## 第二步：按这个顺序写问题
 
-下面是一份补丁交付问题的英文反馈示例。提交时填写实际版本、任务和观察结果。
+1. 想完成什么任务（Goal）。
+2. 预期结果（Expected behavior）。
+3. 实际看到了什么（Observed behavior）。
+4. 最小复现：能重复问题的最短命令或 SDK 调用（Reproduction）。
+5. 环境信息：编排模式、调用接口、模型与 provider、包版本或 Git 提交（Environment）。
+6. 证据：脱敏后的工具结果、diff、traceback（Evidence）。
+
+"最小复现"指去掉无关内容后，仍能触发问题的最小例子。具体来说：
+
+- 命令：保留关键选项。
+- SDK 示例：保留触发错误的最小函数和参数。
+- 团队文件：保留相关的角色、工具与拓扑。
+- 项目：一个小项目加一次工具操作就够，方便维护者直接执行。
+
+补充模型、provider、包版本或 Git 提交，能帮维护者区分"配置问题"和"执行路径不同"。
+
+下面是一份补丁交付问题的英文反馈示例。提交时换成你的实际版本、任务和观察结果。
 
 ```text
 Goal
@@ -76,14 +106,41 @@ Evidence
 Include the sanitized tool result, final diff, and relevant traceback.
 ```
 
-描述观察时，写明哪个文件保留旧内容、工具返回什么、命令退出码是多少。最小复现可以保留一个小项目和一次工具操作，使维护者直接执行。
+描述"实际看到了什么"时要具体：哪个文件还是旧内容，工具返回了什么，命令退出码是多少。
 
-## 选择并处理相关记录
+## 第三步：附上有用的记录
 
-运行结果中的 `status`、`reason`、`agent_failures` 和 `metrics["run_id"]` 可以关联问题。产物目录、清单和轨迹能展示调用顺序，保存会话能帮助理解当时模型看到的任务。配置问题可以附上生效的配置字段和相关 CLI 参数。
+这些信息能帮维护者定位问题：
 
-提交前应移除 API key、授权头、带凭据的 URL、私有仓库内容与敏感日志。完整轨迹可能包含任务文件和模型回答，分享时先检查实际内容。保留错误类型、调用顺序、必要参数和相关日志片段，让维护者能够还原失败过程。
+| 记录 | 有什么用 |
+| --- | --- |
+| 运行结果里的 `status`、`reason`、`agent_failures`、`metrics["run_id"]` | 关联到具体的一次运行 |
+| 产物目录、清单和轨迹 | 展示调用顺序 |
+| 保存的会话 | 看当时模型收到的任务 |
+| 生效的配置字段和相关 CLI 参数 | 排查配置问题 |
 
-收到修复版本后，用原复现步骤再次执行，检查原先出错的文件或操作，并将观察补充到同一问题。说明使用的修复提交、实际执行命令和最终结果，可以帮助维护者判断问题是否得到解决。
+## 第四步：提交前脱敏
 
-模板字段见[Bug report](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/bug_report.yml)、[使用问题](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/question.yml)和[功能建议](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/feature_request.yml)。安全处理见[安全策略](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/SECURITY.md)，相关记录的读取方式见 [读取运行结果与判断任务是否完成](../observability/run-results.md) 和 [查看 Agent 做了什么](../observability/trace-and-events.md)。
+提交前删掉这些内容：
+
+- API key
+- 授权头
+- 带凭据的 URL
+- 私有仓库内容
+- 敏感日志
+
+完整轨迹可能包含任务文件和模型回答，分享前先打开检查一遍。保留错误类型、调用顺序、必要参数和相关日志片段，让维护者仍能还原失败过程。
+
+## 收到修复之后
+
+1. 用原来的复现步骤再执行一次。
+2. 检查原先出错的文件或操作。
+3. 在同一个 issue 下补充：用了哪个修复提交、实际执行的命令、最终结果。
+
+这样维护者能判断问题是否真正解决。
+
+## 参考
+
+- 模板字段：[Bug report](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/bug_report.yml)、[使用问题](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/question.yml)、[功能建议](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/feature_request.yml)
+- 安全处理：[安全策略](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/SECURITY.md)
+- 怎么读这些记录：[读取运行结果与判断任务是否完成](../observability/run-results.md)、[查看 Agent 做了什么](../observability/trace-and-events.md)

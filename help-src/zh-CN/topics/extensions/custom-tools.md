@@ -3,19 +3,24 @@
   "id": "custom-tools",
   "title": "把自己的函数接成工具",
   "category": "extensions",
-  "summary": "通过公开 Tool 接口加入业务能力并让 Agent 在正确环境中调用。",
+  "summary": "实现 opencollab.tools.Tool 结构接口，把业务函数变成 Agent 或 Workflow 可调用的工具，并通过 runtime 在 Agent 所在环境里读写文件和跑命令。",
   "aliases": [
     "Tool",
     "execute_with_runtime",
     "JSON Schema",
-    "接入自己的API"
+    "接入自己的API",
+    "自定义 tool",
+    "runtime.environment"
   ],
   "keywords": [
     "自定义工具",
     "工具扩展"
   ],
   "questions": [
-    "通过公开 Tool 接口加入业务能力并让 Agent 在正确环境中调用？"
+    "通过公开 Tool 接口加入业务能力并让 Agent 在正确环境中调用？",
+    "怎样写一个自定义工具给 Agent 用？",
+    "自定义工具里为什么不能直接用 open() 或 subprocess？",
+    "工具的超时怎么设置？"
   ],
   "related": [],
   "verified_ref": "e7946a42"
@@ -24,24 +29,24 @@
 
 # 把自己的函数接成工具
 
-当任务需要新的业务操作时，可以实现公开的 `opencollab.tools.Tool` 结构接口。工具提供名称、JSON Schema 和异步执行方法，调用方再把实例加入 Agent 或 Workflow 的工具集合。
+OC 的自定义工具是一个满足 `opencollab.tools.Tool` 结构接口的普通类，不需要继承基类或注册装饰器（鸭子类型即可）。它提供名称、JSON Schema 参数和一个异步方法 `execute_with_runtime(params, runtime)`。和常见框架的主要区别在 `runtime` 参数：它带着当前 Agent 的执行环境，工具通过它读写文件、跑命令，操作才会落在 Agent 实际所在的工作树或容器里。最小用法是把实例放进 `tools=[...]`。
 
-## 一个最小只读工具
+## 最小示例：只读工具
 
-下面的工具查询固定的测试策略，用于验证工具接口。把它保存为普通 Python 模块即可。
+下面的工具按语言返回固定的测试命令，存成普通 Python 模块即可。
 
 ```python
 class ProjectPolicy:
-    name = "project_policy"
+    name = "project_policy"                    # 工具名，模型用它调用
     description = "查询项目建议使用的测试命令。"
-    parameters = {
+    parameters = {                             # JSON Schema，OC 分派时据此校验参数
         "type": "object",
         "properties": {"language": {"type": "string", "enum": ["python", "javascript"]}},
         "required": ["language"],
         "additionalProperties": False,
     }
-    default_timeout = 30.0
-    disable_outer_timeout = False
+    default_timeout = 30.0                     # 默认执行时限（秒）
+    disable_outer_timeout = False              # False：由运行时负责外层超时、取消与清理
 
     def to_openai_schema(self):
         return {
@@ -58,13 +63,34 @@ class ProjectPolicy:
         return commands[params["language"]]
 ```
 
-在已有异步应用函数中调用 `await oc.agent("找出测试命令", tools=[ProjectPolicy()])`，或在工作流中把同一个工具实例传给 `ctx.agent`。模型提交的参数通过声明的 schema 检查，执行结果以文字返回会话。
+使用方式：
 
-## 什么时候需要 runtime
+- 在 SDK 里：在已有的异步函数中调用 `await oc.agent("找出测试命令", tools=[ProjectPolicy()])`。
+- 在 Workflow 里：把同一个工具实例传给 `ctx.agent`。
 
-内存中的查询可以直接返回结果，无需访问 runtime。操作文件或命令的工具应使用 runtime 提供的执行环境，让路径与资源跟随当前 Agent。直接使用宿主 `open()` 或 `subprocess` 会把操作放在 Python 进程所在机器上，与任务容器中的目录不同。
+模型提交的参数先按 `parameters` 校验，执行结果以文字返回会话。
 
-下面的工具复用前一个类的 schema 转换方法，从绑定环境读取固定项目文件。把两个类放进同一个模块后，可将 `ReadProjectPolicy()` 直接放入工具列表。
+## 接口字段一览
+
+| 成员 | 说明 |
+| --- | --- |
+| `name` | 稳定、唯一，方便在日志里识别 |
+| `description` | 说明什么时候用、会返回什么 |
+| `parameters` | JSON Schema。尽量用类型、必填字段和枚举表达约束 |
+| `default_timeout` | 默认执行秒数 |
+| `disable_outer_timeout` | 是否由工具自己管理外层期限。普通短工具用 `False` |
+| `to_openai_schema()` | 返回发给模型的函数定义 |
+| `execute_with_runtime(params, runtime)` | 异步执行，返回字符串 |
+
+返回值用字符串。业务对象可以先用 `json.dumps` 序列化。
+
+## 操作文件或命令时用 runtime
+
+纯内存的查询可以不碰 `runtime`。但只要涉及文件或命令，就要用 `runtime.environment`。
+
+原因：直接用宿主的 `open()` 或 `subprocess`，操作发生在 Python 进程所在的机器上。Agent 如果在工作树或容器里运行，那里的目录和宿主不是同一个。
+
+下面的工具继承前一个类（复用 `to_openai_schema`），从 Agent 绑定的环境读取文件。两个类放在同一个模块里，就可以把 `ReadProjectPolicy()` 直接放进工具列表。
 
 ```python
 class ReadProjectPolicy(ProjectPolicy):
@@ -73,26 +99,36 @@ class ReadProjectPolicy(ProjectPolicy):
     parameters = {'type': 'object', 'properties': {}, 'additionalProperties': False}
 
     async def execute_with_runtime(self, params, runtime):
+        # 没有绑定执行环境时返回错误文字，而不是抛异常
         if runtime.environment is None:
             return 'Error: no execution environment available.'
         return await runtime.environment.read_file('PROJECT_POLICY.md')
 ```
 
-`runtime.environment` 提供 `read_file`、`write_file` 和 `exec_cmd` 等执行入口，`runtime.aid` 与 `runtime.tool_call_id` 可关联当前调用。工具的普通返回值采用字符串，业务对象可先用 `json.dumps` 序列化。模型参数在 OC 工具分派时按 schema 检查，应用直接调用 `execute_with_runtime` 时，应自行提供已校验的参数。
+`runtime` 上常用的成员：
 
-`default_timeout` 为工具设置默认执行秒数，`disable_outer_timeout` 决定是否交由工具自己管理外层期限。普通短工具可沿用示例的有限时限和 `False`，让运行时处理取消及清理。状态型工具在多个会话或候选中复用时，应由实现者管理状态归属。需要候选测试记录的工具还应按公开 `VerificationTool` 提供 `verified_targets`，通过真实验证填充记录。
+| 成员 | 用途 |
+| --- | --- |
+| `runtime.environment` | 执行入口，提供 `read_file`、`write_file`、`exec_cmd` 等 |
+| `runtime.aid` | 当前调用者的成员编号 |
+| `runtime.tool_call_id` | 当前这次工具调用的编号 |
 
-工具实现需要管理自己的权限、外部请求和副作用。涉及写入时，在实现中确定作用范围、失败后的数据保留方式，以及重复执行时怎样处理已有结果。需要隔离或回滚的操作也由实现者接入相应机制。
+## 进阶与注意事项
 
-## 如何说明工具
+- 参数校验只在 OC 分派工具调用时进行。你的代码直接调用 `execute_with_runtime` 时，要自己传入已校验的参数。
+- 有状态的工具如果在多个会话或候选里复用，状态归谁由实现者负责管理。
+- 需要候选测试记录的工具，要按公开的 `VerificationTool` 提供 `verified_targets`，并用真实验证来填充记录。
+- 权限、外部请求和副作用由工具自己负责。涉及写入时，要在实现里定好：作用范围、失败后数据怎样保留、重复执行时怎样处理已有结果。需要隔离或回滚的操作，也由实现者接入相应机制。
+- 较长的使用说明可以放进项目 Skill（见 [使用与编写 Skill](skills-on-demand.md)），工具本身只负责执行。
 
-名称应稳定、唯一，并容易从日志中识别。描述说明什么时候使用和会返回什么。参数约束尽量用类型、必填字段与枚举表达。较长的使用方法可以放到项目 Skill，工具仍然负责实际执行。
+## 怎样测试一个工具
 
-## 验证工具调用
+1. 用合法参数直接调用，检查返回结果。
+2. 覆盖缺字段、类型错误、执行异常和超时。
+3. 用本地模型替身或固定的工具调用，确认 Agent 收到了 schema、调用成功、结果进入了下一轮会话。
+4. 用真实任务观察模型是否会在合适的时机选这个工具。
 
-先用合法参数直接测试返回结果，再覆盖缺字段、错误类型、执行异常和超时。随后使用本地模型替身或固定工具调用，验证 Agent 收到了 schema、调用成功，且结果进入了下一轮会话。最后用真实任务观察模型是否会在合适时机选择该工具。
-
-若要把新工具贡献为内置能力，继续遵循仓库的依赖方向和工具注册约定。应用私有工具通常可直接通过公开接口组合。
+想把新工具贡献为内置能力，要遵循仓库的依赖方向和工具注册约定。应用私有的工具通常直接通过公开接口组合即可。
 
 ## 源码与进一步阅读
 

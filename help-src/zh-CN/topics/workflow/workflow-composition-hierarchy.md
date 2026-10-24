@@ -1,9 +1,9 @@
 ---
 {
   "id": "workflow-composition-hierarchy",
-  "title": "理解 Agent、Team 与 Workflow 的调用层级",
+  "title": "Agent、Team 和 Workflow 怎么互相调用",
   "category": "workflow",
-  "summary": "根据所需的成员自治或程序控制选择调用层级，并为组合明确预算、环境和结果所有者。",
+  "summary": "讲清楚 Agent、Team、Workflow 三种运行方式各管什么，以及它们嵌套使用时预算和停止由谁负责。",
   "aliases": [
     "Workflow 里面可以再跑 Workflow 吗",
     "Workflow 可以调用 Team 吗",
@@ -15,10 +15,15 @@
     "Agent Team Workflow",
     "调用层级",
     "Workflow 组合",
-    "run_workflow"
+    "run_workflow",
+    "manage_workflow",
+    "candidate_workflow"
   ],
   "questions": [
-    "根据所需的成员自治或程序控制选择调用层级，并为组合明确预算、环境和结果所有者？"
+    "Workflow 里面能再调用另一个 Workflow 吗？",
+    "Team 成员怎样运行一个 Workflow？",
+    "在 Workflow 里怎么启动一个 Team？",
+    "嵌套运行时预算算谁的？"
   ],
   "related": [
     "choose-working-mode",
@@ -31,56 +36,107 @@
 }
 ---
 
-# 理解 Agent、Team 与 Workflow 的调用层级
+# Agent、Team 和 Workflow 怎么互相调用
 
-同一个 Python 应用可以通过 SDK 启动 Agent、Team 和 Workflow。三种入口都返回 `RunResult`，各自的控制方式有所区别。Agent 执行单次会话，Team 让成员按角色和通信关系协作，Workflow 由异步 Python 函数安排步骤。组合时先确定运行的创建者，以及额度、停止和交付由谁管理。
+OC 有三种运行入口，都返回 `RunResult`：Agent 是单个 agent loop 会话；Team 是由模型自主派发、按角色和通信关系协作的多 agent（成员自己决定找谁、做什么）；Workflow 是用异步 Python 函数显式编排 agent 调用（类似把 LangGraph 的图换成普通 Python 控制流）。
 
-## 在宿主使用三个入口
+三者可以嵌套：Workflow 里调 Agent 或子流程，Team 成员调 Workflow，Workflow 里起 Team。嵌套时 OC 的默认行为各不相同，关键差别在于预算算谁的、谁负责停止、结果交给谁。本文按嵌套方向列出入口和默认规则。
+
+## 先选入口：三种方式对照
+
+| 方式 | 谁决定下一步 | 适合的场景 |
+| --- | --- | --- |
+| Agent | 单个 agent loop | 一次会话能完成 |
+| Team | 成员模型自主派发 | 需要角色分工、互相审查，流程不固定 |
+| Workflow | 你写的异步 Python | 步骤固定，需要程序精确控制 |
+
+`RunResult` 里有状态、输出和产物。
+
+## 在你的 Python 程序里分别启动三者
 
 ```python
 from opencollab import OpenCollab
 
+# 一个最简单的 Workflow：让一个 Agent 做摘要
 async def summarize(ctx, args):
     return await ctx.agent(args['goal'], label='summary', tools=[])
 
 async def run_independent_examples(workspace, team_config):
     client = OpenCollab(workspace)
+    # 单次 Agent 会话
     single = await client.agent('概括工作区任务', tools=[])
+    # 运行上面的 Workflow 函数，预算 10000 token
     flow = await client.workflow(
         summarize, {'goal': '解释任务中需要验证的行为'}, budget=10000,
     )
+    # 启动一个 Team，team_config 要换成你实际的 Team 配置
     team = await client.team(
         '检查任务需求并提交协作结果', config=team_config, budget=30000,
     )
     return {'agent': single.status, 'workflow': flow.status, 'team': team.status}
 ```
 
-这段函数展示独立运行的显式调用，`team_config` 应指向实际 Team 配置。各次运行分别返回状态、输出和产物。它们使用同一个 client 配置，预算仍按各次入口传入的值处理，工作区的先前改动会按环境策略影响后续运行。
+这里有几点要知道：
 
-## 在 Workflow 内组合步骤
+1. 这三次是彼此独立的运行，各自返回状态、输出和产物。
+2. 它们用同一个 client 配置，但预算各算各的，按每次调用传入的值。
+3. 它们共用同一个工作区。前一次运行留下的改动会不会影响后一次，取决于环境策略。
 
-`ctx.agent` 与 `ctx.agent_run` 建立属于当前 Workflow 的会话，共享该运行的额度和容量，并按当前环境策略执行工具。使用 `await helper(ctx, args)` 调用普通异步子函数时，资源归属也继续保持在当前 ctx。
+## 在 Workflow 里面再调用 Agent 或子流程
 
-如果整套子流程需要候选环境，可用 `ctx.candidate_workflow(fn, args, label=...)`。其子会话受父运行的会话容量、集合容量和绝对期限管理，返回 `CandidateRun`，供父流程检查后采用。当前候选子上下文未配备新候选后端。子流程要继续拆分逻辑时，可以调用普通异步函数。
+Workflow 函数的第一个参数 `ctx` 是这次运行的上下文，预算、并发容量、环境策略都挂在它上面。常用做法有三种：
 
-## Team 成员怎样进入 Workflow
+- 调 `ctx.agent` 或 `ctx.agent_run`：开一个属于当前 Workflow 的会话。它和当前运行共用预算和并发容量，工具按当前环境策略执行。
+- 写 `await helper(ctx, args)`：把 `ctx` 传给另一个普通异步函数。这就是普通 Python 函数调用，资源仍算在当前 `ctx` 上。
+- 调 `ctx.candidate_workflow(fn, args, label=...)`：把整套子流程放进一个单独的候选环境里跑。返回 `CandidateRun`，父流程检查后再决定要不要采用。
 
-| 入口 | 适合的来源 | 返回时机 | 资源归属 |
+关于 `candidate_workflow` 的细节：
+
+- 子流程里的会话受父运行管着，包括会话容量、集合容量和绝对期限（到点必须结束的时间）。
+- 当前候选子上下文没有配备新的候选后端，所以子流程里不能再开一层候选环境。
+- 子流程想继续拆分逻辑，可以调用普通异步函数。
+
+详细用法见[复用子 Workflow，并在候选环境里试改动](compose-workflow-candidates.md)。
+
+## Team 成员怎样运行 Workflow
+
+Team 成员有两种工具可以启动 Workflow。两种都要在角色配置里明确写上才能用。
+
+| 入口 | 运行的是什么 | 什么时候返回 | 资源算谁的 |
 | --- | --- | --- | --- |
-| `run_workflow` | 启动时已经注册的名称 | 完整工作流结束后返回 | 借用调用成员的环境并计入其额度 |
-| `manage_workflow launch` | 成员写出的 Python 文件 | 启动后立即返回 child id | 创建成员拥有子运行并管理生命期 |
-| 普通异步子函数 | 源代码中已导入的函数 | 子函数返回时继续 | 沿用传入的 ctx |
-| `candidate_workflow` | 源代码中的子流程 | 候选捕获与清理后返回 | 候选环境、父资源容量和授权 |
+| `run_workflow` | 启动时已经注册好的名称 | 整个工作流结束后返回 | 借用调用成员的环境，计入它的额度 |
+| `manage_workflow launch` | 成员自己写的 Python 文件 | 启动后马上返回 child id | 由创建它的成员拥有并管理 |
+| 普通异步子函数 | 源代码里已导入的函数 | 子函数返回时继续 | 沿用传入的 ctx |
+| `candidate_workflow` | 源代码里的子流程 | 候选结果捕获并清理后返回 | 用候选环境，受父运行的容量和授权约束 |
 
-两类 Team 工具都应在角色配置中显式声明。`run_workflow` 适合成员调用已知流程并等待结果。`manage_workflow` 适合成员先编写代码、启动，再用 `status`、`wait`、`result` 和 `stop` 管理该 id。后者需要成员具备 bash 权限，并在目标环境拥有安装了 OpenCollab 的解释器。
+怎么选：
 
-`manage_workflow` 的有限子预算会预留父成员余额，省略时取得未预留余额的一半。父成员完成或停止时，会停止仍活跃的子运行。将某个 child id 发给其他成员供阅读，仍需由原创建成员执行对应管理操作。
+- 如果成员只是要跑一个已知流程并等结果，就用 `run_workflow`。见[让 Team 成员调用已注册的 Workflow](team-run-workflow.md)。
+- 如果成员要先自己写代码再启动，就用 `manage_workflow`。启动后用 `status`、`wait`、`result`、`stop` 管理那个 child id。成员需要有 bash 权限，目标环境里还要有装了 OpenCollab 的 Python 解释器。见[让成员自己写并运行子 Workflow](member-authored-workflow.md)。
 
-## 在 Python 中启动独立 Team
+`manage_workflow` 的预算规则：
 
-公开 `ctx` 提供 Agent、集合与候选操作，`ctx.team` 尚未提供。业务流程中的独立 Team 通过宿主 SDK 的 `OpenCollab.team` 启动。如果把独立 SDK 调用放进自定义 Workflow 的函数体，它仍是一项独立运行，需要作者连接外层的额度和生命期。
+- 给了有限的子预算，就会从父成员的余额里预留出这部分。
+- 不给预算时，取父成员未预留余额的一半。
+- 父成员完成或停止时，它还在运行的子 Workflow 会被一并停止。
+- 把 child id 发给其他成员，对方只能看。管理操作仍要由原来创建它的成员执行。
 
-例如外层 Workflow 有 50,000 token 预算，内层独立 `oc.team(..., budget=30000)` 的调用应由应用确认是否属于同一个业务总额。需要统一停止时，应用应拥有内层任务并传播取消，等待其清理后再释放环境。产物目录、模型客户端与调用方环境也应由明确的拥有者负责。
+## 在 Workflow 里启动 Team
+
+目前公开的 `ctx` 提供 Agent、集合和候选操作，还没有 `ctx.team`。要在业务流程里跑 Team，请用宿主 SDK 的 `OpenCollab.team`。
+
+如果你把 `OpenCollab.team` 写进自定义 Workflow 的函数体，它仍是一次独立运行，不会自动跟外层共享预算和停止。你需要自己接好：
+
+1. 预算：比如外层 Workflow 预算 50,000 token，内层 `oc.team(..., budget=30000)`。这 30,000 算不算在 50,000 里面，要由你的应用来决定和管理。
+2. 停止：想一起停，就让应用持有内层任务，把取消信号传下去，等它清理完再释放环境。
+3. 归属：产物目录、模型客户端、调用方环境都要明确由谁负责。
+
+## 小结
+
+- 同一个 Workflow 里调 `ctx.agent` 或普通子函数：资源都算在当前运行上，最简单。
+- 要隔离着试一套方案：用 `ctx.candidate_workflow`。
+- Team 成员跑流程：已注册的用 `run_workflow`，自己写的用 `manage_workflow`。
+- 在 Workflow 里跑 Team：用 `OpenCollab.team`，预算和停止要自己接。
 
 ## 源码依据
 
@@ -90,4 +146,4 @@ async def run_independent_examples(workspace, team_config):
 
 ## 相关章节
 
-[按任务选择默认 CLI、Base、Team 或 Workflow](../orientation/choose-working-mode.md)、[让 Team 成员调用已注册 Workflow](team-run-workflow.md)、[让成员编写并管理自己的子 Workflow](member-authored-workflow.md)、[组合子 Workflow 并采用候选结果](compose-workflow-candidates.md)、[处理 Workflow 的失败、重试与恢复](workflow-failure-recovery-lifecycle.md)。
+[我该用默认 CLI、Base、Team 还是 Workflow](../orientation/choose-working-mode.md)、[让 Team 成员调用已注册的 Workflow](team-run-workflow.md)、[让成员自己写并运行子 Workflow](member-authored-workflow.md)、[复用子 Workflow，并在候选环境里试改动](compose-workflow-candidates.md)、[Workflow 出错了：失败、重试与恢复](workflow-failure-recovery-lifecycle.md)。

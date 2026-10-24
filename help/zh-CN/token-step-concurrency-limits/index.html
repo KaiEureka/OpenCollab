@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>设置 token 预算、步数与运行并发 · OpenCollab 帮助中心</title>
-<meta name="description" content="为单 agent、团队和工作流设置合适的执行额度，并解释预算拒绝、等待与停止。">
+<meta name="description" content="OC 用 budget（累计 token）、max_steps 和 concurrency 分别限制运行；团队从共享池分额度，还可以用软额度回调按进展放宽。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/token-step-concurrency-limits/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,14 +35,13 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="../reconstruct-workflow/index.html">使用 Reconstruct 从输入输出重建程序</a></details><details open><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="index.html" aria-current="page">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="../weave-workflow/index.html">用 Weave 分组接力完成任务并检查交付</a><a href="../reconstruct-workflow/index.html">用 Reconstruct 从输入输出反推程序</a></details><details open><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="index.html" aria-current="page">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="../report-problem-and-request-help/index.html">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">预算、上下文与运行恢复</p>
 <h1 id="设置-token-预算步数与运行并发">设置 token 预算、步数与运行并发</h1>
-<p><code>budget</code> 控制累计输入与输出 token，<code>max_steps</code> 控制会话执行步数，<code>concurrency</code> 控制工作流同时运行的 Agent 会话数。先按任务规模设置有限额度，再根据实际用量和完成证据调整。token 预算与美元花费分别记录，单次输出上限也有独立配置。</p>
-<h2 id="给单-agent-明确额度">给单 Agent 明确额度</h2>
-<p>下面是一个可直接运行的脚本。只读任务使用较小步数，模型设置沿用本地配置。</p>
+<p>OC 用三个独立的旋钮限制一次运行：<code>budget</code> 是累计输入加输出 token，<code>max_steps</code> 是会话执行步数，<code>concurrency</code> 是工作流里同时运行的 Agent 会话数。和很多框架不同，这里的 token 预算按整个会话累计（每次重发历史都计入输入），而且团队成员从同一个池里分额度。美元花费另外记录，单次输出上限 <code>max_output_tokens</code> 也是单独配置。先按任务规模设有限额度，再按实际用量和完成证据调整。</p>
+<h2 id="最小用法单-agent">最小用法：单 Agent</h2>
 <pre><code class="language-python">import asyncio
 from opencollab import OpenCollab
 
@@ -50,8 +49,8 @@ async def main() -&gt; None:
     result = await OpenCollab(&quot;.&quot;).agent2(
         &quot;阅读测试配置，说明应执行哪些验证以及依据。&quot;,
         tools=&quot;read&quot;,
-        budget=80_000,
-        max_steps=30,
+        budget=80_000,  # 累计输入+输出 token
+        max_steps=30,   # 只读任务用较小步数
         timeout=300,
     )
     print(result.status, result.reason, result.tokens)
@@ -59,35 +58,113 @@ async def main() -&gt; None:
 
 asyncio.run(main())
 </code></pre>
-<p><code>budget</code> 和 <code>max_steps</code> 接受正整数。旧参数 <code>steps</code> 与 <code>max_steps</code> 互斥。客户端的 <code>max_output_tokens</code> 默认 8,192，限制每次模型调用的输出，较大的整次预算会支持更多次调用。每次重复发送历史都会增加累计输入用量。</p>
+<h2 id="参数一览">参数一览</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值 / 取值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>budget</code> / <code>--budget</code> / <code>OPENCOLLAB_BUDGET</code></td>
+<td>正整数</td>
+<td>累计输入加输出 token</td>
+</tr>
+<tr>
+<td><code>max_steps</code></td>
+<td>正整数</td>
+<td>会话执行步数。旧参数 <code>steps</code> 与它互斥</td>
+</tr>
+<tr>
+<td><code>max_output_tokens</code></td>
+<td>8,192</td>
+<td>每次模型调用的输出上限。整次预算越大，能支撑的调用次数越多</td>
+</tr>
+<tr>
+<td><code>concurrency</code> / <code>--concurrency</code></td>
+<td></td>
+<td>工作流同时运行的 Agent 会话数</td>
+</tr>
+<tr>
+<td><code>task_concurrency</code> / <code>--task-concurrency</code></td>
+<td>省略时继承 <code>concurrency</code></td>
+<td>活跃的 parallel 或 pipeline 单元数</td>
+</tr>
+<tr>
+<td><code>limit_mode</code></td>
+<td><code>workflow()</code> 默认 <code>&quot;environment&quot;</code></td>
+<td>见<a href="#%E6%97%A0%E9%99%90%E5%88%B6%E6%A8%A1%E5%BC%8F">无限制模式</a></td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_BUDGET_NUDGE_MODE</code></td>
+<td><code>every-step</code></td>
+<td>预算状态提示频率</td>
+</tr>
+<tr>
+<td><code>OPENCOLLAB_WRITE_NUDGE_MODE</code></td>
+<td><code>on</code></td>
+<td>&quot;一直读不改&quot;时的行动提示</td>
+</tr>
+</tbody>
+</table>
 <h2 id="团队怎样分配-token">团队怎样分配 token</h2>
-<p>动态团队从同一个池中分配额度。创建子成员时同步保留至多 <code>min(total, max(10_000, total // 4))</code>，同时受尚未分配余额限制。入口 Agent 的当前轮次可以使用剩余池，成员尚未结算的请求继续占用相应保留量。</p>
-<p>预建团队共享池时，每个已声明席位还有累计上限，当前按总池除以席位数分配。也可以在团队文件顶层或角色的 <code>budget</code> 对象中设置 <code>tokens</code>。一旦某个角色设置独立额度，全部角色都必须有额度，团队总额为各角色之和。此模式需要 <code>prebuild_team=True</code>，由文件提供额度，同时传 SDK <code>budget=</code> 会报错。</p>
-<p>两种团队用法的示例放在已有 <code>async</code> 函数中，<code>client</code> 是已经构造的客户端。选择其中一种调用。</p>
-<pre><code class="language-python">result = await client.team(
+<p>动态团队（由入口 Agent 运行时派生子成员）：</p>
+<ul>
+<li>所有成员从同一个池里取额度。</li>
+<li>创建子成员时同步保留至多 <code>min(total, max(10_000, total // 4))</code>，同时不超过尚未分配的余额。</li>
+<li>入口 Agent 的当前轮次可以用剩余池。成员尚未结算的请求继续占着各自的保留量。</li>
+</ul>
+<p>预建团队（<code>prebuild_team=True</code>，席位事先声明）：</p>
+<ul>
+<li>共享池时，每个已声明席位还有累计上限，目前是总池除以席位数。</li>
+<li>也可以在团队文件顶层或角色的 <code>budget</code> 对象里设 <code>tokens</code>。只要有一个角色设了独立额度，所有角色都必须设，团队总额是各角色之和。</li>
+<li>这种按角色分额度的模式需要 <code>prebuild_team=True</code>，额度由文件提供。此时再传 SDK <code>budget=</code> 会报错。</li>
+</ul>
+<p>两种写法如下，放在已有 <code>async</code> 函数里，<code>client</code> 是已构造的客户端，二选一：</p>
+<pre><code class="language-python"># 共享池
+result = await client.team(
     &quot;完成指定实现并验证。&quot;,
     config=&quot;team.yaml&quot;,
     budget=300_000,
     max_steps=100,
 )
 </code></pre>
-<pre><code class="language-python">result = await client.team(
+<pre><code class="language-python"># 按角色声明额度，不传 budget
+result = await client.team(
     &quot;完成指定实现并验证。&quot;,
     config=&quot;team-with-role-budgets.yaml&quot;,
     prebuild_team=True,
     max_steps=100,
 )
 </code></pre>
-<h2 id="工作流有两类并发">工作流有两类并发</h2>
-<p><code>concurrency</code> 限制 Agent 会话，<code>task_concurrency</code> 独立限制活跃的 parallel 或 pipeline 单元，包括候选子工作流，省略时继承前者。混合 Agent 与任务工作时，峰值可以达到两个限制之和。共享后端请求数还可由模型请求池单独限制。下面的 Duo 命令显式允许宿主工作区执行 shell，按本次任务需要选择执行环境。</p>
+<h2 id="工作流的两类并发">工作流的两类并发</h2>
+<ul>
+<li><code>concurrency</code> 限制 Agent 会话。<code>task_concurrency</code> 单独限制活跃的 parallel 或 pipeline 单元，包括候选子工作流。</li>
+<li>两者独立，混合 Agent 和任务工作时，峰值可以达到两者之和。</li>
+<li>发往后端的共享请求数还可以由模型请求池另外限制。</li>
+</ul>
+<p>下面的 Duo 命令显式允许在宿主工作区执行 shell，执行环境请按任务需要选：</p>
 <pre><code class="language-bash">opencollab workflow run duo --workspace /path/to/application \
   --task '完成指定修改并运行验证。' \
   --args '{&quot;allow_unisolated_shell&quot;:true}' \
   --budget 300000 --concurrency 2 --task-concurrency 2
 </code></pre>
-<p>Duo 按 A 再 B 的顺序运行候选，提高并发限制后仍保留这一次序。工作流调用在执行前从工作流池保留预算，实际授权可能因为其它调用占有份额而低于请求值。清理完成后返还未使用的保留量。预算拒绝表示无法取得执行额度，等待并发槽表示暂时没有可用席位。根据结果状态区分预算不足与并发等待。</p>
+<ul>
+<li>Duo 按先 A 后 B 的顺序跑候选。提高并发也不会改变这个顺序。</li>
+<li>工作流调用在执行前从工作流池保留预算。其它调用占着份额时，实际授权可能低于请求值。清理完成后返还未用的保留量。</li>
+<li>预算拒绝表示拿不到执行额度，等待并发槽表示暂时没有空位。看结果状态区分这两种情况。</li>
+</ul>
 <h2 id="按进展扩展软额度">按进展扩展软额度</h2>
-<p><code>RunControl</code> 支持在硬授权内先给较小软额度，再由 <code>decide_budget</code> 返回 <code>BudgetDecision</code> 保持或增加额度。回调可读取实际消耗、步数、输入保留量和最低输出需求，并结合应用中的执行证据决定是否继续。增加值必须覆盖实际消耗且不超过硬授权，减少现有软额度会导致策略错误。硬额度耗尽后按预算限制停止。下面的片段放在已有 <code>async</code> 函数中，沿用 <code>client</code>，按消耗阈值扩展一次软额度。应用可根据实际执行和验证进展设置触发条件。</p>
+<p><code>RunControl</code> 可以在硬授权（<code>budget</code>）之内先给一个较小的软额度，再由回调 <code>decide_budget</code> 返回 <code>BudgetDecision</code> 决定保持还是增加。</p>
+<ul>
+<li>回调能读到实际消耗、步数、输入保留量和最低输出需求，可以结合应用里的执行证据决定是否继续。</li>
+<li>新额度必须覆盖已有消耗，且不超过硬授权。减少现有软额度会导致策略错误。</li>
+<li>硬额度耗尽后按预算限制停止。</li>
+</ul>
+<p>下面的片段放在已有 <code>async</code> 函数里，沿用 <code>client</code>，消耗到阈值时把软额度扩到硬额度一次。实际触发条件可以按执行和验证进展来定。</p>
 <pre><code class="language-python">from opencollab import BudgetDecision, RunControl
 
 def decide(snapshot):
@@ -106,10 +183,8 @@ result = await client.agent2(
     ),
 )
 </code></pre>
-<p><code>OPENCOLLAB_UNBOUNDED_LIMITS=true</code> 对入口有不同影响。Base 和 Single2 的显式预算与步数继续生效，省略的限制变为无限制。<code>workflow()</code> 默认 <code>limit_mode=&quot;environment&quot;</code> 会采用无限 token 和角色步数，即使传入了数值。需要保留明确限制时用 <code>limit_mode=&quot;explicit&quot;</code>。<code>team()</code> 继续使用共享或声明额度及其 <code>max_steps</code>。时间和清理限制继续生效。</p>
-<p>额度检查发生在调用边界，已经进行中的请求可能超过剩余额度。停止后查看 <code>reason</code>、部分产物和最终用量，再判断是否继续任务。</p>
-<h2 id="在额度内安排最后一次交接">在额度内安排最后一次交接</h2>
-<p>预算回调也可以通过 <code>BudgetDecision(..., final_prompt=...)</code> 给当前模型请求补充交接要求。该提示会重新计入输入预留量，因此应在尚有输出空间时发出。下面的回调沿用上例的 <code>BudgetDecision</code> 导入，并可替换 <code>RunControl</code> 中的 <code>decide_budget</code>。它保留软额度，接近额度时请 Agent 交付已有证据。</p>
+<h3 id="在额度内安排最后一次交接">在额度内安排最后一次交接</h3>
+<p>回调还可以用 <code>BudgetDecision(..., final_prompt=...)</code> 给当前模型请求追加交接要求。这段提示会重新计入输入预留量，所以要在还有输出空间时发出。下面的回调可以替换上例 <code>RunControl</code> 里的 <code>decide_budget</code>：它保持软额度，接近额度时要求 Agent 交付已有证据。</p>
 <pre><code class="language-python">def finish_when_low(snapshot):
     allowance = snapshot.soft_budget_tokens
     reserve = snapshot.reserved_input_tokens + snapshot.minimum_output_tokens
@@ -118,23 +193,82 @@ result = await client.agent2(
         final_prompt = &quot;完成当前验证并交付已有改动、实际测试结果和待处理事项。&quot;
     return BudgetDecision(allowance, final_prompt=final_prompt)
 </code></pre>
-<p>这段回调用于已经设置有限软额度的调用。回调可以同步返回，也可以异步等待应用中的进展判断。运行时会在执行检查和请求输入估算时调用回调。单次响应超过软额度后，运行时也可能以 <code>after_response</code> 为原因再次调用回调。硬额度耗尽时按预算限制停止。最终提示会加入当前请求，任务完成程度从保存的文件与验证结果判断。</p>
-<h2 id="调整预算状态与行动提示">调整预算状态与行动提示</h2>
-<p>运行时默认每步向模型提供预算状态。进程变量 <code>OPENCOLLAB_BUDGET_NUDGE_MODE</code> 可以设为 <code>every-step</code>、<code>thresholds</code> 或 <code>off</code>。<code>thresholds</code> 在累计消耗跨过有限预算的 20%、40%、60% 和 80% 时提示，恢复会话后从已有消耗继续比较。阈值提示用于有限预算，<code>every-step</code> 还会在无限预算运行中显示累计用量。</p>
-<p><code>OPENCOLLAB_WRITE_NUDGE_MODE</code> 默认 <code>on</code>。Agent 具备写入工具且持续读取时，运行时会在 8 次读取后建议修改，在 16 次后要求一次工具调用。具备结构化提交工具且适合提交时，8 次读取后可以要求结构化提交。设为 <code>off</code> 可用于观察模型自行选择阅读、修改和提交时机的任务。预算状态与行动提示分别设置，实际 token 和步数限制继续按运行参数执行。</p>
-<p>以下命令在启动进程前选择按阈值提示预算，保留默认行动提示。模型配置继续沿用该工作区的设置。</p>
+<ul>
+<li>只用于已设置有限软额度的调用。</li>
+<li>回调可以同步返回，也可以异步等待应用里的进展判断。</li>
+<li>运行时在执行检查和估算请求输入时调用回调。单次响应超过软额度后，也可能以 <code>after_response</code> 为原因再调用一次。</li>
+<li>最终提示加入当前请求。任务完成到什么程度，看保存的文件和验证结果。</li>
+</ul>
+<h2 id="无限制模式">无限制模式</h2>
+<p><code>OPENCOLLAB_UNBOUNDED_LIMITS=true</code> 对不同入口效果不同：</p>
+<table>
+<thead>
+<tr>
+<th>入口</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base、Single2</td>
+<td>显式传入的预算和步数仍生效，省略的限制变为无限</td>
+</tr>
+<tr>
+<td><code>workflow()</code></td>
+<td>默认 <code>limit_mode=&quot;environment&quot;</code>，即使传了数值也采用无限 token 和角色步数。要保留明确限制，用 <code>limit_mode=&quot;explicit&quot;</code></td>
+</tr>
+<tr>
+<td><code>team()</code></td>
+<td>继续使用共享或声明的额度及其 <code>max_steps</code></td>
+</tr>
+</tbody>
+</table>
+<p>时间和清理限制在任何情况下都继续生效。</p>
+<p>额度检查发生在调用之间，已经在进行中的请求可能超出剩余额度。停止后看 <code>reason</code>、部分产物和最终用量，再决定是否继续。</p>
+<h2 id="预算状态与行动提示">预算状态与行动提示</h2>
+<p>这两类提示是 OC 注入给模型的 steering 消息，和实际的 token、步数限制分开设置。限制始终按运行参数执行。</p>
+<p><code>OPENCOLLAB_BUDGET_NUDGE_MODE</code>（默认每步提示预算状态）：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>every-step</code></td>
+<td>每步提示。无限预算运行中也显示累计用量</td>
+</tr>
+<tr>
+<td><code>thresholds</code></td>
+<td>累计消耗跨过有限预算的 20%、40%、60%、80% 时提示。恢复会话后从已有消耗继续比较</td>
+</tr>
+<tr>
+<td><code>off</code></td>
+<td>不提示</td>
+</tr>
+</tbody>
+</table>
+<p><code>OPENCOLLAB_WRITE_NUDGE_MODE</code>（默认 <code>on</code>）：</p>
+<ul>
+<li>Agent 有写入工具却一直在读时，8 次读取后建议修改，16 次后要求一次工具调用。</li>
+<li>有结构化提交工具且适合提交时，8 次读取后可以要求结构化提交。</li>
+<li>设为 <code>off</code>，适合观察模型自己选择阅读、修改、提交时机的任务。</li>
+</ul>
+<p>两个变量都从进程环境读取，未知值分别回到 <code>every-step</code> 和 <code>on</code>。下面在启动前选择按阈值提示预算，行动提示保持默认，模型配置沿用该工作区设置：</p>
 <pre><code class="language-bash">OPENCOLLAB_BUDGET_NUDGE_MODE=thresholds \
   opencollab --workspace /path/to/application --budget 200000
 </code></pre>
-<p>提示模式由进程环境读取，未知值分别回到 <code>every-step</code> 和 <code>on</code>。实现与阈值见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/steering.py">运行提示策略</a>，预算回调和最终提示见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/run_control.py">运行控制</a>。</p>
+<p>实现与阈值见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/steering.py">运行提示策略</a>，预算回调和最终提示见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/run_control.py">运行控制</a>。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md#L113">docs/runtime-design.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L286">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L18">docs/evaluation-runtime.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L408">opencollab/sdk/client.py</a></p>
 <h2 id="相关指南">相关指南</h2>
-<p><a href="../context-compaction/index.html">上下文窗口与自动压缩</a>　<a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a>　<a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a>　<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a>　<a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a></p>
+<p><a href="../context-compaction/index.html">上下文窗口与自动压缩</a>　<a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a>　<a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a>　<a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a>　<a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a></p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/token-step-concurrency-limits.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%BB%99%E5%8D%95-agent-%E6%98%8E%E7%A1%AE%E9%A2%9D%E5%BA%A6">给单 Agent 明确额度</a><a href="#%E5%9B%A2%E9%98%9F%E6%80%8E%E6%A0%B7%E5%88%86%E9%85%8D-token">团队怎样分配 token</a><a href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E6%9C%89%E4%B8%A4%E7%B1%BB%E5%B9%B6%E5%8F%91">工作流有两类并发</a><a href="#%E6%8C%89%E8%BF%9B%E5%B1%95%E6%89%A9%E5%B1%95%E8%BD%AF%E9%A2%9D%E5%BA%A6">按进展扩展软额度</a><a href="#%E5%9C%A8%E9%A2%9D%E5%BA%A6%E5%86%85%E5%AE%89%E6%8E%92%E6%9C%80%E5%90%8E%E4%B8%80%E6%AC%A1%E4%BA%A4%E6%8E%A5">在额度内安排最后一次交接</a><a href="#%E8%B0%83%E6%95%B4%E9%A2%84%E7%AE%97%E7%8A%B6%E6%80%81%E4%B8%8E%E8%A1%8C%E5%8A%A8%E6%8F%90%E7%A4%BA">调整预算状态与行动提示</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%9C%80%E5%B0%8F%E7%94%A8%E6%B3%95%E5%8D%95-agent">最小用法：单 Agent</a><a href="#%E5%8F%82%E6%95%B0%E4%B8%80%E8%A7%88">参数一览</a><a href="#%E5%9B%A2%E9%98%9F%E6%80%8E%E6%A0%B7%E5%88%86%E9%85%8D-token">团队怎样分配 token</a><a href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%9A%84%E4%B8%A4%E7%B1%BB%E5%B9%B6%E5%8F%91">工作流的两类并发</a><a href="#%E6%8C%89%E8%BF%9B%E5%B1%95%E6%89%A9%E5%B1%95%E8%BD%AF%E9%A2%9D%E5%BA%A6">按进展扩展软额度</a><a href="#%E5%9C%A8%E9%A2%9D%E5%BA%A6%E5%86%85%E5%AE%89%E6%8E%92%E6%9C%80%E5%90%8E%E4%B8%80%E6%AC%A1%E4%BA%A4%E6%8E%A5">在额度内安排最后一次交接</a><a href="#%E6%97%A0%E9%99%90%E5%88%B6%E6%A8%A1%E5%BC%8F">无限制模式</a><a href="#%E9%A2%84%E7%AE%97%E7%8A%B6%E6%80%81%E4%B8%8E%E8%A1%8C%E5%8A%A8%E6%8F%90%E7%A4%BA">预算状态与行动提示</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>
 </body>
 </html>

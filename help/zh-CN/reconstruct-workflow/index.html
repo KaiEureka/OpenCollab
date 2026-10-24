@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>使用 Reconstruct 从输入输出重建程序 · OpenCollab 帮助中心</title>
-<meta name="description" content="绑定可查询的隐藏程序与候选执行器，通过主动探索和反馈迭代得到候选程序。">
+<title>用 Reconstruct 从输入输出反推程序 · OpenCollab 帮助中心</title>
+<meta name="description" content="Reconstruct 是内置 Workflow：反复向一个可查询的隐藏程序要输入输出样例，让 Agent 写出行为相同的 candidate.py。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/reconstruct-workflow/index.html">
 <link rel="icon" href="../../../fig/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,14 +35,16 @@
 <nav id="help-navigation" aria-label="帮助分类">
 <div class="nav-start"><a href="../index.html">帮助首页</a><a href="../reading-paths/index.html">阅读路径</a><a href="../questions/index.html">问题导航</a></div>
 <p class="nav-label">文档目录</p>
-<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装前提与版本选择</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">多个任务怎样在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 完整指南与团队配置</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details open><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a><a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a><a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a><a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a><a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a><a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a><a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a><a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a><a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a><a href="index.html" aria-current="page">使用 Reconstruct 从输入输出重建程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a><a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务如何从输入走到工具执行</a><a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 负责什么以及如何扩展</a><a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a><a href="../upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a><a href="../report-problem-and-request-help/index.html">反馈问题、请求帮助与提交改进建议</a></details>
+<details><summary>认识 OC <small>2</small></summary><a href="../concepts-and-modes/index.html">先认识 Agent、Session、Team 和 Workflow</a><a href="../choose-working-mode/index.html">我该用默认 CLI、Base、Team 还是 Workflow</a></details><details><summary>安装与开始使用 <small>5</small></summary><a href="../install-source-checkout/index.html">安装 OpenCollab</a><a href="../first-run-workspace/index.html">在自己的项目中完成第一次运行</a><a href="../interactive-cli-controls/index.html">在终端里和 Agent 对话，以及命令参数该写在哪</a><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a><a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a></details><details><summary>模型接入与配置 <small>6</small></summary><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a><a href="../configuration-reference/index.html">配置参数与环境变量速查</a><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a><a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a><a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a></details><details><summary>执行环境与隔离 <small>8</small></summary><a href="../isolation-overview/index.html">隔离怎么选</a><a href="../isolation-configuration/index.html">默认隔离与单次覆盖怎么配</a><a href="../worktree-workspaces/index.html">让多个任务在独立工作区改代码</a><a href="../docker-isolation/index.html">在容器中运行任务</a><a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a><a href="../custom-environment-providers/index.html">接入自己的执行环境</a><a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a><a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a></details><details><summary>Team 与子 Agent <small>5</small></summary><a href="../configure-team/index.html">Team 入门：配置你的多 Agent 团队</a><a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a><a href="../message-team-agents/index.html">向队友发消息并继续协作</a><a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a><a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a></details><details open><summary>Workflow 与子 Workflow <small>18</small></summary><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a><a href="../workflow-programming-model/index.html">工作流就是普通 Python：编程模型入门</a><a href="../workflow-capabilities-boundaries/index.html">工作流能做什么、不能做什么</a><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a><a href="../workflow-public-api-map/index.html">Workflow 公开 API 速查</a><a href="../workflow-control-granularity/index.html">在哪一层调整 Workflow：从 CLI 参数到单次调用回调</a><a href="../workflow-dataflow-structured-io/index.html">Workflow 里的数据怎么传：输入、步骤结果、文件与输出</a><a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a><a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a><a href="../workflow-composition-hierarchy/index.html">Agent、Team 和 Workflow 怎么互相调用</a><a href="../compose-workflow-candidates/index.html">复用子 Workflow，并在候选环境里试改动</a><a href="../workflow-failure-recovery-lifecycle/index.html">Workflow 出错了：失败、重试与恢复</a><a href="../workflow-testing-debugging/index.html">测试和调试你写的 Workflow</a><a href="../team-run-workflow/index.html">让 Team 成员调用已注册的 Workflow</a><a href="../member-authored-workflow/index.html">让成员自己写并运行子 Workflow</a><a href="../duo-workflow/index.html">用 Duo 跑两个候选方案并选出一个</a><a href="../weave-workflow/index.html">用 Weave 分组接力完成任务并检查交付</a><a href="index.html" aria-current="page">用 Reconstruct 从输入输出反推程序</a></details><details><summary>预算、上下文与运行恢复 <small>6</small></summary><a href="../context-compaction/index.html">上下文窗口与自动压缩</a><a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a><a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a><a href="../session-save-resume/index.html">保存会话与恢复历史</a><a href="../cancellation-cleanup/index.html">停止任务并确认清理完成</a><a href="../configuration-diagnostics/index.html">检查生效配置与排查启动故障</a></details><details><summary>工具、Skill 与扩展 <small>6</small></summary><a href="../tool-selection/index.html">选择 Agent 能使用的工具</a><a href="../custom-tools/index.html">把自己的函数接成工具</a><a href="../skills-on-demand/index.html">使用与编写 Skill</a><a href="../team-hooks/index.html">在工具执行和生命周期中加入 Hook</a><a href="../file-editing-safe-workspace/index.html">安全地查找读取和修改文件</a><a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a></details><details><summary>结果、轨迹与评测 <small>7</small></summary><a href="../run-results/index.html">读取运行结果与判断任务是否完成</a><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a><a href="../trace-and-events/index.html">查看 Agent 做了什么</a><a href="../token-cache-cost/index.html">统计 token、缓存命中和费用</a><a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a><a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a><a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a></details><details><summary>架构、集成与维护 <small>6</small></summary><a href="../runtime-execution-model/index.html">一次任务是怎么跑起来的</a><a href="../session-state-lifecycle/index.html">Session 怎样保存进度和继续执行</a><a href="../extension-and-evaluation-boundaries/index.html">OpenCollab 管什么，我的需求该从哪里扩展</a><a href="../service-integration-lifecycle/index.html">把 OpenCollab 接进自己的服务</a><a href="../upgrade-existing-integration/index.html">升级 OpenCollab 后怎样迁移和验证</a><a href="../report-problem-and-request-help/index.html">遇到问题怎么反馈、求助或提建议</a></details>
 </nav>
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
-<h1 id="使用-reconstruct-从输入输出重建程序">使用 Reconstruct 从输入输出重建程序</h1>
-<p>Reconstruct 处理黑盒程序重建。调用方提供隐藏程序的查询函数，工作流逐批取得输入输出样例，再让 Agent 编写具有相同行为的候选程序。隐藏程序查询由工作流执行，Agent 根据公开样例和反馈修改 <code>candidate.py</code>。这类任务需要调用方同时提供候选执行器和独立的最终评分方式。</p>
-<h2 id="准备绑定对象">准备绑定对象</h2>
-<p>下面的函数把应用已有的 oracle、候选执行器和检查工具接入 <code>ReconstructionTask</code>。<code>environment</code> 是供 Agent 执行工具的环境对象，<code>evaluate</code> 应在同一个受控候选环境执行生成程序。</p>
+<h1 id="用-reconstruct-从输入输出反推程序">用 Reconstruct 从输入输出反推程序</h1>
+<p>Reconstruct 是 OC 内置的 Workflow，名称 <code>reconstruct</code>，用于黑盒程序重建（类似 IO2CodeBench 这类“只给输入输出，写出程序”的任务）。你提供隐藏程序的查询函数 oracle，工作流逐批向它要样例，让编码 Agent 写一个行为相同的 <code>candidate.py</code>，并在已知样例上反复验证、补充能区分假设的新输入。</p>
+<p>OC 在这里的设计取舍：oracle 只由工作流调用，留在调用方进程里，Agent 看不到它，只能看到公开样例和反馈。所以调用方要提供三样东西：oracle、在受控环境里执行候选程序的执行器、独立的最终评分方式。</p>
+<h2 id="最小用法">最小用法</h2>
+<h3 id="1-用-sdk-绑定任务">1. 用 SDK 绑定任务</h3>
+<p>下面的函数把应用已有的 oracle、候选执行器和检查工具接进 <code>ReconstructionTask</code>：</p>
 <pre><code class="language-python">from pathlib import Path
 from opencollab import OpenCollab
 from opencollab.builtin_workflows import ReconstructionTask, register_task
@@ -69,18 +71,62 @@ async def reconstruct_task(workspace, environment, oracle, evaluate, check_candi
     )
     return result.raise_for_status().output
 </code></pre>
-<p><code>oracle(input)</code> 返回隐藏程序输出，对无效输入抛出异常。异步 <code>evaluate(program_path, inputs)</code> 为每个输入返回一条字典，成功条目含 <code>ok=True</code> 与 <code>output</code>，失败条目含 <code>ok=False</code> 与 <code>error</code>。调用方把候选代码放进 Agent 所在的受控环境执行，oracle 仍留在调用方。<code>check_candidate</code> 是提供给编码角色的实际检查工具。</p>
-<p><code>register_task</code> 保存本进程内的活对象，返回可序列化的单次句柄，工作流解析时消费它。重复运行应重新注册。CLI 采用 <code>module:callable</code> 工厂方式，从 <code>task_args</code> 的关键字参数构造绑定对象。</p>
+<p>需要你准备的对象：</p>
+<table>
+<thead>
+<tr>
+<th>对象</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>oracle(input)</code></td>
+<td>返回隐藏程序的输出。输入无效时抛异常</td>
+</tr>
+<tr>
+<td><code>evaluate(program_path, inputs)</code></td>
+<td>异步函数。每个输入返回一条字典：成功为 <code>ok=True</code> 加 <code>output</code>，失败为 <code>ok=False</code> 加 <code>error</code>。应在同一个受控候选环境里执行生成的程序</td>
+</tr>
+<tr>
+<td><code>environment</code></td>
+<td>供 Agent 执行工具的环境对象</td>
+</tr>
+<tr>
+<td><code>check_candidate</code></td>
+<td>给编码角色用的实际检查工具</td>
+</tr>
+</tbody>
+</table>
+<p>候选代码放在 Agent 所在的受控环境里执行，oracle 留在调用方。</p>
+<p><code>register_task</code> 的作用：它把本进程里的活对象存起来，返回一个可序列化的一次性句柄，工作流解析时会消费掉它。所以每次运行都要重新注册。</p>
+<h3 id="2-或者用-cli">2. 或者用 CLI</h3>
+<p>CLI 用 <code>module:callable</code> 工厂的方式，用 <code>task_args</code> 里的关键字参数构造绑定对象：</p>
 <pre><code class="language-bash">opencollab workflow run reconstruct \
   --workspace /path/to/workspace \
   --args '{&quot;task&quot;:&quot;my_bench.binding:make_task&quot;,&quot;task_args&quot;:{&quot;name&quot;:&quot;example&quot;},&quot;max_iterations&quot;:10}' \
   --budget 100000
 </code></pre>
-<p>此命令要求环境中存在 <code>my_bench.binding.make_task</code>，并返回 <code>ReconstructionTask</code>。工厂负责连接具体任务的查询器、执行环境及检查工具。</p>
-<h2 id="一轮怎样推进">一轮怎样推进</h2>
-<p>工作流先获取初始样例，再开启编码会话。候选写完后，在所有已知样例上执行。全部通过构成一次 promotion，随后请求更多区分假设的输入。失败时把实际失败反馈送回编码阶段，继续使用已有样例。</p>
-<p>输入提议需满足数量、去重、输入约束和 oracle 接受要求。失败提议按 <code>propose_attempts</code> 次数重试。每轮候选归档在 <code>.oc_candidates/</code>，结束时按最终样例集上的阶段得分选择本次归档中的候选复制为 <code>candidate.py</code>。先前运行留在目录中的文件与本次候选集合分开处理。</p>
-<h2 id="配置探索与停止">配置探索与停止</h2>
+<p>这要求环境里有 <code>my_bench.binding.make_task</code>，并返回 <code>ReconstructionTask</code>。工厂负责接好具体任务的查询器、执行环境和检查工具。</p>
+<h2 id="每一轮怎么推进">每一轮怎么推进</h2>
+<ol>
+<li>获取初始样例，开启编码会话。</li>
+<li>候选写完后，在所有已知样例上执行。</li>
+<li>如果全部通过，记一次 promotion（晋级），接着请求更多能区分不同假设的输入。</li>
+<li>如果有失败，把实际失败反馈送回编码阶段，继续用已有样例。</li>
+</ol>
+<p>输入提议的规则：</p>
+<ul>
+<li>必须满足数量、去重、输入约束，并且 oracle 接受。</li>
+<li>提议失败时，最多按 <code>propose_attempts</code> 次重试。</li>
+</ul>
+<p>候选的保存和选择：</p>
+<ul>
+<li>每轮候选归档在 <code>.oc_candidates/</code>。</li>
+<li>结束时，按最终样例集上的阶段得分，从本次归档中选一个复制为 <code>candidate.py</code>。</li>
+<li>以前运行留在目录里的文件，不算进本次候选集合。</li>
+</ul>
+<h2 id="参数">参数</h2>
 <table>
 <thead>
 <tr>
@@ -147,11 +193,103 @@ async def reconstruct_task(workspace, environment, oracle, evaluate, check_candi
 </tr>
 </tbody>
 </table>
-<p>按任务需要选择探索策略。启用随机比例时还要提供 <code>random_inputs(k, exclude)</code>，返回独立生成且尚未使用的输入。<code>kind</code> 可为 <code>list</code>、<code>two_lists</code>、<code>int</code>、<code>pair</code>、<code>string</code>、<code>points</code> 或 <code>other</code>，配合 <code>lo</code>、<code>hi</code> 与 <code>is_float</code> 描述输入域。</p>
-<p>前六个计数参数采用正整数，<code>random_share</code> 在 0 到 1 之间，策略开关在 JSON 中使用布尔值。<code>examples_shown</code> 缩小提议角色的样例展示窗口，编码角色和候选验证仍使用全部已知样例。</p>
-<p><code>coverage_gate</code> 按输入种类检查空值、长度、正负数和重复值等结构类别。相同缺失类别连续阻挡三批后允许继续。<code>memorisation_gate</code> 在候选嵌入至少三个已知输入时，先用同一批证据要求重写，最多等待两轮再取得新样例。<code>complexity_gate</code> 对复杂度惩罚至少 0.8 的候选继续补样例，前三次暂缓计入晋级。<code>domain_check</code> 根据 <code>lo</code> 与 <code>hi</code> 检查提议中的数值，<code>kind='other'</code> 跳过结构覆盖与数值域检查。这些选项影响探索和提前停止，最终评分继续采用应用自己的独立样例。</p>
-<h2 id="定制绑定与样例记录">定制绑定与样例记录</h2>
-<p><code>ReconstructionTask.candidate_file</code> 可把默认 <code>candidate.py</code> 改成任务需要的相对路径。<code>outputs_match(actual, expected)</code> 定义输出相等规则，适合业务确实允许浮点误差或等价结构的任务。<code>on_example(input, output, source)</code> 收到每条实际接纳的样例及其来源，可以接入应用日志。</p>
+<p>取值规则：</p>
+<ul>
+<li>前六个计数参数是正整数。</li>
+<li><code>random_share</code> 在 0 到 1 之间。</li>
+<li>策略开关在 JSON 里用布尔值。</li>
+</ul>
+<p>几个参数的补充说明：</p>
+<ul>
+<li><code>examples_shown</code> 只缩小输入提议角色看到的样例窗口。编码角色和候选验证仍用全部已知样例。</li>
+<li>设了 <code>random_share</code> 时，还要提供 <code>random_inputs(k, exclude)</code>，返回独立生成、尚未用过的输入。</li>
+</ul>
+<h3 id="描述输入域">描述输入域</h3>
+<p><code>kind</code> 可选 <code>list</code>、<code>two_lists</code>、<code>int</code>、<code>pair</code>、<code>string</code>、<code>points</code> 或 <code>other</code>，配合 <code>lo</code>、<code>hi</code> 和 <code>is_float</code> 描述输入域。</p>
+<h3 id="四个探索开关">四个探索开关</h3>
+<table>
+<thead>
+<tr>
+<th>开关</th>
+<th>开启后的行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>coverage_gate</code></td>
+<td>按输入种类检查空值、长度、正负数、重复值等结构类别。同一个缺失类别连续挡住三批后，允许继续</td>
+</tr>
+<tr>
+<td><code>memorisation_gate</code></td>
+<td>候选里嵌入了至少三个已知输入时，先用同一批证据要求重写，最多等两轮再取新样例</td>
+</tr>
+<tr>
+<td><code>complexity_gate</code></td>
+<td>复杂度惩罚至少 0.8 的候选会继续补样例，前三次暂不计入晋级</td>
+</tr>
+<tr>
+<td><code>domain_check</code></td>
+<td>按 <code>lo</code> 和 <code>hi</code> 检查提议里的数值</td>
+</tr>
+</tbody>
+</table>
+<p><code>kind='other'</code> 时跳过结构覆盖和数值域检查。</p>
+<p>这些开关只影响探索和提前停止。最终评分仍用应用自己的独立样例。</p>
+<h2 id="什么时候停止返回什么">什么时候停止，返回什么</h2>
+<p>预算判断放在当前候选执行和归档之后，这样最后一轮的工作能保留下来。</p>
+<p><code>stop_reason</code> 的取值：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>early_stop</code></td>
+<td>连续晋级次数达到 <code>early_stop</code></td>
+</tr>
+<tr>
+<td><code>max_iterations</code></td>
+<td>达到编码迭代上限</td>
+</tr>
+<tr>
+<td><code>proposer_failed</code></td>
+<td>输入提议失败</td>
+</tr>
+<tr>
+<td><code>budget_exhausted</code></td>
+<td>预算用完</td>
+</tr>
+</tbody>
+</table>
+<p>输出还包含：迭代次数、晋级次数、已知样例、逐轮事件、<code>final_program</code> 和 <code>final_score</code>。</p>
+<p>注意 <code>final_score</code> 是阶段得分，根据已知样例和协议惩罚计算。用独立隐藏测试评分，要由调用方在运行结束后自己做。</p>
+<h2 id="进阶定制绑定和样例记录">进阶：定制绑定和样例记录</h2>
+<p><code>ReconstructionTask</code> 还有几个可选字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>candidate_file</code></td>
+<td>把默认的 <code>candidate.py</code> 改成任务需要的相对路径</td>
+</tr>
+<tr>
+<td><code>outputs_match(actual, expected)</code></td>
+<td>自定义输出相等规则。适合业务确实允许浮点误差或等价结构的任务</td>
+</tr>
+<tr>
+<td><code>on_example(input, output, source)</code></td>
+<td>收到每条实际被接纳的样例和来源，可以接到应用日志</td>
+</tr>
+</tbody>
+</table>
 <pre><code class="language-python">observed = []
 
 def record_example(input_value, output_value, source):
@@ -160,16 +298,16 @@ def record_example(input_value, output_value, source):
 def numeric_match(actual, expected):
     return abs(actual - expected) &lt;= 1e-8
 </code></pre>
-<p>数值标量任务可在构造绑定时传入 <code>outputs_match=numeric_match, on_example=record_example</code>。列表或嵌套结构应采用匹配自身数据形状的比较函数。随机源收到的 <code>exclude</code> 使用输入的字符串表示，生成器可以先过滤已有值，工作流还会校验新输入与等价重复输入。</p>
-<p>预算判断在当前候选执行和归档之后进行，便于保留最后一轮工作。<code>stop_reason</code> 可为 <code>early_stop</code>、<code>max_iterations</code>、<code>proposer_failed</code> 或 <code>budget_exhausted</code>。输出还包含迭代次数、晋级次数、已知样例、逐轮事件，以及 <code>final_program</code> 和 <code>final_score</code>。阶段得分根据已知样例和协议惩罚计算，独立隐藏测试的评分由调用方在运行结束后执行。</p>
+<p>数值标量任务可以在构造绑定时传入 <code>outputs_match=numeric_match, on_example=record_example</code>。列表或嵌套结构要用符合自身数据形状的比较函数。</p>
+<p>随机源收到的 <code>exclude</code> 是输入的字符串表示。生成器可以先过滤掉已有值，工作流还会再校验新输入，并排除等价的重复输入。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/reconstruct.md#L3">docs/reconstruct.md</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/builtin_workflows/reconstruct.py#L118">opencollab/builtin_workflows/reconstruct.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/builtin_workflows/__init__.py#L21">opencollab/builtin_workflows/<strong>init</strong>.py</a>。</p>
 <h2 id="相关章节">相关章节</h2>
-<p><a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a>、<a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a>、<a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a>。</p>
+<p><a href="../run-registered-workflow/index.html">运行一个工作流（Workflow）</a>、<a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a>、<a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent：ctx.agent 与 ctx.agent_run</a>。</p>
 
 <footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/reconstruct-workflow.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%87%86%E5%A4%87%E7%BB%91%E5%AE%9A%E5%AF%B9%E8%B1%A1">准备绑定对象</a><a href="#%E4%B8%80%E8%BD%AE%E6%80%8E%E6%A0%B7%E6%8E%A8%E8%BF%9B">一轮怎样推进</a><a href="#%E9%85%8D%E7%BD%AE%E6%8E%A2%E7%B4%A2%E4%B8%8E%E5%81%9C%E6%AD%A2">配置探索与停止</a><a href="#%E5%AE%9A%E5%88%B6%E7%BB%91%E5%AE%9A%E4%B8%8E%E6%A0%B7%E4%BE%8B%E8%AE%B0%E5%BD%95">定制绑定与样例记录</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%9C%80%E5%B0%8F%E7%94%A8%E6%B3%95">最小用法</a><a href="#1-%E7%94%A8-sdk-%E7%BB%91%E5%AE%9A%E4%BB%BB%E5%8A%A1">1. 用 SDK 绑定任务</a><a href="#2-%E6%88%96%E8%80%85%E7%94%A8-cli">2. 或者用 CLI</a><a href="#%E6%AF%8F%E4%B8%80%E8%BD%AE%E6%80%8E%E4%B9%88%E6%8E%A8%E8%BF%9B">每一轮怎么推进</a><a href="#%E5%8F%82%E6%95%B0">参数</a><a href="#%E6%8F%8F%E8%BF%B0%E8%BE%93%E5%85%A5%E5%9F%9F">描述输入域</a><a href="#%E5%9B%9B%E4%B8%AA%E6%8E%A2%E7%B4%A2%E5%BC%80%E5%85%B3">四个探索开关</a><a href="#%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E5%81%9C%E6%AD%A2%E8%BF%94%E5%9B%9E%E4%BB%80%E4%B9%88">什么时候停止，返回什么</a><a href="#%E8%BF%9B%E9%98%B6%E5%AE%9A%E5%88%B6%E7%BB%91%E5%AE%9A%E5%92%8C%E6%A0%B7%E4%BE%8B%E8%AE%B0%E5%BD%95">进阶：定制绑定和样例记录</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>
 </body>
 </html>
