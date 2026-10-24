@@ -75,6 +75,33 @@ def test_unsupported_extra_requirement_preserves_only_existing_valid_advantage(
     expected = winner if unsupported_gap == "unclear" else None
     assert _selection._validated_judge_winner(result, paths) == expected
 
+@pytest.mark.parametrize(
+    ("changed", "evidence"),
+    [
+        ("src/handler.py", "src/old_handler.py implements the return value"),
+        ("a.py", "data.py keeps the helper"),
+        ("utils.py", "db_utils.py formats the result"),
+        ("src/handler.py", "src/handler.py.bak keeps the previous helper"),
+    ],
+)
+def test_changed_path_evidence_ignores_filename_suffix_collisions(changed, evidence):
+    result = coverage_decision(
+        winner="A", loser_coverage="not_covered", winner_evidence=evidence,
+    )
+    assert _selection._validated_judge_winner(result, {"A": [changed], "B": [changed]}) is None
+
+
+def test_changed_path_evidence_accepts_basename_without_directory():
+    result = coverage_decision(
+        winner="A",
+        loser_coverage="not_covered",
+        winner_evidence="See handler.py.",
+    )
+    assert _selection._validated_judge_winner(
+        result, {"A": ["src/handler.py"], "B": ["src/handler.py"]},
+    ) == "A"
+
+
 @pytest.mark.parametrize("winner", ["A", "B"])
 @pytest.mark.parametrize("evidence", ["", "docs/overview.md describes the return value"])
 def test_coverage_advantage_requires_winner_changed_path_evidence(winner, evidence):

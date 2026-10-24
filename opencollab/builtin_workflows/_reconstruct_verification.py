@@ -20,8 +20,21 @@ def jsonable(value: Any) -> Any:
     return json.loads(json.dumps(value))
 
 
+def _json_containers(value: Any) -> Any:
+    """Treat tuples as JSON lists so a candidate can return either shape."""
+    if isinstance(value, tuple):
+        return [_json_containers(item) for item in value]
+    if isinstance(value, list):
+        return [_json_containers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_containers(item) for key, item in value.items()}
+    return value
+
+
 def outputs_match(actual: Any, expected: Any) -> bool:
     """Default output comparison: exact for ints and containers, 1e-6 tolerance for floats."""
+    actual = _json_containers(actual)
+    expected = _json_containers(expected)
     if isinstance(expected, list) and isinstance(actual, list):
         if len(expected) != len(actual):
             return False

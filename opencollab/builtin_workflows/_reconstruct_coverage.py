@@ -86,12 +86,16 @@ def categories(inp: Any, kind: str) -> set[str]:
             return cats
         if kind == "string" and isinstance(inp, str):
             n = len(inp)
+            if n == 0:
+                return set()
             cats = {"str:short" if n <= 3 else "str:mid" if n <= 7 else "str:long"}
             if n > 1 and len(set(inp)) < n:
                 cats.add("str:repeat")
             return cats
         if kind == "points" and isinstance(inp, list):
             n = len(inp)
+            if n == 0:
+                return set()
             cats = {"pts:few" if n <= 2 else "pts:some" if n <= 5 else "pts:many"}
             flat = [c for p in inp if isinstance(p, (list, tuple)) for c in p if isinstance(c, (int, float))]
             if n > 1 and len({repr(p) for p in inp}) < n:

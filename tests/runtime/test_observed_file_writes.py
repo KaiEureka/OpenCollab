@@ -168,7 +168,7 @@ async def test_docker_comparison_uses_one_real_shell_write(monkeypatch, tmp_path
     original = _file_state(target)
     executions = []
 
-    async def run_locally(command, *, timeout, input_bytes=None):
+    async def run_locally(command, *, timeout, input_bytes=None, **_kwargs):
         executions.append((command, input_bytes))
         if input_bytes is None:
             assert "opencollab-file-parent" in command
@@ -204,7 +204,7 @@ async def test_docker_comparison_error_or_drift_still_publishes(monkeypatch, tmp
     cmp.chmod(0o755)
     executions = []
 
-    async def run_locally(command, *, timeout, input_bytes=None):
+    async def run_locally(command, *, timeout, input_bytes=None, **_kwargs):
         executions.append((command, input_bytes))
         if input_bytes is None:
             assert "opencollab-file-parent" in command

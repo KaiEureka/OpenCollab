@@ -549,6 +549,10 @@ def test_task_resolution_from_import_path(tmp_path: Path, monkeypatch: pytest.Mo
         (1, 1.0 + 2e-6, False),
         ("0.3", 0.3, False),
         (complex(0.3 + 1e-7), 0.3, False),
+        ((1, 2), [1, 2], True),
+        ([(1, 2)], [[1, 2]], True),
+        ({"value": (1, 2)}, {"value": [1, 2]}, True),
+        ((1, 2), (1, 3), False),
     ],
 )
 def test_output_comparison_preserves_integer_precision(actual: Any, expected: Any, matched: bool) -> None:
@@ -569,6 +573,12 @@ def test_large_integer_oracle_rejects_rounded_float_candidate(tmp_path: Path, fl
 
 
 def test_coverage_and_verification_helpers() -> None:
+    assert coverage.categories("", "string") == set()
+    assert coverage.categories("ab", "string") == {"str:short"}
+    assert "str:short" in coverage.missing([""], "string", None, None)
+    assert coverage.categories([], "points") == set()
+    assert coverage.categories([[0, 0]], "points") >= {"pts:few"}
+    assert "pts:few" in coverage.missing([[]], "points", None, None)
     required = coverage.required("list", -1000, 1000)
     inputs: list[Any] = [[], [5], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], [-7, 0, 7], [3, 3, 3]]
     covered = set().union(*(coverage.categories(i, "list") for i in inputs))

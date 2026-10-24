@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -402,6 +403,24 @@ def _handle_event(event: Any, state: _StreamState, expected_model: str | None = 
         raise ResponsesProtocolError(f"unsupported Responses event {event_type!r}")
     return False
 
+async def _close_finished_stream(stream: Any) -> None:
+    """Release the socket without replacing a finished read or its original error.
+
+    ``AsyncStream.close`` awaits the HTTP response close. A reset at that point
+    is not a failed generation: the terminal event is already in memory, and a
+    retryable close error would drop it and bill the request again.
+    """
+    close = getattr(stream, "close", None)
+    if close is None:
+        return
+    try:
+        result = close()
+        if asyncio.iscoroutine(result):
+            await result
+    except Exception:
+        logging.getLogger(__name__).debug("responses stream close failed", exc_info=True)
+
+
 async def _consume_stream(
     stream: Any,
     first_event_timeout: float | None,
@@ -444,11 +463,7 @@ async def _drain_stream(
             if _handle_event(event, state, expected_model):
                 break
     finally:
-        close = getattr(stream, "close", None)
-        if close is not None:
-            result = close()
-            if asyncio.iscoroutine(result):
-                await result
+        await _close_finished_stream(stream)
     if state.argument_fragments:
         _, finish_reason = _validate_terminal_response(state.completed_response, expected_model)
         output = _validated_response_items(to_plain_data(getattr(state.completed_response, "output", None)))
