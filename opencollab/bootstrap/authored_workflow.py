@@ -42,6 +42,7 @@ class _Child:
     cleanup_error: Exception | None = None
     bridge: AuthoredWorkflowBridge | None = None
     saved_artifacts: str | None = None
+    artifacts_removed: bool = False
 
 
 class AuthoredWorkflowTool(Tool):
@@ -316,11 +317,12 @@ class AuthoredWorkflowTool(Tool):
                     failures.append(exc)
                 if child.cleanup_error is not None:
                     failures.append(child.cleanup_error)
-                else:
+                elif not child.artifacts_removed:
                     try:
                         result = await child.environment.exec_cmd(f"rm -rf -- {shlex.quote(child.artifacts)}")
                         if result.returncode:
                             raise OSError("child runtime artifact cleanup failed")
+                        child.artifacts_removed = True
                     except Exception as exc:
                         failures.append(exc)
         if failures:

@@ -329,6 +329,19 @@ async def test_unbounded_parent_can_launch_unbounded_children(local_environment_
     await parent.aclose()
 
 
+async def test_owned_child_cleanup_remains_idempotent_after_environment_closes(local_environment_factory, tmp_path):
+    (tmp_path / "authored.py").write_text("async def main(ctx, args):\n    return 7\n")
+    environment = local_environment_factory(str(tmp_path))
+    parent, tool, runtime = _manager(environment, budget=None)
+    child = await _launch(tool, runtime)
+    result = json.loads(await tool.execute_with_runtime({"action": "wait", "id": child["id"]}, runtime))
+    assert result["status"] == "completed" and result["result"]["output"] == 7
+    await parent.aclose()
+    assert not Path(child["artifacts"]).exists()
+    await environment.cleanup()
+    await parent.aclose()
+
+
 async def test_child_reservations_limit_parent_requests_and_release_after_stop(local_environment_factory, tmp_path):
     (tmp_path / "authored.py").write_text("import asyncio\nasync def main(ctx, args):\n    await asyncio.sleep(300)\n")
     parent, tool, runtime = _manager(local_environment_factory(str(tmp_path)))
