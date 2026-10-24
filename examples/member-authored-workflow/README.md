@@ -90,7 +90,10 @@ Docker execution environments when the host configures the `docker-session`
 provider.
 
 ```python
+from opencollab.tools import builtin_tools
+
 async def main(ctx, args):
+    tools = builtin_tools("bash")
     first = await ctx.agent("inspect the source", tools=tools, isolation="docker-session")
     second = await ctx.agent("verify the source", tools=tools, isolation="docker-session")
     return first, second
