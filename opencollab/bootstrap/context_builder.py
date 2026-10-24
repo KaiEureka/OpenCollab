@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from opencollab.adapters.llm.providers import RESPONSES
 from opencollab.adapters.llm.types import model_capabilities
@@ -26,6 +27,7 @@ from opencollab.bootstrap.config import (
     DEFAULT_THINKING,
     DEFAULT_THINKING_PARAMS,
     DEFAULT_TOP_P,
+    resolve_model_route,
 )
 from opencollab.bootstrap.team_config import RoleConfig, TeamConfig
 from opencollab.bootstrap.tool_registry import COORDINATION_TOOL_NAMES, build_tools_for_role
@@ -72,6 +74,19 @@ class SpawnConfig:
     llm_stream_chat: bool = False
     thinking_params_explicit: bool | None = None
     auth_token: str | None = field(default=None, repr=False)
+    model_routes: dict[str, Any] = field(default_factory=dict, repr=False)
+    request_pool: str | None = None
+    request_capacity: int | None = None
+    logical_model: str | None = None
+
+    def model_settings(self, model: str | None = None) -> dict[str, Any]:
+        return resolve_model_route(
+            {key: getattr(self, key) for key in (
+                "model", "provider", "api_key", "auth_token", "base_url", "wire_protocol",
+                "context_window", "model_routes", "request_pool", "request_capacity", "logical_model",
+            )},
+            model,
+        )
 
     def __post_init__(self) -> None:
         if self.thinking_params_explicit is None:
@@ -79,7 +94,7 @@ class SpawnConfig:
         self.thinking_params = dict(DEFAULT_THINKING_PARAMS if self.thinking_params is None else self.thinking_params)
 
     def reasoning_effort_for_role(self, role: RoleConfig) -> str | None:
-        capabilities = model_capabilities(role.model or self.model)
+        capabilities = model_capabilities(self.model_settings(role.model)["model"])
         if role.thinking is False and (
             not self.thinking or capabilities.honors_workflow_thinking_override
         ):
@@ -214,9 +229,10 @@ class ContextBuilder:
             tool_limits=self._tool_limits_for(role),
         )
         cfg = self._cfg
-        model = role.model or cfg.model
+        model_settings = cfg.model_settings(role.model)
+        model = model_settings["model"]
         if (
-            cfg.wire_protocol == RESPONSES
+            model_settings["wire_protocol"] == RESPONSES
             and tools
             and not model_capabilities(model).supports_responses_tools
         ):
@@ -240,15 +256,18 @@ class ContextBuilder:
             system_prompt=plan.system_prompt(),
             tools=tools,
             model=model,
-            provider=cfg.provider,
-            wire_protocol=cfg.wire_protocol,
-            api_key=cfg.api_key,
-            auth_token=cfg.auth_token,
-            base_url=cfg.base_url,
+            provider=model_settings["provider"],
+            wire_protocol=model_settings["wire_protocol"],
+            api_key=model_settings["api_key"],
+            auth_token=model_settings["auth_token"],
+            base_url=model_settings["base_url"],
+            logical_model=model_settings.get("logical_model"),
+            request_pool=model_settings.get("request_pool"),
+            request_capacity=model_settings.get("request_capacity"),
             temperature=temperature,
             top_p=cfg.top_p,
             max_tokens_per_step=cfg.max_output_tokens,
-            context_window=cfg.context_window,
+            context_window=model_settings["context_window"],
             thinking=thinking,
             thinking_params=thinking_params,
             thinking_params_explicit=(

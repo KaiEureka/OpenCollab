@@ -50,7 +50,8 @@ def test_public_class_and_method_shapes_stay_lean() -> None:
             positional: {"workspace": "."},
             keyword: {
                 "model": None, "provider": None, "api_key": None,
-                "base_url": None, "config": None, "environment": None, "environment_providers": None,
+                "base_url": None, "config": None, "environment": None,
+                "environment_providers": None, "model_routes": None,
             },
         },
         sdk.OpenCollab.agent: {

@@ -48,7 +48,7 @@ from opencollab.bootstrap.agent_runtime import (
 from opencollab.bootstrap.agent_runtime import (
     run_agent as _run_agent,
 )
-from opencollab.bootstrap.config import resolve_thinking_params
+from opencollab.bootstrap.config import resolve_model_route, resolve_thinking_params
 from opencollab.bootstrap.scheduler_factory import build_scheduler  # noqa: F401
 from opencollab.bootstrap.session_factory import SESSION_MAX_STEPS
 from opencollab.bootstrap.tool_registry import build_tools_for_role
@@ -345,6 +345,7 @@ async def run_agent(
     run_id = run_id if run_id is not None else f"agent-{uuid.uuid4().hex}"
     resolved_profile = agent_profile if agent_profile is not None else resolve_agent_profile(None)
     resolved_tools = resolved_profile.resolve_tools(tools)
+    config = resolve_model_route(config)
     agent = Agent(
         name=name,
         system_prompt=system_prompt if system_prompt is not None else resolved_profile.system_prompt,
@@ -355,6 +356,9 @@ async def run_agent(
         api_key=config.get("api_key"),
         auth_token=config.get("auth_token"),
         base_url=config.get("base_url"),
+        logical_model=config.get("logical_model"),
+        request_pool=config.get("request_pool"),
+        request_capacity=config.get("request_capacity"),
         context_window=config.get("context_window"),
         max_tokens_per_step=config.get("max_output_tokens", 8_192),
         temperature=config.get("temperature", 0.2),

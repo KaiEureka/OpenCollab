@@ -8,18 +8,22 @@ from typing import Any
 
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.storage import SessionStore
+from opencollab.bootstrap.config import resolve_model_route
 
 
 def configured_model_client(
     config: Mapping[str, Any], *, client_type: type[Any] | None = None,
 ) -> Any:
     """Create an independently owned transport with the resolved configuration."""
+    config = resolve_model_route(config)
     return (client_type or LLMClient)(
         model=config["model"],
         provider=config["provider"],
         api_key=config.get("api_key"),
         **({"auth_token": config["auth_token"]} if config.get("auth_token") else {}),
         base_url=config.get("base_url"),
+        **({"request_pool": config["request_pool"], "request_capacity": config["request_capacity"]}
+           if config.get("request_pool") is not None else {}),
         wire_protocol=config.get("wire_protocol", "chat_completions"),
         context_window=config.get("context_window"),
         max_retries=config.get("llm_max_retries", 3),

@@ -521,9 +521,6 @@ class DefaultSessionFactory:
 
     def _validate_responses_tool_support(self) -> None:
         """Reject statically incompatible team roles before opening a workspace."""
-        if self._cfg.wire_protocol != RESPONSES:
-            return
-
         # A restricted topology may name an undeclared destination.  Such a
         # destination is still spawnable and ``TeamConfig.role_for`` resolves it
         # to the generic BASE_TOOL_NAMES role, so it must participate in the
@@ -538,7 +535,10 @@ class DefaultSessionFactory:
                 )
 
         for role_name, role in reachable_roles.items():
-            model = role.model or self._cfg.model
+            settings = self._cfg.model_settings(role.model)
+            if settings["wire_protocol"] != RESPONSES:
+                continue
+            model = settings["model"]
             tool_names = set(role.tools)
             if role_name != self._team.entry or not self._interactive:
                 tool_names.discard("ask_user")
@@ -550,8 +550,9 @@ class DefaultSessionFactory:
                 reasoning_effort=self._cfg.reasoning_effort_for_role(role),
             )
         fallback_tool_names = set(BASE_TOOL_NAMES) - {"ask_user"}
-        if self._team.topology.allow_all:
-            capabilities = model_capabilities(self._cfg.model)
+        default_settings = self._cfg.model_settings()
+        if self._team.topology.allow_all and default_settings["wire_protocol"] == RESPONSES:
+            capabilities = model_capabilities(default_settings["model"])
             if fallback_tool_names and not capabilities.supports_responses_tools:
                 raise ValueError(
                     f"default model {self._cfg.model!r} does not support Responses "

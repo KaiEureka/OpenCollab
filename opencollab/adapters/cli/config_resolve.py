@@ -32,7 +32,7 @@ def print_missing_key_hint(
 def resolve_config(workspace: str, model: str | None, provider: str | None,
                    api_key: str | None, base_url: str | None, budget: int | None) -> dict:
     """Merge CLI args with .env defaults. CLI args take precedence."""
-    from opencollab.bootstrap.config import build_config
+    from opencollab.bootstrap.config import build_config, resolve_model_route
 
     # ``filter_messages`` remains a compatibility input.
     try:
@@ -48,4 +48,4 @@ def resolve_config(workspace: str, model: str | None, provider: str | None,
         ).model_dump()
     except (OSError, ValueError) as exc:
         raise typer.BadParameter(f"Cannot load configuration: {exc}") from exc
-    return cfg
+    return resolve_model_route(cfg)

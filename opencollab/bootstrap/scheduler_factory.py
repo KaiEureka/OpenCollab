@@ -161,6 +161,10 @@ def build_scheduler(
         SpawnConfig(
             model=cfg["model"],
             provider=cfg["provider"],
+            model_routes=cfg.get("model_routes", {}),
+            logical_model=cfg.get("logical_model"),
+            request_pool=cfg.get("request_pool"),
+            request_capacity=cfg.get("request_capacity"),
             wire_protocol=cfg.get("wire_protocol", "chat_completions"),
             api_key=cfg["api_key"],
             auth_token=cfg.get("auth_token"),

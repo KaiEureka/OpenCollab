@@ -39,6 +39,9 @@ class Agent:
     auth_token: str | None = field(default=None, repr=False, kw_only=True)
     base_url: str | None = None
     context_window: int | None = None
+    logical_model: str | None = field(default=None, kw_only=True)
+    request_pool: str | None = field(default=None, kw_only=True)
+    request_capacity: int | None = field(default=None, kw_only=True)
     max_tokens_per_step: int = DEFAULT_MAX_TOKENS_PER_STEP
     temperature: float = 0.0
     top_p: float | None = None
