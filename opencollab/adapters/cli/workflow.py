@@ -20,6 +20,7 @@ from opencollab.adapters.cli.config_resolve import (
     missing_api_key_for,
     print_missing_key_hint,
     resolve_config,
+    resolve_model_route,
 )
 from opencollab.adapters.cli.text_input import resolve_text_input
 from opencollab.application.async_timeout import run_with_bounded_shutdown
@@ -145,8 +146,11 @@ def run_cmd(
         parsed_args["goal"] = task_text
 
     cfg = resolve_config(workspace, model, provider, api_key, base_url, budget)
-    if missing_api_key_for(cfg["provider"], cfg["api_key"], cfg["base_url"], cfg.get("auth_token")):
-        print_missing_key_hint(console, cfg["provider"], cfg["base_url"])
+    model_cfg = resolve_model_route(cfg)
+    if missing_api_key_for(
+        model_cfg["provider"], model_cfg["api_key"], model_cfg["base_url"], model_cfg.get("auth_token"),
+    ):
+        print_missing_key_hint(console, model_cfg["provider"], model_cfg["base_url"])
         raise typer.Exit(code=1)
 
     # Fan-out workflows raise the fallback budget. Leave an explicit budget

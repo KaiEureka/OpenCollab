@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -120,17 +121,73 @@ def _optional_string(value: Any) -> Any:
         return value.strip() or None
     return value
 
+class ModelRoute(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    model: str = Field(min_length=1)
+    provider: str = Field(default="openai", min_length=1)
+    wire_protocol: str = "chat_completions"
+    base_url: str | None = None
+    api_key: str | None = Field(default=None, repr=False)
+    auth_token: str | None = Field(default=None, repr=False)
+    api_key_env: str | None = None
+    context_window: int | None = Field(default=None, ge=1)
+    request_pool: str | None = None
+    request_capacity: int | None = Field(default=None, ge=1)
+
+    @field_validator("model", "provider", "wire_protocol", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("provider")
+    @classmethod
+    def _normalize_provider(cls, value: str) -> str:
+        return value.lower()
+
+    @field_validator("wire_protocol")
+    @classmethod
+    def _normalize_protocol(cls, value: str) -> str:
+        return normalize_wire_protocol(value)
+
+    @field_validator("base_url", "api_key", "auth_token", "api_key_env", "request_pool", mode="before")
+    @classmethod
+    def _optional_strings(cls, value: Any) -> Any:
+        return _optional_string(value)
+
+    @field_validator("context_window", "request_capacity", mode="before")
+    @classmethod
+    def _reject_boolean(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("numeric configuration values must not be booleans")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_pool(self) -> ModelRoute:
+        if (self.request_pool is None) != (self.request_capacity is None):
+            raise ValueError("request_pool and request_capacity must be supplied together")
+        if self.request_pool is not None and not os.path.isabs(self.request_pool):
+            raise ValueError("request_pool must be an absolute local directory path")
+        if is_anthropic(self.provider) and self.wire_protocol == "responses":
+            raise ValueError("Responses wire protocol requires an OpenAI-compatible provider")
+        return self
+
+
 class OpenCollabConfig(BaseModel):
     """Runtime configuration for OpenCollab."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     model: str = Field(default="gpt-4o", min_length=1)
+    logical_model: str | None = None
     provider: str = Field(default="openai", min_length=1)
     wire_protocol: str = Field(default="chat_completions", min_length=1)
     api_key: str | None = Field(default=None, repr=False)
     auth_token: str | None = Field(default=None, repr=False)
     base_url: str | None = None
+    model_routes: dict[str, ModelRoute] = Field(default_factory=dict, repr=False)
+    request_pool: str | None = None
+    request_capacity: int | None = Field(default=None, ge=1)
     budget: int = Field(default=1_000_000, ge=1)
     temperature: float = Field(default=DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
     top_p: float | None = Field(default=DEFAULT_TOP_P, ge=0.0, le=1.0)
@@ -168,6 +225,7 @@ class OpenCollabConfig(BaseModel):
         return self
 
     @field_validator(
+        "request_capacity",
         "budget",
         "temperature",
         "top_p",
@@ -186,6 +244,27 @@ class OpenCollabConfig(BaseModel):
         if isinstance(value, bool):
             raise ValueError("numeric configuration values must not be booleans")
         return value
+
+    @field_validator("model_routes", mode="before")
+    @classmethod
+    def _parse_routes(cls, value: Any) -> Any:
+        if value is None:
+            return {}
+        if isinstance(value, str):
+            value = json.loads(value)
+        if not isinstance(value, dict) or any(
+            not isinstance(key, str) or not key.strip() or key != key.strip() for key in value
+        ):
+            raise ValueError("model_routes must map non-empty model names to routes")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_request_pool(self) -> OpenCollabConfig:
+        if (self.request_pool is None) != (self.request_capacity is None):
+            raise ValueError("request_pool and request_capacity must be supplied together")
+        if self.request_pool is not None and not os.path.isabs(self.request_pool):
+            raise ValueError("request_pool must be an absolute local directory path")
+        return self
 
     @field_validator("top_p", mode="before")
     @classmethod
@@ -244,7 +323,7 @@ class OpenCollabConfig(BaseModel):
             )
         return normalized
 
-    @field_validator("api_key", "auth_token", "base_url", mode="before")
+    @field_validator("api_key", "auth_token", "base_url", "request_pool", mode="before")
     @classmethod
     def _empty_string_as_none(cls, value: Any) -> Any:
         return _optional_string(value)
@@ -440,6 +519,9 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
 
     defaults = {
         "model": "gpt-4o",
+        "model_routes": None,
+        "request_pool": None,
+        "request_capacity": None,
         "wire_protocol": "chat_completions",
         "budget": "1000000",
         "temperature": str(DEFAULT_TEMPERATURE),
@@ -468,8 +550,44 @@ def build_config(workspace: str | None = None, overrides: dict[str, Any] | None 
     # Defaults share the same payload as an explicit DashScope protocol. Keep
     # its source before validation replaces None with that default mapping.
     values.setdefault("thinking_params_explicit", values["thinking_params"] is not None)
-    return OpenCollabConfig.model_validate(values)
+    config = OpenCollabConfig.model_validate(values)
+    for route in config.model_routes.values():
+        if route.api_key_env and not route.api_key:
+            route.api_key = resolve_ordered(route.api_key_env)
+            if not route.api_key:
+                raise ValueError(f"model route API key environment variable is unset: {route.api_key_env}")
+        if not route.api_key and not route.auth_token:
+            names = api_key_env_precedence(route.provider, route.base_url)
+            if is_anthropic(route.provider):
+                names = tuple(name for name in names if name != "OPENCOLLAB_API_KEY")
+            route.api_key = resolve_ordered(*names)
+            if is_anthropic(route.provider) and not route.api_key:
+                route.auth_token = resolve_ordered("ANTHROPIC_AUTH_TOKEN")
+                if not route.auth_token:
+                    route.api_key = resolve_ordered("OPENCOLLAB_API_KEY")
+    return config
 
 def get_config(workspace: str | None = None) -> dict[str, Any]:
     """Get resolved configuration as a dict for existing callers."""
     return build_config(workspace).model_dump()
+
+
+def resolve_model_route(config: Mapping[str, Any], model: str | None = None) -> dict[str, Any]:
+    resolved = dict(config)
+    if model is None and config.get("logical_model") is not None:
+        return resolved
+    if model is not None:
+        resolved["logical_model"] = None
+    selected = config["model"] if model is None else model
+    resolved["model"] = selected
+    route = config.get("model_routes", {}).get(selected)
+    if route is None:
+        return resolved
+    route = route if isinstance(route, ModelRoute) else ModelRoute.model_validate(route)
+    values = route.model_dump(exclude={"api_key_env", "request_pool", "request_capacity"})
+    resolved.update(values)
+    if route.request_pool is not None:
+        resolved.update(request_pool=route.request_pool, request_capacity=route.request_capacity)
+    resolved["base_url"] = resolve_provider_base_url(route.provider, route.base_url)
+    resolved["logical_model"] = selected
+    return resolved

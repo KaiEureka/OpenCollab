@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 
 from opencollab.bootstrap.config import accepted_api_key_envs, missing_api_key
+from opencollab.bootstrap.config import resolve_model_route as resolve_model_route
 
 
 def missing_api_key_for(

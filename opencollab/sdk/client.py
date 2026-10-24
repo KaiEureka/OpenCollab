@@ -118,6 +118,7 @@ class OpenCollab:
         config: Mapping[str, Any] | None = None,
         environment: Any | None = None,
         environment_providers: Mapping[str, Any] | None = None,
+        model_routes: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         raw_workspace = os.fspath(workspace)
         if not raw_workspace or "\x00" in raw_workspace:
@@ -128,6 +129,10 @@ class OpenCollab:
         if config is not None and not isinstance(config, Mapping):
             raise TypeError("config must be a mapping")
         overrides = dict(config or {})
+        if model is not None:
+            overrides.pop("logical_model", None)
+        if model_routes is not None:
+            overrides["model_routes"] = dict(model_routes)
         overrides.update(
             {
                 key: value
@@ -170,12 +175,20 @@ class OpenCollab:
             "context_window",
             "llm_max_retries",
             "provider_error_time_budget",
+            "request_capacity",
         )
         public = {
             key: copy.deepcopy(self._config[key])
             for key in public_keys
             if key in self._config
         }
+        if self._config.get("model_routes"):
+            public["model_routes"] = {
+                name: {key: route[key] for key in (
+                    "model", "provider", "wire_protocol", "context_window", "request_capacity"
+                )}
+                for name, route in self._config["model_routes"].items()
+            }
         base_url = self._config.get("base_url")
         public["base_url_sha256"] = (
             hashlib.sha256(base_url.encode("utf-8")).hexdigest()

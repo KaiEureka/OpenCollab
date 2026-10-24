@@ -62,6 +62,11 @@ environment credentials. Native bearer tokens use the `Authorization` header.
 Base URLs also accept `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` for the
 selected provider after `OPENCOLLAB_BASE_URL`.
 
+Logical model names and request capacity shared by independent Team or Workflow
+processes are configured through [shared model routing](../docs/model-routing.md).
+The guide covers local backend URLs, API credentials, same-host request pools,
+and common gateways for multiple hosts.
+
 ## Wire protocol
 
 `OPENCOLLAB_WIRE_PROTOCOL=chat_completions` is the default for OpenAI-compatible

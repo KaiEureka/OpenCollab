@@ -24,6 +24,7 @@ from opencollab.adapters.cli.config_resolve import (
     missing_api_key_for,
     print_missing_key_hint,
     resolve_config,
+    resolve_model_route,
 )
 from opencollab.adapters.cli.live_prompt import LivePrompt
 from opencollab.adapters.cli.team import build_team_app
@@ -114,8 +115,11 @@ def main_callback(
         raise typer.BadParameter("--hold requires --prompt or --prompt-file.")
 
     cfg = resolve_config(workspace, model, provider, api_key, base_url, budget)
-    if missing_api_key_for(cfg["provider"], cfg["api_key"], cfg["base_url"], cfg.get("auth_token")):
-        print_missing_key_hint(console, cfg["provider"], cfg["base_url"])
+    model_cfg = _initial_model_config(cfg, team_config)
+    if missing_api_key_for(
+        model_cfg["provider"], model_cfg["api_key"], model_cfg["base_url"], model_cfg.get("auth_token"),
+    ):
+        print_missing_key_hint(console, model_cfg["provider"], model_cfg["base_url"])
         raise typer.Exit(code=1)
 
     run_with_bounded_shutdown(
@@ -132,6 +136,13 @@ def main_callback(
             hold_after_run=hold,
         )
     )
+
+def _initial_model_config(cfg: dict[str, Any], team_config_path: str | None) -> dict[str, Any]:
+    role_model = None
+    if cfg.get("model_routes"):
+        team = load_team_config(path=team_config_path)
+        role_model = team.role_for(team.entry).model
+    return resolve_model_route(cfg, role_model)
 
 def _resolve_one_shot_prompt(prompt: str | None, prompt_file: str | None) -> str | None:
     return resolve_text_input(
@@ -338,9 +349,10 @@ async def _run(
     # and lines are read straight from stdin.
     has_screen = sys.stdin.isatty() and sys.stdout.isatty()
     prompt = LivePrompt(tui, console=console, interactive=has_screen)
+    model_cfg = _initial_model_config(cfg, team_config_path)
     tui.print_welcome(
-        model=cfg["model"],
-        provider=cfg["provider"],
+        model=model_cfg["model"],
+        provider=model_cfg["provider"],
         workspace=workspace,
         budget=cfg.get("budget"),
         interactive=one_shot_prompt is None or (hold_after_run and has_screen),

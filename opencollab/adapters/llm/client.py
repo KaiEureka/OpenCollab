@@ -9,7 +9,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 import openai
@@ -32,6 +32,7 @@ from opencollab.adapters.llm.providers import (
     normalize_wire_protocol,
     warn_provider_near_miss,
 )
+from opencollab.adapters.llm.request_admission import request_slot
 from opencollab.adapters.llm.responses_messages import messages_to_input
 from opencollab.adapters.llm.responses_provider import complete_responses
 from opencollab.adapters.llm.retry import RetryTimeBudget, _scoped_native_retry_budget
@@ -93,6 +94,8 @@ class LLMClient:
         user_agent: str | None = None,
         stream_chat: bool = False,
         auth_token: str | None = None,
+        request_pool: str | None = None,
+        request_capacity: int | None = None,
     ):
         if context_window is not None and (
             isinstance(context_window, bool)
@@ -108,6 +111,17 @@ class LLMClient:
             raise ValueError(
                 "provider_error_time_budget must be a finite non-negative number"
             )
+        if (request_pool is None) != (request_capacity is None):
+            raise ValueError("request_pool and request_capacity must be supplied together")
+        if request_capacity is not None and (
+            isinstance(request_capacity, bool) or not isinstance(request_capacity, int) or request_capacity <= 0
+        ):
+            raise ValueError("request_capacity must be a positive integer")
+        if request_pool is not None and not os.path.isabs(request_pool):
+            raise ValueError("request_pool must be an absolute local directory path")
+        self.request_pool = request_pool
+        self.request_capacity = request_capacity
+        self.supports_request_admission = request_pool is not None
         self.model = model
         self.provider = provider
         self.max_retries = max(0, max_retries)
@@ -275,6 +289,7 @@ class LLMClient:
         top_p: float | None = None,
         max_output_tokens: int | None = None,
         response_session_id: str | None = None,
+        on_admitted: Callable[[], None] | None = None,
     ) -> LLMResponse:
         """Single-shot completion. Returns full response.
 
@@ -300,66 +315,69 @@ class LLMClient:
         # Measure here so every provider path records the call timing.
         with recording() as first_token:
             try:
-                if self._anthropic:
-                    response = await complete_anthropic(
-                        self._anthropic,
-                        self.model,
-                        messages,
-                        tools,
-                        temperature,
-                        self.max_retries,
-                        thinking=thinking,
-                        thinking_params=thinking_params,
-                        tool_choice=tool_choice,
-                        top_p=top_p,
-                        max_output_tokens=max_output_tokens,
-                        reasoning_effort=reasoning_effort,
-                        provider_error_time_budget=retry_budget,
-                    )
-                elif self.wire_protocol == RESPONSES:
-                    response = await complete_responses(
-                        self._openai,
-                        self.model,
-                        messages,
-                        tools,
-                        temperature,
-                        self.max_retries,
-                        thinking=thinking,
-                        thinking_params=thinking_params,
-                        tool_choice=tool_choice,
-                        top_p=top_p,
-                        max_output_tokens=max_output_tokens,
-                        reasoning_effort=reasoning_effort,
-                        prompt_cache_namespace=self._responses_prompt_cache_namespace,
-                        response_session_id=response_session_id or uuid.uuid4().hex,
-                        native_openai=(
-                            normalize_provider(self.provider) == "openai"
-                            and urlsplit(str(self._openai.base_url)).hostname in _NATIVE_OPENAI_HOSTS
-                        ),
-                        first_event_timeout=self.first_event_timeout,
-                        stream_idle_timeout=self.stream_idle_timeout,
-                        round_timeout=self.request_timeout,
-                        provider_error_time_budget=retry_budget,
-                    )
-                else:
-                    response = await complete_openai(
-                        self._openai,
-                        self.model,
-                        messages,
-                        tools,
-                        temperature,
-                        self.max_retries,
-                        thinking=thinking,
-                        thinking_params=thinking_params,
-                        tool_choice=tool_choice,
-                        top_p=top_p,
-                        max_output_tokens=max_output_tokens,
-                        reasoning_effort=reasoning_effort,
-                        provider_error_time_budget=retry_budget,
-                        stream=self.stream_chat,
-                        first_event_timeout=self.first_event_timeout,
-                        stream_idle_timeout=self.stream_idle_timeout,
-                    )
+                async with request_slot(self.request_pool, self.request_capacity):
+                    if on_admitted is not None:
+                        on_admitted()
+                    if self._anthropic:
+                        response = await complete_anthropic(
+                            self._anthropic,
+                            self.model,
+                            messages,
+                            tools,
+                            temperature,
+                            self.max_retries,
+                            thinking=thinking,
+                            thinking_params=thinking_params,
+                            tool_choice=tool_choice,
+                            top_p=top_p,
+                            max_output_tokens=max_output_tokens,
+                            reasoning_effort=reasoning_effort,
+                            provider_error_time_budget=retry_budget,
+                        )
+                    elif self.wire_protocol == RESPONSES:
+                        response = await complete_responses(
+                            self._openai,
+                            self.model,
+                            messages,
+                            tools,
+                            temperature,
+                            self.max_retries,
+                            thinking=thinking,
+                            thinking_params=thinking_params,
+                            tool_choice=tool_choice,
+                            top_p=top_p,
+                            max_output_tokens=max_output_tokens,
+                            reasoning_effort=reasoning_effort,
+                            prompt_cache_namespace=self._responses_prompt_cache_namespace,
+                            response_session_id=response_session_id or uuid.uuid4().hex,
+                            native_openai=(
+                                normalize_provider(self.provider) == "openai"
+                                and urlsplit(str(self._openai.base_url)).hostname in _NATIVE_OPENAI_HOSTS
+                            ),
+                            first_event_timeout=self.first_event_timeout,
+                            stream_idle_timeout=self.stream_idle_timeout,
+                            round_timeout=self.request_timeout,
+                            provider_error_time_budget=retry_budget,
+                        )
+                    else:
+                        response = await complete_openai(
+                            self._openai,
+                            self.model,
+                            messages,
+                            tools,
+                            temperature,
+                            self.max_retries,
+                            thinking=thinking,
+                            thinking_params=thinking_params,
+                            tool_choice=tool_choice,
+                            top_p=top_p,
+                            max_output_tokens=max_output_tokens,
+                            reasoning_effort=reasoning_effort,
+                            provider_error_time_budget=retry_budget,
+                            stream=self.stream_chat,
+                            first_event_timeout=self.first_event_timeout,
+                            stream_idle_timeout=self.stream_idle_timeout,
+                        )
                 transport_timing = first_token.snapshot()
                 try:
                     response.transport_timing = transport_timing

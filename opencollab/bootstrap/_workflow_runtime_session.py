@@ -30,6 +30,7 @@ from opencollab.bootstrap.config import (
     DEFAULT_TEMPERATURE,
     DEFAULT_THINKING,
     DEFAULT_TOP_P,
+    resolve_model_route,
     resolve_thinking_params,
 )
 from opencollab.bootstrap.session_factory import (
@@ -114,6 +115,10 @@ class WorkflowSessionFactory:
         run_id: str | None = None,
         isolation: str | None = None,
         environment_providers: Any | None = None,
+        model_routes: dict[str, Any] | None = None,
+        logical_model: str | None = None,
+        request_pool: str | None = None,
+        request_capacity: int | None = None,
     ) -> None:
         self._llm = llm
         self._session_builder = session_builder
@@ -122,6 +127,18 @@ class WorkflowSessionFactory:
         self._environment_providers = environment_providers
         self._strategy_pool = None
         self._strategy_envs = []
+        settings = resolve_model_route({
+            "model": model, "provider": provider, "wire_protocol": wire_protocol,
+            "api_key": api_key, "auth_token": auth_token, "base_url": base_url,
+            "context_window": context_window, "model_routes": model_routes or {}, "logical_model": logical_model,
+            "request_pool": request_pool, "request_capacity": request_capacity,
+        })
+        model, provider, wire_protocol = (settings[key] for key in ("model", "provider", "wire_protocol"))
+        api_key, auth_token, base_url = (settings[key] for key in ("api_key", "auth_token", "base_url"))
+        context_window = settings["context_window"]
+        self._logical_model = settings.get("logical_model")
+        self._request_pool = settings.get("request_pool")
+        self._request_capacity = settings.get("request_capacity")
         self._model = model
         self._provider = provider
         self._wire_protocol = wire_protocol
@@ -363,6 +380,9 @@ class WorkflowSessionFactory:
             api_key=self._api_key,
             auth_token=self._auth_token,
             base_url=self._base_url,
+            logical_model=self._logical_model,
+            request_pool=self._request_pool,
+            request_capacity=self._request_capacity,
             temperature=self._temperature,
             top_p=self._top_p,
             max_tokens_per_step=self._max_output_tokens,
@@ -516,6 +536,10 @@ def build_workflow_context(
         isolation=isolation, environment_providers=environment_providers,
         model=cfg["model"],
         provider=cfg["provider"],
+        model_routes=cfg.get("model_routes"),
+        logical_model=cfg.get("logical_model"),
+        request_pool=cfg.get("request_pool"),
+        request_capacity=cfg.get("request_capacity"),
         wire_protocol=cfg.get("wire_protocol", "chat_completions"),
         api_key=cfg.get("api_key"),
         auth_token=cfg.get("auth_token"),
