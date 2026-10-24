@@ -49,6 +49,7 @@ from opencollab.bootstrap.agent_runtime import (
     run_agent as _run_agent,
 )
 from opencollab.bootstrap.config import resolve_model_route, resolve_thinking_params
+from opencollab.bootstrap.environment_profiles import configured_environment_providers
 from opencollab.bootstrap.scheduler_factory import build_scheduler  # noqa: F401
 from opencollab.bootstrap.session_factory import SESSION_MAX_STEPS
 from opencollab.bootstrap.tool_registry import build_tools_for_role
@@ -513,6 +514,7 @@ async def run_workflow(
     environment_providers: Mapping[str, Any] | None = None,
 ) -> ProgrammaticResult:
     """Run one workflow and return its live metrics directly."""
+    environment_providers = configured_environment_providers(config, environment_providers, isolation=isolation)
     run_id = run_id if run_id is not None else f"workflow-{uuid.uuid4().hex}"
     workflow_inputs = dict(inputs)
     if artifacts is not None:

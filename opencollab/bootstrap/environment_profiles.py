@@ -54,7 +54,7 @@ class VMProfile(BaseModel):
 
 
 def configured_environment_providers(
-    config: Mapping[str, Any], providers: Mapping[str, Any] | None = None,
+    config: Mapping[str, Any], providers: Mapping[str, Any] | None = None, *, isolation: str | None = None,
 ) -> dict[str, Any]:
     selected: dict[str, Any] = {}
     value = config.get("vm")
@@ -70,4 +70,8 @@ def configured_environment_providers(
             for scope in ("group", "session")
         })
     selected.update(providers or {})
+    if isolation in {"vm-group", "vm-session"} and isolation not in selected:
+        raise ValueError(
+            f"isolation strategy {isolation!r} requires VM resources in config.vm or an environment provider"
+        )
     return selected

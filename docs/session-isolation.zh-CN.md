@@ -80,3 +80,69 @@ result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="d
 容器网络默认为 `none`。任务需要网络访问时，`network` 可以指定 `bridge` 或已有 Docker 网络名。附加挂载均为只读，并拒绝暴露宿主 socket。工作区内容复制到容器私有存储，已有工作树和子模块捕获逻辑保留文件的物理内容，可移植 Git 元数据让容器独立使用自己的仓库。源工作区可以来自本机或已有 Docker 环境，其所有权继续由调用方持有。
 
 完整补丁在拥有的容器移除前捕获。导出失败或被截断时，工作区及其容器会保留，用于恢复和清理重试，恢复位置包含完整容器 ID。进程取消与环境撤销沿用已有行为。可以通过 `OPENCOLLAB_DOCKER_TEST_IMAGE` 选择本地镜像，执行 Docker adapter 测试中的真实容器路径。
+
+## VM 隔离策略
+
+`vm-group` 为一个 Team 或 Workflow 领取一台现有 Linux VM，每个 Session 在来宾内使用独立工作树。
+`vm-session` 为每个 Session 领取一台 VM。`shared` 和 `worktree` 继续相对于父环境生效，
+成员可以让自己编写的 Workflow Agent 留在自己的 VM 中执行。
+来宾软件和 SSH 连接准备见 [VM 使用指南](virtual-machines.zh-CN.md)。
+
+```python
+from opencollab import OpenCollab
+from opencollab.environments import VMConnection, VMResource, vm_isolation_provider
+
+resources = [VMResource(
+    resource_id="worker-01",
+    connection=VMConnection(host="vm.example.net", user="worker"),
+    workspace_root="/srv/opencollab",
+    state_directory="/var/tmp/opencollab-operations",
+    reset_command="/usr/local/sbin/reset-opencollab-guest",
+)]
+client = OpenCollab(".", environment_providers={
+    "vm-group": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3"),
+    "vm-session": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3", scope="session"),
+})
+result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="vm-group")
+```
+
+稳定的 `resource_id` 标识实际机器，同一机器的不同连接别名应使用相同标识。
+共享机器池的控制进程使用相同的绝对 `lease_database` 路径。SQLite 事务和资源唯一约束保持独占。
+`wait_timeout=0` 在容量不足时立即报错，正数指定等待秒数，`None` 等待容量或取消。
+子 Agent 选择 `vm-session` 时，需要父 VM 之外的一台空闲 VM。
+多台控制机器共享资源时，可以通过既有自定义提供者入口接入外部分配服务。
+
+来宾的工作区根目录须已存在。每台资源需要显式 `reset_command`，恢复工作负载可能产生的全部来宾改动。
+删除工作目录可以恢复其中的文件。依赖安装、系统配置和其他来宾改动需要对应的恢复操作，
+例如管理员提供的重置程序。OC 先导出候选文件和日志，停止拥有的操作，清理工作区，
+再持有租约执行重置。重置成功后，VM 回到可分配状态。导出、清理、连接或重置失败时，
+保留租约和恢复资料以供重试。
+
+SDK 可将相同配置序列化后放入 `config["vm"]`。`vm` 对象包含 `resources`、
+`lease_database` 和可选的 `wait_timeout`。每个资源对象采用 `VMResource` 的字段，
+其中 `connection` 对象采用 `VMConnection` 字段。OpenCollab 据此注册两种 VM 策略。
+显式 `environment_providers` 中的同名项目优先。
+
+```python
+import json
+from pathlib import Path
+
+profile = json.loads(Path("vm-profile.json").read_text())
+client = OpenCollab(".", config={"vm": profile})
+result = await client.team("Inspect the source", config="team.yaml", isolation="vm-group")
+```
+
+CLI 通过 `OPENCOLLAB_VM` 读取 JSON 配置，也支持既有 `configs/.env` 来源。
+Team YAML 继续使用上述运行默认与角色覆盖。Workflow 使用既有 `--isolation` 选项。
+
+```bash
+OPENCOLLAB_VM="$(cat vm-profile.json)" opencollab workflow run solve --isolation vm-group
+```
+
+模型路由、凭据和共享请求额度保存在控制端。VM 选择决定工具执行位置和工作区归属。
+Team 成员之间的通信继续遵循配置中的拓扑。
+
+`manage_workflow` 的 `launch` 可选传入 `isolation`，设置子 Workflow 的默认隔离策略。
+省略时继承成员策略。成员使用 `{"action":"launch","source":"generated.py","isolation":"worktree"}`
+可让子 Agent 在自己的 VM 中使用独立工作树。单个子调用可通过 `isolation="vm-session"` 申请另一台来宾。
+[可执行 VM 示例](../examples/vm-authored-workflow/README.zh-CN.md) 从成员写出源码开始，执行到取得原生子运行结果。

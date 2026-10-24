@@ -70,7 +70,8 @@ class AuthoredWorkflowTool(Tool):
             "python": {"type": "string", "default": "python3"},
             "budget": {"type": "integer", "minimum": 1},
             "concurrency": {"type": "integer", "minimum": 1, "default": 4},
-            "isolation": {"type": "string", "description": "launch only. Default environment strategy for child agents. Omitted inherits the member strategy."},
+            "isolation": {"type": "string", "description": "launch only. Default strategy for child agents. "
+                          "Omitted inherits the member strategy."},
             "timeout": {"type": "number", "minimum": 0,
                         "description": "Optional wait duration. Expiry leaves the child running."},
         },

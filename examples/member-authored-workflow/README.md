@@ -53,8 +53,9 @@ wait and leaves the child running.
 {"action": "stop", "id": "<child id>"}
 ```
 
-Model credentials and supported generation settings inherit the member's
-effective configuration through the child process's standard input. Child usage is charged once to the parent's token
+Supported generation settings inherit the member's effective configuration
+through the child process's standard input. Model credentials, endpoint routes
+and shared request slots stay in the host bridge. Child usage is charged once to the parent's token
 total. Finite child budgets reserve the member's remaining budget across
 simultaneously active children and the parent's subsequent model requests.
 A child with an omitted budget receives half the unreserved remainder so the
@@ -81,9 +82,10 @@ command and performs its existing process cleanup. A `wait` call uses the
 managed lifecycle, so an ordinary `bash` timeout does not determine how long
 the Workflow can run.
 
-An authored Workflow inherits its member's isolation strategy. Each
+An authored Workflow inherits its member's isolation strategy. The `launch`
+action can set `isolation` to override the child Workflow's default. Each
 `ctx.agent` or `ctx.agent_run` call can select `shared`, `worktree`,
-`docker-group`, `docker-session`, or a host-registered strategy through its
+`docker-group`, `docker-session`, `vm-group`, `vm-session`, or a host-registered strategy through its
 `isolation` argument. See the [session isolation guide](../../docs/session-isolation.md)
 for provider configuration. For example, these calls create two independent
 Docker execution environments when the host configures the `docker-session`

@@ -124,3 +124,83 @@ retry. Recovery locations include the full container ID. The runtime's existing
 process cancellation and environment revocation behavior continues to apply.
 The Docker adapter tests can execute these paths against a local image through
 `OPENCOLLAB_DOCKER_TEST_IMAGE`.
+
+## VM strategies
+
+`vm-group` leases one existing Linux VM for a Team or Workflow and gives each
+Session a private worktree inside that guest. `vm-session` leases one VM for
+each Session. `shared` and `worktree` remain relative to the parent environment,
+so a member running in a VM can keep its authored Workflow agents on that guest.
+Prepare guest software and SSH access using the [VM guide](virtual-machines.md).
+
+```python
+from opencollab import OpenCollab
+from opencollab.environments import VMConnection, VMResource, vm_isolation_provider
+
+resources = [VMResource(
+    resource_id="worker-01",
+    connection=VMConnection(host="vm.example.net", user="worker"),
+    workspace_root="/srv/opencollab",
+    state_directory="/var/tmp/opencollab-operations",
+    reset_command="/usr/local/sbin/reset-opencollab-guest",
+)]
+client = OpenCollab(".", environment_providers={
+    "vm-group": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3"),
+    "vm-session": vm_isolation_provider(resources, lease_database="/var/tmp/oc-leases.sqlite3", scope="session"),
+})
+result = await client.workflow(solve, {"task": "Inspect the code"}, isolation="vm-group")
+```
+
+The stable `resource_id` identifies the actual machine across connection aliases.
+Controller processes sharing a pool use the same absolute `lease_database` path.
+SQLite transactions and resource uniqueness keep each leased VM exclusive.
+`wait_timeout=0` reports unavailable capacity immediately, a positive number
+waits for that many seconds, and `None` waits until capacity or cancellation.
+A child requesting `vm-session` needs an available VM in addition to its parent.
+An external allocation service can use the existing custom-provider entry point
+when several controller machines share resources.
+
+The workspace root must already exist on the guest. Each resource requires an
+explicit `reset_command` that restores every guest change the workload may make.
+Deleting a working directory restores files inside it. Dependency installations,
+system configuration and other guest changes require corresponding restoration,
+such as an administrator's reset operation. OC exports candidate files and logs,
+stops owned operations, cleans its workspaces, and runs reset while retaining the
+lease. Successful reset returns the VM to the pool. An export, cleanup, transport
+or reset failure preserves the lease and recovery material for retry.
+
+For a serializable SDK configuration, put the same values in `config["vm"]`.
+The `vm` object contains `resources`, `lease_database`, and optional `wait_timeout`.
+Each resource object contains the `VMResource` fields, with a `connection` object
+containing `VMConnection` fields. `OpenCollab` loads both VM strategies from this
+profile. Explicit `environment_providers` entries override matching configured
+names.
+
+```python
+import json
+from pathlib import Path
+
+profile = json.loads(Path("vm-profile.json").read_text())
+client = OpenCollab(".", config={"vm": profile})
+result = await client.team("Inspect the source", config="team.yaml", isolation="vm-group")
+```
+
+The CLI reads the JSON profile from `OPENCOLLAB_VM`, including the existing
+`configs/.env` source. Team YAML uses the same `isolation` defaults and role
+overrides shown above. Workflow runs use the existing `--isolation` option.
+
+```bash
+OPENCOLLAB_VM="$(cat vm-profile.json)" opencollab workflow run solve --isolation vm-group
+```
+
+Model routes, credentials and shared request slots stay with the controller.
+VM selection controls tool execution and workspace ownership. Team communication
+continues to follow its declared topology.
+
+`manage_workflow` accepts an optional `isolation` on `launch` to select the child
+Workflow's default. Omission inherits its member's strategy. A member can launch
+with `{"action":"launch","source":"generated.py","isolation":"worktree"}`
+to run its child agents in independent worktrees inside its own VM. Individual
+child calls can select `isolation="vm-session"` to request another guest. The
+[executable VM example](../examples/vm-authored-workflow/README.md) starts with a
+member writing source and finishes by collecting the native child result.

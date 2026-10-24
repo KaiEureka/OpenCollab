@@ -530,7 +530,7 @@ def build_workflow_context(
     ephemeral.
     """
     environment = env if env is not None else _WORKFLOW_ENV_OVERRIDE.get()
-    environment_providers = configured_environment_providers(cfg, environment_providers)
+    environment_providers = configured_environment_providers(cfg, environment_providers, isolation=isolation)
     factory = WorkflowSessionFactory(
         llm=llm,
         session_builder=session_builder,
