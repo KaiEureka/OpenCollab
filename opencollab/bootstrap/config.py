@@ -122,7 +122,7 @@ def _optional_string(value: Any) -> Any:
     return value
 
 class ModelRoute(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     model: str = Field(min_length=1)
     provider: str = Field(default="openai", min_length=1)
@@ -176,7 +176,7 @@ class ModelRoute(BaseModel):
 class OpenCollabConfig(BaseModel):
     """Runtime configuration for OpenCollab."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     model: str = Field(default="gpt-4o", min_length=1)
     logical_model: str | None = None

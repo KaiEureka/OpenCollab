@@ -456,3 +456,22 @@ def test_cli_and_sdk_keep_unrouted_models_on_the_default_backend(
         assert url == "https://writer.example/v1/messages"
         assert headers["authorization"] == "Bearer route-token"
         assert body["model"] == "claude-sonnet-4-6"
+
+
+@pytest.mark.parametrize("command", [[], ["workflow", "run", "duo"]])
+@pytest.mark.parametrize("secret_field", ["api_key", "auth_token"])
+def test_cli_route_validation_keeps_credentials_out_of_diagnostics(tmp_path, monkeypatch, command, secret_field):
+    from typer.testing import CliRunner
+
+    from opencollab.adapters.cli.main import app
+
+    secret = "DEMO"  # pragma: allowlist secret
+    monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({"worker": {
+        secret_field: secret, "model": "physical", "request_pool": str(tmp_path),
+    }}))
+    result = CliRunner().invoke(app, [*command, "--workspace", str(tmp_path)])
+    diagnostic = "".join(result.output.replace("\u2502", "").split())
+    assert result.exit_code == 2
+    assert "model_routes.worker" in diagnostic
+    assert "request_poolandrequest_capacitymustbesuppliedtogether" in diagnostic
+    assert secret not in result.output
