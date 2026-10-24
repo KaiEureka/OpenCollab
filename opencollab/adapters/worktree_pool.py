@@ -13,6 +13,7 @@ from contextlib import nullcontext
 from contextvars import ContextVar
 
 from opencollab.adapters._candidate_physical import _physical_paths
+from opencollab.adapters._env_vm import VMEnvironment
 from opencollab.adapters._git_patch_bytes import _complete
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
 from opencollab.adapters.candidate_workspace import EnvCandidateWorkspace, _apply_increment
@@ -83,6 +84,7 @@ class WorktreePool:
         """Lend an environment, optionally snapshotting a completed teammate's files."""
         role = validate_role_identity(role)
         base = self._base_environment if source is None else source
+        base_delegate = base._delegate if isinstance(base, _TeamCandidateEnvironment) else base
         if not self._use_worktrees:
             # Without isolation every agent works where the run works, which is
             # the supplied environment when there is one and the host workspace
@@ -100,7 +102,7 @@ class WorktreePool:
         source_owner = None
         try:
             async with (self._delivery_lock if self._enable_adoption else nullcontext()):
-                if self._enable_adoption or source is not None:
+                if self._enable_adoption or source is not None or isinstance(base_delegate, VMEnvironment):
                     candidate_source = self._delivery_environment() if source is None else source
                     if source is not None:
                         if getattr(source, "revoked", False):
@@ -122,6 +124,14 @@ class WorktreePool:
                                     timeout_returncode=candidate_source._timeout_returncode,
                                 )
                                 candidate_source = source_owner
+                    if isinstance(candidate_source, _TeamCandidateEnvironment):
+                        candidate_source = candidate_source._delegate
+                    if isinstance(candidate_source, VMEnvironment) and source_owner is None:
+                        source_owner = VMEnvironment(
+                            candidate_source.connection, candidate_source.workspace,
+                            state_directory=candidate_source.state_directory,
+                        )
+                        candidate_source = source_owner
                     probe = await candidate_source.exec_cmd(
                         f"git -C {shlex.quote(candidate_source.workspace)} rev-parse --show-toplevel",
                     )

@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from opencollab.adapters._env_local import LocalEnvironment
+from opencollab.adapters._env_vm import VMEnvironment
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.patches import git_diff_endpoint, git_header_tokens, patch_entries, split_patch_blocks
 
@@ -82,7 +83,11 @@ async def _patch_temporary(
     cleanup_best_effort: bool = False,
     repository: bool = True,
 ) -> AsyncIterator[str]:
-    if isinstance(environment, LocalEnvironment):
+    delegate = getattr(environment, "_delegate", environment)
+    if isinstance(delegate, VMEnvironment):
+        async with delegate._mutable_temporary(content, prefix=prefix, suffix=suffix) as path:
+            yield path
+    elif isinstance(environment, LocalEnvironment):
         git_directory = None
         if repository:
             git_directory = _complete(

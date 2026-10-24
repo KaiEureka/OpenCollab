@@ -6,12 +6,14 @@ import posixpath
 import shlex
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from opencollab.adapters._candidate_physical import _initialized_submodule_paths
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
+from opencollab.adapters._env_vm import VMEnvironment
 from opencollab.adapters._git_patch_bytes import _complete, _patch_temporary
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
 from opencollab.application.async_timeout import await_owned_operation
@@ -26,8 +28,11 @@ async def _copy_to_host(environment: Any, source: str, target: Path, *, director
             operation = asyncio.to_thread(shutil.copyfile, source, target)
         await await_owned_operation(operation, propagate_cancellation=True)
         return
+    if isinstance(delegate, VMEnvironment):
+        await delegate.copy_to_host(source, target, directory=directory)
+        return
     if not isinstance(delegate, DockerEnvironment):
-        raise TypeError("Docker isolation requires a local or Docker source environment")
+        raise TypeError("Workspace snapshots require a local, Docker, or VM source environment")
     await delegate.setup()
     source_path = source.rstrip("/") + "/." if directory else source
     result = await delegate._docker("cp", "--", f"{delegate._container_id}:{source_path}", str(target))
@@ -43,7 +48,8 @@ def _remove_marker(path: Path) -> None:
         marker.unlink()
 
 
-async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
+@asynccontextmanager
+async def _snapshot_contents(source: Any):
     probe = await source.exec_cmd(f"git -C {shlex.quote(source.workspace)} rev-parse --show-toplevel")
     _complete(probe, "Docker source repository probe", allowed=(0, 128))
     repository = probe.returncode == 0
@@ -68,7 +74,7 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                 bundle = directory / "repository.bundle"
                 async with _patch_temporary(source, root, "", prefix=".docker-import-", suffix=".bundle") as remote:
                     _complete(await source.exec_cmd(
-                        f"git -C {shlex.quote(source_root)} bundle create {shlex.quote(remote)} --tags HEAD",
+                        f"git -C {shlex.quote(source_root)} bundle create - --tags HEAD > {shlex.quote(remote)}",
                         timeout=900,
                     ), "Docker source Git bundle")
                     await _copy_to_host(source, remote, bundle)
@@ -113,6 +119,18 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                 ), "Docker directory snapshot")
             finally:
                 await local.cleanup()
+        yield contents, prefix
+    finally:
+        await await_owned_operation(
+            asyncio.to_thread(shutil.rmtree, directory), propagate_cancellation=True,
+        )
+
+
+async def _import_snapshot(source: Any, target: DockerEnvironment | VMEnvironment) -> str:
+    async with _snapshot_contents(source) as (contents, prefix):
+        if isinstance(target, VMEnvironment):
+            await target.copy_from_host(contents, target.workspace, directory=True)
+            return posixpath.normpath(posixpath.join(target.workspace, prefix))
         container = await target.setup()
         _complete(await target.exec_cmd(f"mkdir -p -- {shlex.quote(target.workspace)}"), "Docker workspace directory")
         copied = await target._docker("cp", "--", str(contents) + "/.", f"{container}:{target.workspace}", timeout=900)
@@ -130,7 +148,3 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
         if ownership.returncode or ownership.stdout_dropped_bytes or ownership.stderr_dropped_bytes:
             raise OSError("Docker isolated workspace ownership could not be assigned")
         return posixpath.normpath(posixpath.join(target.workspace, prefix))
-    finally:
-        await await_owned_operation(
-            asyncio.to_thread(shutil.rmtree, directory), propagate_cancellation=True,
-        )

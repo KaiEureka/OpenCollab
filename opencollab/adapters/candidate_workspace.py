@@ -31,6 +31,7 @@ from opencollab.adapters._candidate_source import _source_snapshot
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_process import ProcessCleanupError
+from opencollab.adapters._env_vm import VMEnvironment
 from opencollab.adapters._env_worktree_submodules import _initialize_source_available_submodules
 from opencollab.adapters._git_patch_bytes import _complete, _complete_patch
 from opencollab.adapters._git_patch_bytes import _patch_temporary as _candidate_temporary
@@ -505,7 +506,11 @@ class EnvCandidateWorkspace:
                 command_prefix=self._environment._command_prefix,
                 timeout_returncode=self._environment._timeout_returncode,
             )
-        raise RuntimeError("candidate worktrees require a local or Docker environment")
+        if isinstance(self._environment, VMEnvironment):
+            return VMEnvironment(
+                self._environment.connection, path, state_directory=self._environment.state_directory,
+            )
+        raise RuntimeError("candidate worktrees require a local, Docker, or VM environment")
 
     async def acquire(self, label: str) -> _CandidateLease:
         return await self._acquire(label)
