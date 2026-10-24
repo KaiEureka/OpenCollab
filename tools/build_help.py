@@ -93,6 +93,15 @@ def navigation(page: Page, pages: list[Page], categories: list[dict]) -> str:
     return "".join(parts)
 
 
+def language_switch(destination: Path, language: str) -> str:
+    links = []
+    for code, label in (("zh-CN", "中文"), ("en", "English")):
+        target = relative(ROOT / "help" / code / "index.html", destination)
+        current = ' aria-current="true"' if code == language else ""
+        links.append(f'<a href="{target}" lang="{code}" hreflang="{code}"{current}>{label}</a>')
+    return '<nav class="language-switch" aria-label="Language">' + "".join(links) + '</nav>'
+
+
 def render_page(page: Page, pages: list[Page], config: dict) -> str:
     title = page.metadata["title"]
     home = relative(OUTPUT / "index.html", page.destination)
@@ -124,13 +133,14 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 <body data-search-index="{search_index}">
 <a class="skip" href="#content">跳到正文</a>
 <header class="topbar">
-<a class="brand" href="{home}">OpenCollab <span>帮助中心 · 中文</span></a>
+<a class="brand" href="{home}">OpenCollab <span>帮助中心</span></a>
 <div class="searchbox">
 <label class="sr-only" for="help-search">搜索帮助文档</label>
 <input id="help-search" type="search" placeholder="搜索隔离、Workflow 语法、派发子任务……" autocomplete="off" aria-controls="search-results" aria-expanded="false">
 <div id="search-results" class="results" hidden></div>
 <div id="search-status" class="sr-only" role="status" aria-live="polite"></div>
 </div>
+{language_switch(page.destination, 'zh-CN')}
 <a class="project-link" href="{project}">项目主页</a>
 <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">目录</button>
 </header>
@@ -145,6 +155,45 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 <footer class="article-footer"><a href="{source_path}">Markdown 源文档</a><span>依据源码 {config['verified_ref'][:8]}</span><a href="{project}">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong>{toc}</aside>
+</div>
+</body>
+</html>
+'''
+
+
+def render_english_placeholder() -> str:
+    destination = ROOT / "help" / "en" / "index.html"
+    return f'''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Help Center · OpenCollab</title>
+<meta name="description" content="OpenCollab Help Center. English guides are coming soon.">
+<link rel="canonical" href="{SITE_URL}help/en/index.html">
+<link rel="stylesheet" href="../assets/help.css">
+<script type="module" src="../assets/help.mjs"></script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="topbar">
+<a class="brand" href="index.html">OpenCollab <span>Help Center</span></a>
+<div class="searchbox">
+<label class="sr-only" for="help-search">Search help</label>
+<input id="help-search" type="search" placeholder="Coming soon" disabled>
+</div>
+{language_switch(destination, 'en')}
+<a class="project-link" href="../../index.html">Project home</a>
+<button id="menu-toggle" type="button" aria-expanded="false" aria-controls="help-navigation">Menu</button>
+</header>
+<div class="layout">
+<nav id="help-navigation" aria-label="Help navigation">
+<div class="nav-start"><a href="index.html" aria-current="page">Help home</a></div>
+</nav>
+<main id="content" tabindex="-1">
+<h1>Help Center</h1>
+<p>Coming soon.</p>
+</main>
 </div>
 </body>
 </html>
@@ -176,6 +225,15 @@ def main() -> None:
         rewrite_links(page.tokens, page, by_source)
         page.destination.parent.mkdir(parents=True, exist_ok=True)
         page.destination.write_text(render_page(page, pages, config), encoding="utf-8")
+    home = by_id["home"]
+    landing = Page(home.source, ROOT / "help" / "index.html", home.metadata,
+                   home.body, [], MD.parse(home.body))
+    landing.headings = heading_ids(landing.tokens)
+    rewrite_links(landing.tokens, landing, by_source)
+    landing.destination.write_text(render_page(landing, pages, config), encoding="utf-8")
+    english = ROOT / "help" / "en" / "index.html"
+    english.parent.mkdir(parents=True, exist_ok=True)
+    english.write_text(render_english_placeholder(), encoding="utf-8")
     documents = []
     for page in pages:
         meta = page.metadata
@@ -206,7 +264,7 @@ def main() -> None:
         json.dumps({"documents": documents, "routes": routes}, ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
-    print(f"Built {len(pages)} help pages from {len(order)} guide topics")
+    print(f"Built {len(pages) + 2} help pages from {len(order)} guide topics")
 
 
 if __name__ == "__main__":

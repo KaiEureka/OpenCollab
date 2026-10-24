@@ -1,6 +1,9 @@
-# Chinese help center
+# Help center
 
-The project site publishes the help center at `help/zh-CN/`. Its 68 guides are
+The project site links to the help center at `help/`, which opens the Chinese
+guides. Every help page offers a Chinese and English language switch. The English
+page at `help/en/` uses the same reader layout and displays "Coming soon."
+Chinese article URLs remain under `help/zh-CN/`. The 68 guides are
 maintained in `zh-CN/topics/`. Navigation pages and the explicitly planned VM
 extension page live alongside them. Each Markdown document is rendered to an
 independent HTML page, so article links work with JavaScript disabled. Browser
@@ -32,7 +35,7 @@ node --test tools/help-search.test.mjs
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Preview `/help/zh-CN/` through the local server. Generated HTML and the search
+Preview `/help/` through the local server. Generated HTML and the search
 index are committed because GitHub Pages publishes this branch directly. CSS
 and JavaScript are maintained in `help/assets/`. The `.nojekyll` file preserves
 the site's existing static publishing behavior.
@@ -47,5 +50,5 @@ Source code examples should be checked against the documented framework revision
 
 Review the Markdown sources and generated pages together. Publish by merging the
 reviewed change into `gh-pages`. The project homepage navigation, hero action and
-quick-start section all link to `help/zh-CN/`; every help page links back to the
+quick-start section all link to `help/`; every help page links back to the
 project homepage. Application code remains on `main`.

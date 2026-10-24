@@ -27,7 +27,7 @@ class PageLinks(HTMLParser):
 
 def main() -> None:
     parsed: dict[Path, PageLinks] = {}
-    for page in [ROOT / "index.html", *OUTPUT.rglob("*.html")]:
+    for page in [ROOT / "index.html", *(ROOT / "help").rglob("*.html")]:
         parser = PageLinks()
         parser.feed(page.read_text(encoding="utf-8"))
         parsed[page.resolve()] = parser
@@ -69,7 +69,7 @@ def main() -> None:
         if not (OUTPUT / ident / "index.html").is_file():
             errors.append(f"Missing generated page: {ident}")
     homepage = (ROOT / "index.html").read_text()
-    if homepage.count('href="help/zh-CN/"') != 3:
+    if homepage.count('href="help/">Help Center</a>') != 3:
         errors.append("Homepage help links are missing")
     for page in parsed:
         if page.parent == ROOT:
@@ -77,6 +77,8 @@ def main() -> None:
         text = page.read_text()
         if 'class="project-link"' not in text:
             errors.append(f"Missing project return link: {page}")
+        if 'class="language-switch"' not in text:
+            errors.append(f"Missing language switch: {page}")
     if errors:
         raise SystemExit("\n".join(errors))
     print(f"Checked {len(topics)} guides, {len(parsed)} HTML pages, "

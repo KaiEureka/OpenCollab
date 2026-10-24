@@ -27,6 +27,7 @@ export function needsChoice(index, query) {
 
 async function initializeSearch() {
   const input = document.querySelector("#help-search");
+  if (!input || !document.body.dataset.searchIndex) return;
   const results = document.querySelector("#search-results");
   const status = document.querySelector("#search-status");
   const indexURL = new URL(document.body.dataset.searchIndex, window.location.href);
@@ -99,10 +100,12 @@ async function initializeSearch() {
       event.preventDefault(); input.focus(); input.select();
     }
   });
-  document.querySelector("#menu-toggle").addEventListener("click", event => {
+}
+
+if (typeof document !== "undefined") {
+  initializeSearch();
+  document.querySelector("#menu-toggle")?.addEventListener("click", event => {
     const open = document.body.classList.toggle("menu-open");
     event.currentTarget.setAttribute("aria-expanded", String(open));
   });
 }
-
-if (typeof document !== "undefined") initializeSearch();
