@@ -7,10 +7,12 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
 
+from opencollab.adapters import _docker_snapshot as snapshot_module
 from opencollab.adapters._docker_snapshot import _import_snapshot
 from opencollab.adapters.docker_isolation import DockerIsolationPool
 from opencollab.adapters.env import DockerEnvironment, LocalEnvironment
@@ -25,9 +27,9 @@ def _git(workspace: Path, *args: str) -> str:
     ).strip()
 
 
-def _repository(workspace: Path) -> None:
+def _repository(workspace: Path, *, object_format: str = "sha1") -> None:
     workspace.mkdir()
-    _git(workspace, "init", "--quiet")
+    _git(workspace, "init", "--quiet", f"--object-format={object_format}")
     (workspace / "answer.py").write_text("answer = 1\n")
     _git(workspace, "add", ".")
     _git(workspace, "commit", "--quiet", "-m", "initial")
@@ -53,9 +55,12 @@ class _LocalImportTarget(LocalEnvironment):
         return _result()
 
 
-async def test_import_rebuilds_linked_git_metadata_and_keeps_physical_contents(tmp_path: Path) -> None:
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+async def test_import_rebuilds_linked_git_metadata_and_keeps_physical_contents(
+    tmp_path: Path, monkeypatch, object_format: str,
+) -> None:
     source = tmp_path / "source"
-    _repository(source)
+    _repository(source, object_format=object_format)
     linked = tmp_path / "linked"
     _git(source, "worktree", "add", "--quiet", "--detach", str(linked))
     (linked / "answer.py").write_text("answer = 2\r\n")
@@ -64,22 +69,27 @@ async def test_import_rebuilds_linked_git_metadata_and_keeps_physical_contents(t
     nested.mkdir()
     (nested / "file.txt").write_text("inside\n")
     target = _LocalImportTarget(str(tmp_path / "target"))
+    monkeypatch.setenv("GIT_DEFAULT_HASH", "sha256" if object_format == "sha1" else "sha1")
     target_workspace = await _import_snapshot(LocalEnvironment(str(nested)), target)
     assert target_workspace == str(Path(target.workspace) / "subdirectory")
     assert (Path(target.workspace) / ".git").is_dir()
     assert (Path(target.workspace) / "answer.py").read_bytes() == b"answer = 2\r\n"
     assert (Path(target.workspace) / "new.bin").read_bytes() == b"\0\xff"
+    assert _git(Path(target.workspace), "rev-parse", "--show-object-format") == object_format
     _git(source, "worktree", "remove", "--force", str(linked))
     assert _git(Path(target.workspace), "show", "HEAD:answer.py") == "answer = 1"
     assert "answer.py" in _git(Path(target.workspace), "diff", "--name-only")
     assert not list(linked.glob(".docker-import-*"))
 
 
-async def test_import_preserves_initialized_submodule_without_source_git_directory(tmp_path: Path) -> None:
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+async def test_import_preserves_initialized_submodule_without_source_git_directory(
+    tmp_path: Path, object_format: str,
+) -> None:
     module = tmp_path / "module"
     source = tmp_path / "source"
-    _repository(module)
-    _repository(source)
+    _repository(module, object_format=object_format)
+    _repository(source, object_format=object_format)
     _git(source, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", str(module), "child")
     _git(source, "commit", "--quiet", "-am", "submodule")
     (source / "child" / "answer.py").write_text("answer = 3\n")
@@ -90,6 +100,79 @@ async def test_import_preserves_initialized_submodule_without_source_git_directo
     assert _git(child, "show", "HEAD:answer.py") == "answer = 1"
     assert (child / "answer.py").read_text() == "answer = 3\n"
     assert "answer.py" in _git(child, "diff", "--name-only")
+
+
+@pytest.mark.parametrize("stage", ["workspace-copy", "bundle-copy", "metadata-removal"])
+async def test_cancelled_import_waits_for_host_io_before_removing_its_source(tmp_path, monkeypatch, stage):
+    source = tmp_path / "source"
+    _repository(source)
+    pool = DockerIsolationPool(str(source))
+    entered, resume, finished = threading.Event(), threading.Event(), threading.Event()
+    temporary = None
+
+    def hold(operation, directory, *args, **kwargs):
+        nonlocal temporary
+        temporary = directory
+        entered.set()
+        try:
+            assert resume.wait(5)
+            return operation(*args, **kwargs)
+        finally:
+            finished.set()
+
+    if stage == "workspace-copy":
+        original = shutil._copytree
+
+        def copytree(entries, src, dst, *args, **kwargs):
+            if "opencollab-docker-import-" in str(dst) and not entered.is_set():
+                return hold(original, Path(dst).parent, entries, src, dst, *args, **kwargs)
+            return original(entries, src, dst, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "_copytree", copytree)
+    elif stage == "bundle-copy":
+        original = shutil.copyfile
+
+        def copyfile(src, dst, *args, **kwargs):
+            if Path(dst).name == "repository.bundle":
+                return hold(original, Path(dst).parent, src, dst, *args, **kwargs)
+            return original(src, dst, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "copyfile", copyfile)
+    else:
+        original = snapshot_module._remove_marker
+
+        def remove_marker(path):
+            return hold(original, path.parent, path)
+
+        monkeypatch.setattr(snapshot_module, "_remove_marker", remove_marker)
+
+    task = asyncio.create_task(pool.acquire("cancelled"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        candidate = Path(pool._owners[0].source_pools[0]._envs[0].workspace)
+        task.cancel("first cancellation")
+        await asyncio.sleep(0)
+        task.cancel("later cancellation")
+        await asyncio.sleep(0.05)
+        assert not task.done()
+        assert candidate.exists()
+        assert temporary.exists()
+        resume.set()
+        with pytest.raises(asyncio.CancelledError) as failure:
+            await task
+        assert failure.value.args == ("first cancellation",)
+        assert finished.is_set()
+        assert not candidate.exists()
+        assert not temporary.exists()
+        assert not pool._owners
+    finally:
+        resume.set()
+        await asyncio.gather(task, return_exceptions=True)
+        if entered.is_set():
+            assert await asyncio.to_thread(finished.wait, 2)
+        await pool.release()
+        if temporary is not None:
+            shutil.rmtree(temporary, ignore_errors=True)
 
 
 async def test_import_tracks_changes_in_directory_without_git(tmp_path: Path, monkeypatch) -> None:
@@ -182,12 +265,15 @@ async def test_lost_process_group_stops_owned_container_and_revokes_sibling_tool
 
 
 @pytest.mark.parametrize("scope", ["group", "session"])
-async def test_docker_sessions_execute_and_deliver_before_owned_cleanup(tmp_path: Path, scope: str) -> None:
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+async def test_docker_sessions_execute_and_deliver_before_owned_cleanup(
+    tmp_path: Path, scope: str, object_format: str,
+) -> None:
     image = os.environ.get("OPENCOLLAB_DOCKER_TEST_IMAGE")
     if not image:
         pytest.skip("OPENCOLLAB_DOCKER_TEST_IMAGE selects a local image with bash and git")
     source = tmp_path / "source"
-    _repository(source)
+    _repository(source, object_format=object_format)
     (source / "untracked.txt").write_text("source input\n")
     base = LocalEnvironment(str(source))
     pool = DockerIsolationPool(

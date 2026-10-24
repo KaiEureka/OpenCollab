@@ -21,9 +21,10 @@ async def _copy_to_host(environment: Any, source: str, target: Path, *, director
     delegate = environment._delegate if isinstance(environment, _TeamCandidateEnvironment) else environment
     if getattr(delegate, "local_filesystem", False):
         if directory:
-            await asyncio.to_thread(shutil.copytree, source, target, symlinks=True, dirs_exist_ok=True)
+            operation = asyncio.to_thread(shutil.copytree, source, target, symlinks=True, dirs_exist_ok=True)
         else:
-            await asyncio.to_thread(shutil.copyfile, source, target)
+            operation = asyncio.to_thread(shutil.copyfile, source, target)
+        await await_owned_operation(operation, propagate_cancellation=True)
         return
     if not isinstance(delegate, DockerEnvironment):
         raise TypeError("Docker isolation requires a local or Docker source environment")
@@ -49,8 +50,7 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
     root = probe.stdout.removesuffix("\n") if repository else source.workspace
     prefix = posixpath.relpath(source.workspace, root) if repository else "."
     modules = await _initialized_submodule_paths(source, root, strict=True) if repository else ()
-    temporary = await asyncio.to_thread(tempfile.mkdtemp, prefix="opencollab-docker-import-")
-    directory = Path(temporary)
+    directory = Path(tempfile.mkdtemp(prefix="opencollab-docker-import-"))
     try:
         contents = directory / "workspace"
         contents.mkdir()
@@ -61,7 +61,10 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                 local_root = contents.joinpath(*relative.split("/"))
                 if not local_root.is_dir() or local_root.is_symlink():
                     raise RuntimeError("Docker source repository must be a physical directory")
-                await asyncio.to_thread(_remove_marker, local_root)
+                await await_owned_operation(asyncio.to_thread(_remove_marker, local_root), propagate_cancellation=True)
+                object_format = _complete(await source.exec_cmd(
+                    f"git -C {shlex.quote(source_root)} rev-parse --show-object-format",
+                ), "Docker source object format").strip()
                 bundle = directory / "repository.bundle"
                 async with _patch_temporary(source, root, "", prefix=".docker-import-", suffix=".bundle") as remote:
                     _complete(await source.exec_cmd(
@@ -76,7 +79,8 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                         f"git -c core.hooksPath=/dev/null -C {shlex.quote(str(local_root))}"
                     )
                     command = (
-                        f"{git} init --quiet && {git} fetch --quiet {shlex.quote(str(bundle))} HEAD && "
+                        f"{git} init --quiet --object-format={shlex.quote(object_format)} && "
+                        f"{git} fetch --quiet {shlex.quote(str(bundle))} HEAD && "
                         f"{git} reset --mixed --quiet FETCH_HEAD"
                     )
                     _complete(await local.exec_cmd(command, timeout=900), "Docker private repository metadata")
@@ -84,7 +88,7 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                     await local.cleanup()
                 bundle.unlink()
         else:
-            await asyncio.to_thread(_remove_marker, contents)
+            await await_owned_operation(asyncio.to_thread(_remove_marker, contents), propagate_cancellation=True)
             local = LocalEnvironment(str(contents))
             try:
                 git = (
