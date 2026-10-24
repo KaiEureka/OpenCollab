@@ -171,7 +171,7 @@ class LifecycleMixin:
                 )
 
             source = review_source
-            if source is None and getattr(self._worktree_pool, "inherit_parent_environment", False):
+            if source is None and getattr(self._worktree_pool, "inherit_parent_environment", False) is True:
                 source = self._sessions[parent_aid].env
             env = (
                 await self._worktree_pool.acquire(role, source=source)
