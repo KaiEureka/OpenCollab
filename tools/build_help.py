@@ -147,7 +147,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 </header>
 <div class="layout">
 <nav id="help-navigation" aria-label="帮助分类">
-<div class="nav-start"><a href="{home}">帮助首页</a><a href="{paths}">阅读路径</a><a href="{questions}">新用户与面试问题</a></div>
+<div class="nav-start"><a href="{home}">帮助首页</a><a href="{paths}">阅读路径</a><a href="{questions}">问题导航</a></div>
 {navigation(page, pages, config["categories"])}
 </nav>
 <main id="content" tabindex="-1">

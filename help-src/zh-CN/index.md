@@ -2,7 +2,7 @@
 
 OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装、模型配置、团队协作、Workflow、执行环境与结果检查。文档依据 OC main 提交 [`e7946a42`](https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41)，说明该版本的公开接口及运行行为。
 
-[返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab) · [阅读路径](reading-paths.md) · [新用户与技术问题](questions.md)
+[返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab) · [阅读路径](reading-paths.md) · [问题导航](questions.md)
 
 ## 从你的目标开始
 

@@ -28,6 +28,6 @@
 
 [从 Python 调用 OpenCollab](topics/setup/python-sdk-entrypoints.md) → [接入模型端点与认证凭据](topics/models/provider-endpoint-credentials.md) → [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) → [从示例接入自己的服务](topics/architecture/service-integration-lifecycle.md) → [中断任务与检查资源清理](topics/operations/cancellation-cleanup.md) → [查看 Agent 做了什么](topics/observability/trace-and-events.md) → [找到运行记录、会话和交付文件](topics/observability/artifacts-and-history.md)
 
-## 准备原理讨论与技术面试
+## 理解原理与架构
 
 [一次任务如何从输入走到工具执行](topics/architecture/runtime-execution-model.md) → [Session 如何保存进度并继续执行](topics/architecture/session-state-lifecycle.md) → [理解 Workflow 的编程模型与自由度](topics/workflow/workflow-programming-model.md) → [判断 Workflow 能实现的范围与运行边界](topics/workflow/workflow-capabilities-boundaries.md) → [隔离怎么选](topics/isolation/isolation-overview.md) → [OpenCollab 负责什么以及如何扩展](topics/architecture/extension-and-evaluation-boundaries.md) → [检查团队是否真的按分工协作](topics/observability/collaboration-adherence.md) → [用实际测试验证 Agent 的交付](topics/observability/native-test-evidence.md)
