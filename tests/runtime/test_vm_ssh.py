@@ -210,7 +210,7 @@ async def test_ssh_cancelled_temporary_creation_keeps_cleanup_ownership(vm, monk
 async def test_ssh_streaming_copy_preserves_tree_and_binary_files(vm, tmp_path):
     source = tmp_path / "source"
     source.mkdir()
-    name = "with space\nand 中文"
+    name = "with space\nand \u4e2d\u6587"
     data = b"\0\xffbinary\n" * 200000
     (source / name).write_bytes(data)
     (source / name).chmod(0o775)

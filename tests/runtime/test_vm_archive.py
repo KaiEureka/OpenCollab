@@ -15,7 +15,7 @@ from opencollab.adapters._vm_archive import pack, publish, unpack
 def test_archive_preserves_binary_names_symlinks_modes_and_empty_files(tmp_path):
     source = tmp_path / "source"
     source.mkdir(mode=0o775)
-    name = "a space\nand\tunicode-中文-" + (os.fsdecode(b"\xff") if sys.platform == "linux" else "legal")
+    name = "a space\nand\tunicode-\u4e2d\u6587-" + (os.fsdecode(b"\xff") if sys.platform == "linux" else "legal")
     data = source / name
     data.write_bytes(b"\0\xff" * 1000000)
     data.chmod(0o775)
