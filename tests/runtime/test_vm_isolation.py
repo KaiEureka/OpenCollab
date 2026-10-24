@@ -137,8 +137,11 @@ async def test_resource_waiting_is_cancellable_without_claiming_the_occupied_vm(
     task = asyncio.create_task(waiting.acquire("cancelled"))
     await asyncio.sleep(0.08)
     task.cancel("stop nested run")
-    with pytest.raises(asyncio.CancelledError, match="stop nested run"):
+    with pytest.raises(asyncio.CancelledError) as cancelled:
         await task
+    # asyncio forwards the cancellation message to awaiters from Python 3.11.
+    if sys.version_info >= (3, 11):
+        assert str(cancelled.value) == "stop nested run"
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT owner FROM vm_leases").fetchall() == [("parent",)]
     immediate.release(resource, "parent")
