@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import math
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from opencollab.domain.vm_resources import VMResource
@@ -32,8 +33,10 @@ class _VMLeases:
                 "(resource_id TEXT PRIMARY KEY, owner TEXT NOT NULL, workspace TEXT NOT NULL)"
             )
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.database, timeout=0.1)
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        with closing(sqlite3.connect(self.database, timeout=0.1)) as connection, connection:
+            yield connection
 
     def _try_acquire(self, owner: str) -> VMResource | None:
         with self._connect() as connection:

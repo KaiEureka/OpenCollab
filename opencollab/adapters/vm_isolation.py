@@ -4,14 +4,16 @@ import asyncio
 import os
 import posixpath
 import shlex
+import shutil
 import tempfile
 import uuid
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from opencollab.adapters._docker_snapshot import _import_snapshot, _snapshot_contents
-from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters._env_vm import VMEnvironment, VMOperationError
 from opencollab.adapters._git_patch_bytes import _complete
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
 from opencollab.adapters._vm_leases import VMCapacityError as VMCapacityError
@@ -34,6 +36,8 @@ class _VMOwner:
     views: list[VMEnvironment] = field(default_factory=list)
     pool: WorktreePool | None = None
     reset: VMEnvironment | None = None
+    reset_step: int = 0
+    reset_operation: str | None = None
     cleaned: bool = False
 
 
@@ -87,6 +91,18 @@ class VMIsolationPool:
         control = VMEnvironment(resource.connection, resource.workspace_root, state_directory=resource.state_directory)
         owner = _VMOwner(resource, token, control, f"{resource.workspace_root}/{token}")
         self._owners.append(owner)
+        try:
+            await self._prepare_owner(owner, role, source)
+        except BaseException as failure:
+            try:
+                await await_owned_operation(self._cleanup_owner(owner))
+            except BaseException as cleanup_error:
+                add_exception_note(failure, f"VM lease retained for cleanup retry: {cleanup_error}")
+            raise
+        return owner
+
+    async def _prepare_owner(self, owner: _VMOwner, role: str, source: Environment | None) -> None:
+        control = owner.control
         await control.setup()
         source_pool = WorktreePool(
             self._workspace, use_worktrees=True, base_environment=self._base_environment,
@@ -99,7 +115,6 @@ class VMIsolationPool:
         owner.pool = WorktreePool(view.workspace, use_worktrees=True, base_environment=view, enable_adoption=True)
         await source_pool.release()
         owner.source_pools.remove(source_pool)
-        return owner
 
     async def _import(self, owner: _VMOwner, source: Environment, component: str) -> VMEnvironment:
         path = posixpath.join(owner.root, component)
@@ -125,20 +140,10 @@ class VMIsolationPool:
         try:
             # Only group creation is serialized. A session waiting for capacity
             # must leave sibling release operations free to return a VM.
-            async with self._group_lock:
+            async with (self._group_lock if self._scope == "group" else nullcontext()):
                 owner = self._group if self._scope == "group" else None
                 if owner is None:
-                    before = len(self._owners)
-                    try:
-                        owner = await self._create_owner(role, source)
-                    except BaseException as failure:
-                        if len(self._owners) > before:
-                            pending = self._owners[-1]
-                            try:
-                                await await_owned_operation(self._cleanup_owner(pending))
-                            except BaseException as cleanup_error:
-                                add_exception_note(failure, f"VM lease retained for cleanup retry: {cleanup_error}")
-                        raise
+                    owner = await self._create_owner(role, source)
                     created = True
                 assert owner.pool is not None
                 review_source = None
@@ -191,13 +196,20 @@ class VMIsolationPool:
         owner.views.append(view)
         destination = self._exports[env]
         destination.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=".vm-export-", dir=destination.parent))
         try:
             async with _snapshot_contents(view) as (contents, _prefix):
-                os.replace(contents, destination)
+                await await_owned_operation(asyncio.to_thread(
+                    shutil.copytree, contents, staging, symlinks=True, dirs_exist_ok=True,
+                ), propagate_cancellation=True)
+                os.replace(staging, destination)
+                self._exported.add(env)
         except BaseException:
             env.retain_changes()
             raise
-        self._exported.add(env)
+        finally:
+            if staging.exists():
+                await await_owned_operation(asyncio.to_thread(shutil.rmtree, staging), propagate_cancellation=True)
 
     async def _cleanup_owner(self, owner: _VMOwner) -> None:
         if not owner.cleaned:
@@ -213,17 +225,31 @@ class VMIsolationPool:
                 await view.cleanup()
             await owner.control.cleanup()
             owner.cleaned = True
-        if owner.reset is not None:
-            for operation_id in owner.reset.pending_operations:
-                await owner.reset.recover_operation(operation_id)
-        if owner.reset is None or owner.reset.revoked:
+        if owner.reset is None:
             owner.reset = VMEnvironment(
                 owner.resource.connection, owner.resource.workspace_root,
                 state_directory=owner.resource.state_directory,
             )
         assert owner.resource.reset_command is not None
-        _complete(await owner.reset.exec_cmd(owner.resource.reset_command, timeout=900), "VM guest reset")
-        _complete(await owner.reset.exec_cmd(f"rm -rf -- {shlex.quote(owner.root)}", timeout=900), "VM workspace reset")
+        commands = (owner.resource.reset_command, f"rm -rf -- {shlex.quote(owner.root)}")
+        while owner.reset_step < len(commands):
+            try:
+                if owner.reset_operation is not None:
+                    result = await owner.reset.recover_operation(owner.reset_operation)
+                else:
+                    owner.reset_operation = uuid.uuid4().hex
+                    result = await owner.reset.exec_operation(
+                        owner.reset_operation, commands[owner.reset_step], timeout=900,
+                    )
+            except VMOperationError:
+                if owner.reset_operation not in owner.reset.pending_operations:
+                    owner.reset_operation = None
+                raise
+            if result.returncode:
+                owner.reset_operation = None
+            _complete(result, "VM guest reset" if owner.reset_step == 0 else "VM workspace reset")
+            owner.reset_step += 1
+            owner.reset_operation = None
         await owner.reset.cleanup()
         self._registry.release(owner.resource, owner.token)
         self._owners.remove(owner)

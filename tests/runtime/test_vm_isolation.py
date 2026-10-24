@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import shutil
 import sqlite3
@@ -11,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from opencollab.adapters import candidate_workspace, vm_isolation
-from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters._env_vm import VMEnvironment, VMOperationError
 from opencollab.adapters._vm_leases import VMCapacityError, _VMLeases
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.session_environments import SessionEnvironmentPool
@@ -51,6 +52,9 @@ class _LocalVM(VMEnvironment):
         self._ensure_active()
         return await self.local.exec_cmd(cmd, timeout, input_bytes=input_bytes)
 
+    async def exec_operation(self, operation_id, cmd, timeout=120, *, input_bytes=None):
+        return await self.exec_cmd(cmd, timeout, input_bytes=input_bytes)
+
     async def write_temp_file(self, *args, **kwargs):
         return await self.local.write_temp_file(*args, **kwargs)
 
@@ -72,6 +76,8 @@ class _LocalVM(VMEnvironment):
             shutil.copyfile(source, destination)
 
     async def cleanup(self):
+        if self._uncertain:
+            raise VMOperationError("operation status unknown", operation_id="unknown", state="unknown")
         self.revoke()
         await self.local.cleanup()
 
@@ -131,7 +137,9 @@ async def test_resource_waiting_is_cancellable_without_claiming_the_occupied_vm(
     assert await waiting.acquire("next") == resource
 
 
-async def test_group_sessions_are_separate_and_exports_keep_binary_symlinks_and_history(tmp_path, local_vm):
+async def test_group_sessions_are_separate_and_exports_keep_binary_symlinks_and_history(
+    tmp_path, local_vm, monkeypatch,
+):
     source = tmp_path / "source"
     _repository(source)
     (source / "payload.bin").write_bytes(b"\0\xff\x80")
@@ -146,6 +154,14 @@ async def test_group_sessions_are_separate_and_exports_keep_binary_symlinks_and_
     await first.exec_cmd("printf 'changed\\n' > answer.txt && printf 'log\\n' > run.log")
     assert (await second.exec_cmd("cat answer.txt")).stdout == "initial\n"
     destination = Path(first.export_directory)
+    replace = os.replace
+
+    def require_same_filesystem_staging(source, target):
+        if Path(source).parent != Path(target).parent:
+            raise OSError(errno.EXDEV, "cross-device link")
+        replace(source, target)
+
+    monkeypatch.setattr(vm_isolation.os, "replace", require_same_filesystem_staging)
     await pool.release()
     assert not pool.retained_resources
     assert (destination / "payload.bin").read_bytes() == b"\0\xff\x80"
@@ -225,6 +241,58 @@ async def test_release_interrupts_configured_capacity_wait(tmp_path, local_vm):
     with pytest.raises(RuntimeError, match="closed"):
         await acquisition
     registry.release(resource, "outer")
+
+
+async def test_sessions_prepare_independently_and_release_capacity_to_waiters(tmp_path, local_vm, monkeypatch):
+    source = tmp_path / "source"
+    _repository(source)
+    resources = [_resource(tmp_path / "guest-one", "one"), _resource(tmp_path / "guest-two", "two")]
+    pool = VMIsolationPool(str(source), resources=resources, lease_database=str(tmp_path / "leases.sqlite"),
+                           scope="session", wait_timeout=None)
+    entered, proceed = asyncio.Event(), asyncio.Event()
+    original = pool._prepare_owner
+    preparing = 0
+
+    async def prepare(owner, role, parent):
+        nonlocal preparing
+        preparing += 1
+        if preparing == 2:
+            entered.set()
+        await proceed.wait()
+        await original(owner, role, parent)
+
+    monkeypatch.setattr(pool, "_prepare_owner", prepare)
+    tasks = [asyncio.create_task(pool.acquire(role)) for role in ("first", "second")]
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+    finally:
+        proceed.set()
+    first, second = await asyncio.gather(*tasks)
+    waiter = asyncio.create_task(pool.acquire("third"))
+    await asyncio.sleep(0.08)
+    assert not waiter.done()
+    await pool.release_env(first)
+    third = await asyncio.wait_for(waiter, 10)
+    assert third.resource_id == first.resource_id
+    assert second.resource_id != third.resource_id
+    await pool.release()
+
+
+async def test_unknown_execution_retains_the_vm_until_recovery(tmp_path, local_vm):
+    source = tmp_path / "source"
+    _repository(source)
+    resource = _resource(tmp_path / "guest")
+    database = str(tmp_path / "leases.sqlite")
+    pool = VMIsolationPool(str(source), resources=[resource], lease_database=database)
+    environment = await pool.acquire("worker")
+    environment._delegate._uncertain.add("unknown")
+    with pytest.raises(OSError, match="retained"):
+        await pool.release()
+    assert Path(environment.workspace).exists()
+    with pytest.raises(VMCapacityError):
+        await _VMLeases(database, [resource], 0).acquire("other")
+    environment._delegate._uncertain.clear()
+    await pool.release()
 
 
 def test_reusable_pool_requires_explicit_guest_reset(tmp_path):
