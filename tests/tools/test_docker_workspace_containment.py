@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from opencollab.adapters._env_docker import DockerEnvironment
-from opencollab.adapters.tools.fs import FileReadTool
+from opencollab.adapters.tools.fs import FileReadTool, FileWriteTool
 from opencollab.application.tool_execution import ToolRuntime
 from tests.support.docker_native_edits_support import LocalDockerTransport
 
@@ -40,6 +40,54 @@ async def test_prefix_stdout_is_not_treated_as_file_bytes(tmp_path):
     assert await env.read_file(str(target)) == "updated\n"
     window = await env.read_text_range("note.txt", offset=1, limit=5, max_chars=100)
     assert window.lines == ["updated"]
+
+
+@pytest.mark.parametrize(("name", "neighbor"), [
+    ("ordinary name.txt", "ordinary name"),
+    ("trailing ", "trailing"),
+    ("trailing\t", "trailing"),
+    ("unicode\u2028name", "unicode"),
+])
+async def test_native_read_and_edit_preserve_filename_identity(tmp_path, name, neighbor):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    original = "flag = old\nkeep target\n"
+    neighbor_content = "flag = old\nkeep neighbor\n"
+    target = workspace / name
+    target.write_text(original)
+    (workspace / neighbor).write_text(neighbor_content)
+    transport = LocalDockerTransport(workspace, pair_reads=False)
+    env = _environment(workspace, transport, command_prefix="echo PROFILE-OUT")
+    runtime = ToolRuntime(env, None, None)
+
+    assert await env.read_file(name) == original
+    window = await env.read_text_range(name, offset=1, limit=5, max_chars=100)
+    assert window.lines == ["flag = old", "keep target"]
+    displayed = await FileReadTool().execute_with_runtime({"path": name}, runtime)
+    assert "2\tkeep target" in displayed
+
+    output = await FileWriteTool().execute_with_runtime({
+        "path": name, "mode": "str_replace", "old_str": "flag = old", "new_str": "flag = new",
+    }, runtime)
+
+    assert output.startswith("Replaced"), output
+    assert target.read_text() == "flag = new\nkeep target\n"
+    assert (workspace / neighbor).read_text() == neighbor_content
+
+
+async def test_native_reads_preserve_line_feed_in_filename(tmp_path):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    name = "embedded\nname"
+    content = "requested file\n"
+    (workspace / name).write_text(content)
+    (workspace / name.split("\n")[0]).write_text("neighbor file\n")
+    transport = LocalDockerTransport(workspace, pair_reads=False)
+    env = _environment(workspace, transport, command_prefix="echo PROFILE-OUT")
+
+    assert await env.read_file(name) == content
+    window = await env.read_text_range(name, offset=1, limit=5, max_chars=100)
+    assert window.lines == ["requested file"]
 
 
 @pytest.mark.asyncio

@@ -827,8 +827,8 @@ class DockerEnvironment(Environment):
         text = ""
         if result.returncode == 0 and not result.stdout_truncated:
             try:
-                text = _text_after_marker(result.stdout, marker).strip().splitlines()[0]
-            except (OSError, IndexError):
+                text = _text_after_marker(result.stdout, marker).removesuffix("\n")
+            except OSError:
                 text = ""
         resolved = posixpath.normpath(text) if text else ""
         if not posixpath.isabs(resolved):
@@ -848,13 +848,12 @@ class DockerEnvironment(Environment):
         if result.returncode != 0 or result.stdout_truncated:
             return None
         try:
-            text = _text_after_marker(result.stdout, marker).strip()
+            text = _text_after_marker(result.stdout, marker).removesuffix("\n")
         except OSError:
             return None
-        line = text.splitlines()[0] if text else ""
-        if not posixpath.isabs(line):
+        if not posixpath.isabs(text):
             return None
-        return posixpath.normpath(line)
+        return posixpath.normpath(text)
 
     async def _contained_file_path(self, path: str) -> str:
         """Resolve a file for reading and refuse a symlink that leaves the workspace."""
