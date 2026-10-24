@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>读取运行结果与判断任务是否完成 · OpenCollab 帮助中心</title>
-<meta name="description" content="正确处理 RunResult 和 RunError，把框架完成状态与实际任务验证分开理解。">
+<meta name="description" content="读取 RunResult、处理 RunError，并结合测试结果判断任务是否完成。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/run-results/index.html">
 <link rel="stylesheet" href="../../assets/help.css">
 <script type="module" src="../../assets/help.mjs"></script>
@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">结果、轨迹与评测</p>
 <h1 id="读取运行结果与判断任务是否完成">读取运行结果与判断任务是否完成</h1>
-<p>SDK 的 <code>agent</code>、<code>team</code> 和 <code>workflow</code> 都返回 <code>RunResult</code>。先读取 <code>status</code> 与 <code>reason</code>，再消费输出和产物，能够清楚区分任务正常结束、被限制停止以及执行失败。</p>
+<p>SDK 的 <code>agent</code>、<code>team</code> 和 <code>workflow</code> 都返回 <code>RunResult</code>。先读取 <code>status</code> 与 <code>reason</code>，确认运行是正常结束、达到限制还是执行失败，再处理输出和产物。</p>
 <h2 id="主要字段">主要字段</h2>
 <table>
 <thead>
@@ -75,8 +75,8 @@
 </tr>
 </tbody>
 </table>
-<p><code>ok</code> 在 <code>status == &quot;completed&quot;</code> 时为真。完成状态表示运行入口正常完成，项目功能是否正确仍需根据测试或任务验证判断。工作流可以在处理了某个 Agent 失败后返回，因此也应查看 <code>agent_failures</code>。</p>
-<p><code>RunResult</code> 是 Python 返回值，<code>error</code>、<code>Path</code> 以及自定义 Workflow 输出可能需要在写入业务 JSON 前转换。服务可以显式保存 <code>status</code>、<code>reason</code>、<code>tokens</code>、<code>str(artifacts)</code>、<code>metrics[&quot;run_id&quot;]</code> 和必要的输出字段，示例见 <a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a>。失败诊断应保留异常类型和关联记录，并按服务的访问权限保存。</p>
+<p><code>ok</code> 在 <code>status == &quot;completed&quot;</code> 时为真。完成状态表示运行入口正常完成，项目功能则根据测试或任务验证结果判断。工作流可以在处理了某个 Agent 失败后返回，因此也应查看 <code>agent_failures</code>。</p>
+<p>将 <code>RunResult</code> 写入业务 JSON 前，先转换无法直接序列化的 <code>error</code>、<code>Path</code> 或自定义 Workflow 输出。服务可以显式保存 <code>status</code>、<code>reason</code>、<code>tokens</code>、<code>str(artifacts)</code>、<code>metrics[&quot;run_id&quot;]</code> 和必要的输出字段，示例见 <a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a>。失败诊断应保留异常类型和关联记录，并按服务的访问权限保存。</p>
 <h2 id="在应用中处理结果">在应用中处理结果</h2>
 <p>下面片段放在已构造 <code>oc</code> 的异步函数中。</p>
 <pre><code class="language-python">result = await oc.agent(&quot;分析当前项目的测试入口&quot;, budget=50_000)
@@ -95,7 +95,7 @@ else:
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/result.py">opencollab/sdk/result.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">opencollab/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md">docs/evaluation-runtime.md</a></p>
 <p><a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a> · <a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a> · <a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/run-results.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/run-results.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%B8%BB%E8%A6%81%E5%AD%97%E6%AE%B5">主要字段</a><a href="#%E5%9C%A8%E5%BA%94%E7%94%A8%E4%B8%AD%E5%A4%84%E7%90%86%E7%BB%93%E6%9E%9C">在应用中处理结果</a><a href="#%E8%B0%83%E7%94%A8%E6%9C%AC%E8%BA%AB%E4%B9%9F%E5%8F%AF%E8%83%BD%E6%8A%9B%E9%94%99">调用本身也可能抛错</a><a href="#%E4%BA%A4%E4%BB%98%E6%A3%80%E6%9F%A5">交付检查</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>

@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">执行环境与隔离</p>
 <h1 id="把候选结果采纳到交付目录">把候选结果采纳到交付目录</h1>
-<p>候选的回答、完整文件改动和最终交付目录分别承担不同用途。Workflow 可以先在候选工作区运行，再显式采纳一个候选。Team 的入口成员可以采纳当前轮成功完成的直接 Coder 子任务。最终应在交付目录执行项目验证，确认用户实际拿到的文件。</p>
+<p>Workflow 可以先在候选工作区执行任务，再选择一个候选，将其文件改动采纳到交付目录。Team 的入口成员可以采纳当前轮成功完成的直接 Coder 子任务。采纳后在交付目录运行项目验证，检查最终文件是否满足任务要求。</p>
 <h2 id="workflow-先运行再采纳">Workflow 先运行再采纳</h2>
 <p><code>ctx.candidate_agent</code> 返回 <code>CandidateRun</code>，其中有 <code>output</code>、完整 <code>diff</code>、<code>test_records</code> 和 <code>verified_targets</code>，也包含生命周期错误与来源版本等信息。它适合把一次独立实现留作选择。<code>ctx.candidate_workflow</code> 可以把整个异步子工作流放进一份候选工作区。</p>
 <pre><code class="language-python">from opencollab import workflow
@@ -51,19 +51,19 @@ async def inspect_and_adopt(ctx, inputs):
     await ctx.adopt_candidate(candidate)
     return {&quot;adopted&quot;: True, &quot;output&quot;: candidate.output}
 </code></pre>
-<p>这段示例展示交付动作。业务可以把选取条件改为实际测试记录、人工选择或多个候选的比较结果。记录中的 <code>verified_targets</code> 来自支持验证观察的工具，空集合表示没有记录到相应验证。普通回答文本的可信程度需要结合命令与产物判断。</p>
+<p>示例在候选有输出且 <code>lifecycle_errors</code> 为空时采纳改动，应用也可以根据测试记录、人工选择或多个候选的比较结果决定是否采纳。<code>verified_targets</code> 来自支持验证观察的工具，空集合表示没有记录到相应验证。判断候选是否满足要求时，结合命令输出和交付文件查看。</p>
 <p>采纳时可以传 <code>preserve_paths=(&quot;notes/local.txt&quot;,)</code> 保留指定路径。候选执行会跟踪源工作区，采纳也会检查相关来源版本。运行期间改写源目录可能触发 source tracking 错误，并保留候选位置，便于恢复。存在多个候选时，最好先完成比较，再按选定次序处理交付。</p>
 <h2 id="怎样比较候选证据">怎样比较候选证据</h2>
-<p>两个候选可能给出相似的回答，却修改了不同文件，也可能文件补丁相同而执行环境不同。比较时应保留候选对象，读取它的完整差异、测试观察和生命周期信息，再把选中的那个对象交给采纳接口。候选工作流默认返回的测试字段为空时，可以让业务工作流在 output 中同时返回它实际执行的检查结果。</p>
-<p>如果候选来源已经变化，应先比较当前源文件与候选起点，再决定重跑或重新准备候选。跳过来源变化会让一次看似正确的采纳覆盖后续修改，因此运行时会保留相关错误与恢复材料。</p>
+<p>两个候选可能给出相似的回答，却修改了不同文件，也可能文件补丁相同而执行环境不同。比较时保留候选对象，查看完整差异、测试记录和生命周期信息，再把选中的对象传给采纳接口。候选工作流默认返回的测试字段为空时，可以让业务工作流在 output 中同时返回它实际执行的检查结果。</p>
+<p>候选来源变化后，采纳可能覆盖后续修改。运行时会报告来源检查错误并保留恢复材料，此时先比较当前源文件与候选起点，再决定重跑或重新准备候选。</p>
 <h2 id="team-如何写回交付目录">Team 如何写回交付目录</h2>
 <p>入口角色需要声明 <code>adopt_agent</code>。成功 Coder 的完成结果带 <code>aid</code>，例如结果显示 <code>Completed coder aid=3</code> 时，入口可调用 <code>adopt_agent</code> 并传 <code>{&quot;aid&quot;: 3}</code>。工具只采用当前入口轮次中成功完成的直接 Coder 子任务。采用会保留源索引与独立用户修改，冲突时保持交付文件完整。</p>
-<p>采用后再派发新的 Tester，使测试从已经更新的交付内容开始。让旧 Tester 重述之前的结果，无法观察新采纳的文件。完整流程与修订处理见 <a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a>。</p>
+<p>采用后派发新的 Tester，从更新后的交付内容开始测试。旧 Tester 的结果对应采纳前的文件。完整流程与修订处理见 <a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a>。</p>
 <h2 id="显式隔离入口时怎样拿到改动">显式隔离入口时怎样拿到改动</h2>
 <p>入口 Agent 自身也可以运行在工作树或容器中。它的改动会在资源回收前保存，SDK 结果通过 <code>result.metrics[&quot;entry_patch&quot;]</code> 返回补丁位置。关闭轨迹记录仍会保存入口补丁，未指定产物目录时会创建恢复目录。调用方取得补丁后，应先阅读完整变化，再在源仓库显式应用并执行项目测试。</p>
 <p>显示用 diff 有长度限制，完整采纳和恢复使用另行捕获的完整材料。出现捕获错误时，按 <a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a> 找到保留目录或容器。候选 API 见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow_candidates.py">Workflow 候选实现</a>，Team 交付见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/_scheduler_team.py">调度器采纳逻辑</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/candidate-delivery.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/candidate-delivery.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#workflow-%E5%85%88%E8%BF%90%E8%A1%8C%E5%86%8D%E9%87%87%E7%BA%B3">Workflow 先运行再采纳</a><a href="#%E6%80%8E%E6%A0%B7%E6%AF%94%E8%BE%83%E5%80%99%E9%80%89%E8%AF%81%E6%8D%AE">怎样比较候选证据</a><a href="#team-%E5%A6%82%E4%BD%95%E5%86%99%E5%9B%9E%E4%BA%A4%E4%BB%98%E7%9B%AE%E5%BD%95">Team 如何写回交付目录</a><a href="#%E6%98%BE%E5%BC%8F%E9%9A%94%E7%A6%BB%E5%85%A5%E5%8F%A3%E6%97%B6%E6%80%8E%E6%A0%B7%E6%8B%BF%E5%88%B0%E6%94%B9%E5%8A%A8">显式隔离入口时怎样拿到改动</a></aside>
 </div>

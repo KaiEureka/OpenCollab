@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">认识 OC</p>
 <h1 id="按任务选择默认-clibaseteam-或-workflow">按任务选择默认 CLI、Base、Team 或 Workflow</h1>
-<p>选择模式时，先确定你希望谁来安排交接。需要边聊边改代码，使用默认 CLI。需要一个模型完成单次任务，使用 Base。需要成员根据情况分工，配置 Team。希望每次都按指定算法执行，编写 Workflow。</p>
+<p>选择模式时，先确定任务怎样推进。需要边聊边改代码，可以使用默认 CLI。从程序运行一个 Agent，可以使用 Base。让成员根据情况分工，可以配置 Team。按指定算法安排协作，可以编写 Workflow。</p>
 <h2 id="按目标选择">按目标选择</h2>
 <table>
 <thead>
@@ -79,21 +79,21 @@
 </tr>
 </tbody>
 </table>
-<p>推荐表示最接近现有能力的入口。任务很简单时，一个 Agent 通常更容易观察。角色增加后，还需要处理交接、上下文和代码交付的成本。</p>
+<p>任务简单时，一个 Agent 通常就能完成，也更容易查看执行过程。增加角色后，需要安排成员交接、传递上下文，并将改动交付到目标目录。</p>
 <h2 id="team-与-workflow-可以组合">Team 与 Workflow 可以组合</h2>
 <p>Team 适合把“下一步找谁”交给成员决定。拓扑声明谁可以派发或通信，角色工具决定能执行的操作。一个注册了 <code>run_workflow</code> 的成员，可以在任务需要时调用已安装的工作流。</p>
 <p>Workflow 适合把协作算法写进程序。例如先让两个候选各自实现，再执行检查，最后根据结果采用其中一个。普通 Python 条件和循环决定流程结构，OC 提供 Agent、候选、并发和用量管理等操作。</p>
-<p>成员运行中编写 Python 文件再启动，使用 <code>manage_workflow</code>。这种动态子运行与调用启动时已注册的工作流有不同的生命周期，后续应阅读各自指南。</p>
+<p>成员可以用 <code>manage_workflow</code> 编写并启动 Python 工作流文件。它与 <code>run_workflow</code> 的启动、停止和清理方式各有规定，使用方法见对应指南。</p>
 <h2 id="隔离与模式分别选择">隔离与模式分别选择</h2>
-<p>选择 Team 并不自动确定容器级别的隔离。选择 Workflow 也不自动把宿主 Python 代码放入容器。先选组织方式，再决定 <code>shared</code>、<code>worktree</code> 或 Docker 策略以及命令权限。</p>
+<p>Team 和 Workflow 负责组织任务，执行环境与隔离策略决定文件和命令在哪里运行。Workflow 的 Python 调度代码运行在调用方进程中。选择组织方式后，再设置 <code>shared</code>、<code>worktree</code> 或 Docker 策略以及命令权限。</p>
 <p>对陌生仓库，可以先用只读工具调查。需要执行项目代码时，应明确执行环境及其网络和挂载设置。开始时保留运行记录，便于看到实际调用、停止原因和改动去向。</p>
 <h2 id="从哪条路径开始读">从哪条路径开始读</h2>
-<p>终端用户接着读第一次运行与默认交互。应用开发者接着读 SDK 与运行结果。准备发明新协作算法的开发者，应从 Workflow 编程模型开始，再读公开 API、数据流和验证调试。Skill 可提供任务指导，完整的程序设计仍由这些接口与运行规则支撑。</p>
+<p>使用终端可以从第一次运行与默认交互开始。接入应用可以从 SDK 与运行结果开始。设计新协作算法可以先读 Workflow 编程模型，再查公开 API、数据流和调试方法。Skill 提供任务指导，具体流程通过程序和运行接口实现。</p>
 <h2 id="源码与进一步阅读">源码与进一步阅读</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">opencollab/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/single2.md">docs/single2.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/duo.md">docs/duo.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/weave.md">docs/weave.md</a></p>
 <p><a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a> · <a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a> · <a href="../configure-team/index.html">Team 完整指南与团队配置</a> · <a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a> · <a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a> · <a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/orientation/choose-working-mode.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/orientation/choose-working-mode.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%8C%89%E7%9B%AE%E6%A0%87%E9%80%89%E6%8B%A9">按目标选择</a><a href="#team-%E4%B8%8E-workflow-%E5%8F%AF%E4%BB%A5%E7%BB%84%E5%90%88">Team 与 Workflow 可以组合</a><a href="#%E9%9A%94%E7%A6%BB%E4%B8%8E%E6%A8%A1%E5%BC%8F%E5%88%86%E5%88%AB%E9%80%89%E6%8B%A9">隔离与模式分别选择</a><a href="#%E4%BB%8E%E5%93%AA%E6%9D%A1%E8%B7%AF%E5%BE%84%E5%BC%80%E5%A7%8B%E8%AF%BB">从哪条路径开始读</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>

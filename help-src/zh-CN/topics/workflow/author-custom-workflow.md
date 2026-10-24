@@ -80,7 +80,7 @@ async def implement_review(ctx: WorkflowContext, args: dict):
     return {'implemented': True, 'review': review}
 ```
 
-`goal` 是这份文件自己定义的必填输入，缺失时普通 Python 字典访问会报错。`implemented` 表示第一步产生了返回值，交付是否满足任务还需读取第二步检查及实际文件。第二次调用创建新会话，文件环境沿用当前策略，第一步的说明由提示词显式传入。
+`goal` 是这份文件自己定义的必填输入，缺失时普通 Python 字典访问会报错。`implemented` 表示第一步产生了返回值。第二步的检查结果和实际文件共同说明交付是否满足任务。第二次调用创建新会话，文件环境沿用当前策略，第一步的说明由提示词显式传入。
 
 ## 理解装饰器与参数
 
@@ -107,7 +107,7 @@ SDK 也可以导入 `implement_review` 后传给 `await OpenCollab(workspace).wo
 
 `builtin_tools` 返回工具对象集合，支持 `bash`、`file_read`、`file_write`、`apply_patch`、`git_diff`、`grep` 和 `submit`。自定义工具可实现公开的 `Tool` 协议后放入同一个集合。`headless=True` 要求 shell 具有进程隔离，具体权限应与实际环境对应。
 
-`ctx.phase` 标记当前阶段，`ctx.log` 写入流程日志，`label` 帮助在会话记录中识别角色。`ctx.diff()` 返回可观察到的改动，`ctx.source_changed()` 返回改动探测结果，探测不可用时它们可返回 `None`。`tokens_remaining()`、`seconds_left()` 与 `time_low()` 可用于决定是否再开一轮。先让一次具体任务执行并核验，再逐步增加分支和并行，更容易定位编排与工具使用中的差异。
+`ctx.phase` 标记当前阶段，`ctx.log` 写入流程日志，`label` 帮助在会话记录中识别角色。`ctx.diff()` 返回可观察到的改动，`ctx.source_changed()` 返回改动探测结果，探测不可用时它们可返回 `None`。`tokens_remaining()`、`seconds_left()` 与 `time_low()` 可用于决定是否再开一轮。先运行并验证一项具体任务，再按需要添加分支和并行步骤。
 
 ## 源码依据
 

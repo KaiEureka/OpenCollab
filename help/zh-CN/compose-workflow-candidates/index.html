@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
 <h1 id="组合子-workflow-并采用候选结果">组合子 Workflow 并采用候选结果</h1>
-<p>复用一段 Workflow 最直接的方法，是把当前 <code>ctx</code> 传给另一个异步函数。需要把整套方案放进独立环境后再比较时，可以调用 <code>candidate_workflow</code>。只需要一个候选 Agent 时，则使用 <code>candidate_agent</code>。这三种方式分别决定了函数复用、环境归属和交付步骤。</p>
+<p>复用一段 Workflow 最直接的方法，是把当前 <code>ctx</code> 传给另一个异步函数。需要把整套方案放进独立环境后再比较时，可以调用 <code>candidate_workflow</code>。只需要一个候选 Agent 时，则使用 <code>candidate_agent</code>。选择时可按需要复用的范围和环境来决定。</p>
 <h2 id="共享上下文的函数组合">共享上下文的函数组合</h2>
 <pre><code class="language-python">async def summarize(ctx, args):
     return await ctx.agent(args['text'], label='summary', tools=[])
@@ -65,7 +65,7 @@ async def collect_single_candidate(ctx, args):
         'verified_targets': list(candidate.verified_targets),
     }
 </code></pre>
-<p><code>evidence_tools</code> 在原生工具上收集可识别的测试执行记录，供候选比较使用。此函数只准备候选并返回证据，需要采用时应在仍持有候选对象的函数内调用 <code>adopt_candidate</code>。</p>
+<p><code>evidence_tools</code> 在原生工具上收集可识别的测试执行记录，供候选比较使用。此函数准备候选并返回证据。要交付候选改动，在仍持有候选对象的函数内调用 <code>adopt_candidate</code>。</p>
 <h2 id="把完整子流程作为候选">把完整子流程作为候选</h2>
 <p>下面的例子把一次修改及其报告放入候选环境，供调用方后续检查。<code>proposal</code> 可替换为包含多次 Agent 调用的流程。</p>
 <pre><code class="language-python">from opencollab.tools import builtin_tools
@@ -88,10 +88,10 @@ async def prepare_candidate(ctx, args):
         'lifecycle_errors': list(candidate.lifecycle_errors),
     }
 </code></pre>
-<p><code>candidate_workflow</code> 为完整子流程建立候选环境和子上下文，子函数里的多次会话在该环境中工作。候选与父运行共享 Agent 并发容量、集合任务容量及绝对期限，有限候选预算来自父运行的授权。当前默认候选子上下文自身的候选后端为空，更深层组合适合继续调用普通子函数或选择单次会话隔离，额外候选层需要由集成提供对应后端。</p>
+<p><code>candidate_workflow</code> 为完整子流程建立候选环境和子上下文，子函数里的多次会话在该环境中工作。候选与父运行共享 Agent 并发容量、集合任务容量及绝对期限，有限候选预算来自父运行的授权。默认候选子上下文的候选后端为空。子流程可以继续调用普通子函数，或为单次会话选择隔离策略。要再建立一层候选环境，需要集成方提供对应后端。</p>
 <h2 id="读取候选证据">读取候选证据</h2>
 <p><code>CandidateRun</code> 的 <code>label</code> 标识候选，<code>output</code> 是文本或子流程返回值，<code>diff</code> 是捕获的改动，<code>test_records</code> 与 <code>verified_targets</code> 保存可用的测试证据，<code>lifecycle_errors</code> 保存清理等生命周期问题。<code>source_revision</code> 在后端支持时记录源版本。<code>delivery_diff</code>、<code>delivery_paths</code> 和 <code>delivery_source_diff</code> 承载额外交付材料，<code>effective_diff</code> 按捕获关系选择有效差异。</p>
-<p>单会话候选可通过证据工具收集测试记录。当前 <code>candidate_workflow</code> 返回的顶层 <code>test_records</code> 与 <code>verified_targets</code> 初始为空，子流程需要把自己的验证结果放入 <code>output</code> 或运行记录。对某个候选的采用决策应读取实际行为证据，字段中有文本报告意味着模型给出了说明。</p>
+<p>单会话候选可通过证据工具收集测试记录。当前 <code>candidate_workflow</code> 返回的顶层 <code>test_records</code> 与 <code>verified_targets</code> 初始为空，子流程需要把自己的验证结果放入 <code>output</code> 或运行记录。选择候选时，结合实际测试记录、文件差异和报告判断其是否满足任务。</p>
 <h2 id="采用与恢复">采用与恢复</h2>
 <p>做出选择后，在仍持有 <code>CandidateRun</code> 的异步函数里执行以下调用。这里的 <code>candidate</code> 是前述方法返回的对象。</p>
 <pre><code class="language-python">async def deliver_selected(ctx, candidate):
@@ -100,14 +100,14 @@ async def prepare_candidate(ctx, args):
 </code></pre>
 <p><code>preserve_paths</code> 表达采用时需要保留的源路径，常用于集成方维护的测试文件。默认 Git 后端把候选增量应用到源工作区，保留独立用户修改与源索引。采用发生冲突时，应读取异常与恢复材料。全环境后端可接收完整候选对象，依据其身份交付文件和服务状态。</p>
 <p>候选执行期间源工作区变化、源版本在采用前改变、改动捕获失败，都可能阻止交付。运行时会保留相关候选环境并报告恢复位置。Git 保留工作区中的 <code>refs/worktree/opencollab-source</code> 指向原始源树，可据此读取原文件。默认仓库补丁交付范围为父仓库文件，修改子模块内容会触发捕获错误并保留工作区，子模块交付应由适合的后端负责。</p>
-<p>候选产物成功捕获后还要经过采用，采用成功后还要经过任务检查。把这些结果写进最终返回值，可让调用方准确知道目前已经完成哪一步。</p>
+<p>捕获候选后，调用采用接口交付改动，再执行任务检查。在最终返回值中记录各步结果，方便调用方查看交付进度。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L280">opencollab/README.md</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/workflows.py#L83">opencollab/workflows.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow_candidates.py#L471">opencollab/application/workflow_candidates.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/duo.md#L193">docs/duo.md</a>。</p>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/tools.py">opencollab/tools.py</a>。</p>
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a>、<a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a>、<a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a>、<a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a>、<a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a>、<a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>、<a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a>、<a href="../native-test-evidence/index.html">用实际测试验证 Agent 的交付</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/compose-workflow-candidates.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/compose-workflow-candidates.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%85%B1%E4%BA%AB%E4%B8%8A%E4%B8%8B%E6%96%87%E7%9A%84%E5%87%BD%E6%95%B0%E7%BB%84%E5%90%88">共享上下文的函数组合</a><a href="#%E5%8F%AA%E8%BF%90%E8%A1%8C%E4%B8%80%E4%B8%AA%E5%80%99%E9%80%89%E4%BC%9A%E8%AF%9D">只运行一个候选会话</a><a href="#%E6%8A%8A%E5%AE%8C%E6%95%B4%E5%AD%90%E6%B5%81%E7%A8%8B%E4%BD%9C%E4%B8%BA%E5%80%99%E9%80%89">把完整子流程作为候选</a><a href="#%E8%AF%BB%E5%8F%96%E5%80%99%E9%80%89%E8%AF%81%E6%8D%AE">读取候选证据</a><a href="#%E9%87%87%E7%94%A8%E4%B8%8E%E6%81%A2%E5%A4%8D">采用与恢复</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>

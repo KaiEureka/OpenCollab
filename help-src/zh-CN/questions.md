@@ -2,7 +2,7 @@
 
 [帮助中心](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
 
-这些问题覆盖产品选择、协作编程、执行机制与结果可信性。点击问题后的指南，可以找到完整解释与使用示例。
+找到你关心的问题，点击右侧指南查看解释和示例。
 
 | 问题 | 对应指南 |
 | --- | --- |
@@ -11,7 +11,7 @@
 | OC 本身提供什么，为何还需要模型服务 | [先认识 Agent、Session、Team 和 Workflow](topics/orientation/concepts-and-modes.md) |
 | 默认终端启动的是一个 Agent 还是一个团队 | [默认终端交互与命令参数位置](topics/setup/interactive-cli-controls.md) |
 | Base、Single2、Team 和 Workflow 怎么选 | [按任务选择默认 CLI、Base、Team 或 Workflow](topics/orientation/choose-working-mode.md) |
-| 完全不会多 Agent，应该先运行哪个例子 | [在自己的项目中完成第一次运行](topics/setup/first-run-workspace.md) |
+| 第一次使用 OC 应该运行哪个例子 | [在自己的项目中完成第一次运行](topics/setup/first-run-workspace.md) |
 | 模型名、端点和环境变量谁优先 | [配置从哪里读取以及哪一项生效](topics/models/configuration-precedence.md) |
 | 一个团队可以使用不同模型吗 | [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) |
 | 同一台机器的多个进程怎样共用模型额度 | [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) |
@@ -50,7 +50,7 @@
 | 测试过后继续改文件，旧通过记录是否还适用 | [用实际测试验证 Agent 的交付](topics/observability/native-test-evidence.md) |
 | trace、会话文件和用量账本有什么区别 | [找到运行记录、会话和交付文件](topics/observability/artifacts-and-history.md) |
 | 缓存与 reasoning token 是否还要加到 total 上 | [统计 token、缓存命中和费用](topics/observability/token-cache-cost.md) |
-| 如何证明多 Agent 实际按照分工协作 | [检查团队是否真的按分工协作](topics/observability/collaboration-adherence.md) |
+| 如何检查团队实际的分工协作情况 | [检查团队是否真的按分工协作](topics/observability/collaboration-adherence.md) |
 | OC 与 OCE 哪个负责正式 benchmark 评分 | [用 OCE 评测 OC 的 Agent、Team 和 Workflow](topics/observability/evaluation-boundary.md) |
 | 怎样把 OC 加到 Web 服务或后台任务系统里 | [从示例接入自己的服务](topics/architecture/service-integration-lifecycle.md) |
 | 版本升级后旧团队文件和旧示例怎样检查 | [升级已有安装、团队和 SDK 集成](topics/architecture/upgrade-existing-integration.md) |

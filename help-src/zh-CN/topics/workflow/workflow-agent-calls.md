@@ -67,7 +67,7 @@ async def inspect_and_explain(ctx, args):
     return {'finding': finding, 'detail': detail}
 ```
 
-`schema` 通过结构化捕获工具取得并校验字典。捕获未满足要求时，运行时会带着已有历史作一次纠正尝试。模式保证返回数据的结构，字段内容与业务判断仍由实际依据和调用方规则判断。自由文本路径返回字符串，常见会话构建、运行失败或调用时限到达时可返回 `None`。
+`schema` 通过结构化捕获工具取得并校验字典。捕获未满足要求时，运行时会带着已有历史作一次纠正尝试。schema 校验返回数据的结构，字段内容和业务判断则需要结合任务依据与调用方规则验证。自由文本路径返回字符串，常见会话构建、运行失败或调用时限到达时可返回 `None`。
 
 `prompt` 是本次任务，`label` 用于记录，`tools` 决定会话能调用的工具。使用空集合适合只处理给定文字的角色。`budget` 从共享余额申请一次调用额度，未用预留在清理后释放。额度耗尽可能在会话创建前抛出预算异常，调用方应结合顶层结果处理。
 
@@ -103,15 +103,15 @@ async def inspect_files(ctx, args):
 
 `agent_run` 的结果为 `WorkflowAgentResult`，还包含实际硬额度 `hard_budget_tokens`、软额度 `soft_budget_tokens` 及 `observation_errors`。申请值会受共享余额和其他预留影响，回调看到的是实际授权。`RunControl` 可在硬额度内决定软额度扩展，也可同步接收事件。
 
-`system_prompt` 显式设置时替换本次角色默认系统提示词。所选 Agent profile 仍提供工具配置、上下文处理及安全行为。profile 在 SDK 的 `agent_profile` 选择，省略时保留工作流角色自身配置。`agent_run` 还接受工具配置名称或工具对象序列。需要固定能力集合时显式传对象最直观。
+`system_prompt` 显式设置时替换本次角色默认系统提示词。所选 Agent profile 仍提供工具配置、上下文处理及安全行为。profile 在 SDK 的 `agent_profile` 选择，省略时保留工作流角色自身配置。`agent_run` 还接受工具配置名称或工具对象序列。要明确指定每项工具时，传入工具对象序列。
 
 ## 时限、环境与失败
 
 `timeout` 限制本次会话运行，`max_steps` 限制会话步数，工作流外层的 `timeout` 则限制整次运行。清理时限单独控制已取消的工具与模型任务怎样结束。`agent_run` 清理未完成时返回 `failed` 和 `cleanup incomplete`，并阻止共享上下文继续启动工作。只有 `cleanup_complete` 为真时，快照中的用量才可按稳定结果理解。后续依赖同一环境的步骤还应检查 `workspace_ready`。
 
-省略 `isolation` 继承运行策略，`False` 选择 `shared`，`True` 选择 `worktree`，字符串可选 `shared`、`worktree` 与已配置的容器或自定义策略。文件隔离策略与会话历史各自控制不同资源。Docker 策略把工具放进容器，普通 Workflow 的 Python 编排继续在调用方进程执行。
+省略 `isolation` 继承运行策略，`False` 选择 `shared`，`True` 选择 `worktree`，字符串可选 `shared`、`worktree` 与已配置的容器或自定义策略。会话历史在每次调用时重新建立，文件是否共享由隔离策略决定。Docker 策略把工具放进容器，普通 Workflow 的 Python 编排继续在调用方进程执行。
 
-`ctx.agent` 的 `tool_choice` 与 `thinking` 用于自由文本路径，结构化路径遵循捕获阶段的请求策略。`agent_run` 直接提供状态和回调，两种方法参数应按各自签名使用。顶层 `RunResult.agent_failures` 保留内部失败，外部取消会继续向调用方传播。最终交付还要通过真实入口、测试或验证器检查。
+`ctx.agent` 的 `tool_choice` 与 `thinking` 用于自由文本路径，结构化路径遵循捕获阶段的请求策略。`agent_run` 直接提供状态和回调，两种方法参数应按各自签名使用。顶层 `RunResult.agent_failures` 保留内部失败，外部取消会继续向调用方传播。交付结果通过应用真实入口、测试或验证器检查。
 
 ## 源码依据
 

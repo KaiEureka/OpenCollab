@@ -34,7 +34,7 @@
 <p>使用 <code>docker-group</code> 可以让一组会话在同一容器的独立工作树里执行，使用 <code>docker-session</code> 可以让每个会话拥有独立容器。模型请求和 Python 调度由调用方进程负责，Agent 的文件与命令操作进入分配的容器。</p>
 <h2 id="准备镜像与联网条件">准备镜像与联网条件</h2>
 <p>内置默认镜像为 <code>python:3.11</code>，运行前需要 Docker daemon 可用。自定义镜像要提供 Bash 和 Git，入口程序需要能够接收 <code>sleep infinity</code>。项目依赖最好直接放进任务镜像，这样执行和测试可以沿用离线网络设置。</p>
-<p><code>DockerOptions.network</code> 默认为 <code>none</code>。需要下载依赖或访问服务时，可以写 <code>bridge</code> 或一个已有的 Docker 网络名。<code>host</code> 会被拒绝。容器中的网络设置作用于工具执行，模型服务连接仍由调用方的模型配置管理。部署时应分别验证这两条连接。</p>
+<p><code>DockerOptions.network</code> 默认为 <code>none</code>。需要下载依赖或访问服务时，可以写 <code>bridge</code> 或一个已有的 Docker 网络名。<code>host</code> 会被拒绝。容器网络设置控制工具执行时的连接，模型请求通过调用方进程发送，使用客户端模型配置。部署时分别检查两处连接。</p>
 <h2 id="配置一次运行">配置一次运行</h2>
 <pre><code class="language-python">import asyncio
 from opencollab import OpenCollab
@@ -69,14 +69,14 @@ asyncio.run(main())
 <p>要改成组容器，将注册名与 <code>isolation</code> 改为 <code>docker-group</code>，并把 <code>scope</code> 设为 <code>group</code>。默认提供器已经支持两种策略，显式注册主要用于替换镜像和资源选项。</p>
 <p><code>cpus</code> 是正有限数，<code>memory</code> 可以是正字节数或带 <code>b</code>、<code>k</code>、<code>m</code>、<code>g</code> 后缀的值，<code>pids_limit</code> 是正整数。它们约束分配的容器。组模式中，多名成员共享这一份资源额度。会话模式中，每个容器各自使用对应设置。</p>
 <h2 id="文件临时目录与挂载">文件、临时目录与挂载</h2>
-<p>两种模式都会把源内容复制到容器私有存储，并处理可移植 Git 元数据。源工作区可以位于本机，也可以来自已有 Docker 环境。组模式的每个会话虽然有独立工作树，仍共享容器进程范围和公共临时目录。会话模式适合需要把这些影响分开的任务。</p>
+<p>两种模式都会把源内容复制到容器私有存储，并准备可在容器中使用的 Git 元数据。源工作区可以位于本机，也可以来自已有 Docker 环境。组模式中，各会话的工作树独立，容器内的进程和公共临时目录共享。需要把这些资源分开时，使用会话模式。</p>
 <p>只读素材可通过 <code>mounts=(DockerMount(&quot;/absolute/assets&quot;, &quot;/assets&quot;),)</code> 传入，<code>DockerMount</code> 从 <code>opencollab.environments</code> 导入。附加挂载固定只读，宿主 socket 会被拒绝。隔离提供器还要求挂载目标避开工作区、<code>/tmp</code> 和 <code>/var/tmp</code>。挂载前应检查素材目录中的凭据与私有文件。</p>
 <h2 id="验证实际环境和交付">验证实际环境和交付</h2>
 <p>可以在 Agent 执行的 Bash 中查看 <code>pwd</code>，读取 <code>/sys/fs/cgroup/cpu.max</code>、<code>memory.max</code>、<code>pids.max</code>，并根据任务镜像验证网络访问。观察两个会话能否读到同一个临时标记，可以直接区分组与会话的共享范围。实际字段会随容器平台的 cgroup 版本变化。</p>
 <p>完整补丁会在运行拥有的容器移除前捕获。导出失败或得到截断结果时，工作区与容器会保留，恢复位置带完整容器 ID。按 <a href="../workspace-recovery/index.html">找回隔离任务的改动并清理资源</a> 收集改动，再处理资源回收。外部已有容器的接入方法见 <a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a>。</p>
 <p>配置与默认值见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/domain/docker.py">Docker 值对象</a>，共享范围和生命周期见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/docker_isolation.py">Docker 隔离池</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/docker-isolation.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/docker-isolation.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%87%86%E5%A4%87%E9%95%9C%E5%83%8F%E4%B8%8E%E8%81%94%E7%BD%91%E6%9D%A1%E4%BB%B6">准备镜像与联网条件</a><a href="#%E9%85%8D%E7%BD%AE%E4%B8%80%E6%AC%A1%E8%BF%90%E8%A1%8C">配置一次运行</a><a href="#%E6%96%87%E4%BB%B6%E4%B8%B4%E6%97%B6%E7%9B%AE%E5%BD%95%E4%B8%8E%E6%8C%82%E8%BD%BD">文件、临时目录与挂载</a><a href="#%E9%AA%8C%E8%AF%81%E5%AE%9E%E9%99%85%E7%8E%AF%E5%A2%83%E5%92%8C%E4%BA%A4%E4%BB%98">验证实际环境和交付</a></aside>
 </div>

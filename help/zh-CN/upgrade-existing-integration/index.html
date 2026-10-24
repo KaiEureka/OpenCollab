@@ -31,14 +31,14 @@
 <main id="content" tabindex="-1">
 <p class="category">架构、集成与维护</p>
 <h1 id="升级已有安装团队和-sdk-集成">升级已有安装、团队和 SDK 集成</h1>
-<p>升级时先确定当前安装来源和目标版本，再按迁移记录核对接口与默认行为，最后用原有任务执行一次实际验证。发布 tag、附带 wheel 和当前源码各自对应自己的 API，选定版本后应阅读那一版的包指南与迁移说明。</p>
+<p>升级时先确定当前安装来源和目标版本，再按迁移记录核对接口与默认行为，最后用原有任务执行一次实际验证。选定发布 tag、附带 wheel 或源码提交后，阅读对应版本的包指南与迁移说明。</p>
 <h2 id="记录正在运行的安装">记录正在运行的安装</h2>
 <p>在启动 OpenCollab 的同一个 Python 环境里执行下列命令，可以查看安装版本和实际导入位置。源码安装还应在对应仓库记录 Git 提交。</p>
 <pre><code class="language-bash">python -c 'from importlib.metadata import version; import opencollab; print(version(&quot;opencollab&quot;)); print(opencollab.__file__)'
 git rev-parse HEAD
 opencollab --help
 </code></pre>
-<p>如果 CLI 和服务使用不同虚拟环境，应分别检查。命令行能显示版本，仍需确认服务进程导入的是同一份包。源码安装过程见 <a href="../install-source-checkout/index.html">安装前提与版本选择</a>。</p>
+<p>如果 CLI 和服务使用不同虚拟环境，应分别检查。同时确认服务进程实际导入的包位置与版本。源码安装过程见 <a href="../install-source-checkout/index.html">安装前提与版本选择</a>。</p>
 <h2 id="沿迁移记录找到行为变化">沿迁移记录找到行为变化</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/README.md">迁移索引</a>按 0.5、0.6、0.7 和 0.8 串联主要变化。先处理跨版本的接口变化，再查看 <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/CHANGELOG.md">CHANGELOG</a> 中目标补丁版本的修复。当前签名与默认值以目标版本的包指南和 CLI 帮助为准。</p>
 <p>0.8.0 把独立 Agent 的默认实现改为 Base，当前 Base 映射到 Single2。省略 profile，或使用 <code>base</code>、<code>default</code>、<code>single</code>，会跟随这项映射。显式 <code>single2</code> 和 <code>agent2()</code> 选择具体实现。比较历史实验时，应同时保留源码版本和实际 <code>metrics[&quot;agent_profile&quot;]</code>。</p>
@@ -48,12 +48,12 @@ opencollab --help
 opencollab workflow list --workspace .
 </code></pre>
 <p>用团队展示命令检查角色、工具和拓扑，查找未知字段与旧工具名。Team 文件须显式选择，角色额度需要完整覆盖并与固定名册调用配合。公开导入应优先使用 <code>opencollab</code>、<code>opencollab.tools</code>、<code>opencollab.environments</code> 和 <code>opencollab.workflows</code>。较早集成引用内部路径时，可对照目标版本寻找公开入口。</p>
-<p>自定义工具应保留参数 schema 和实际执行结果，环境提供器应继续管理申请、交付和清理。先在小型任务中执行一次文件读取、修改或命令操作，再查看结果与资源状态，能发现只检查导入时看不到的变化。</p>
+<p>自定义工具应保留参数 schema 和实际执行结果，环境提供器应继续管理申请、交付和清理。先在小型任务中执行一次文件读取、修改或命令操作，再查看结果与资源状态，确认扩展在新版本中按预期工作。</p>
 <h2 id="用原任务验证升级">用原任务验证升级</h2>
 <p>选择原先能稳定执行的任务，沿原 CLI 命令或 SDK 调用再次运行。明确设置 token、步数和时间限制，并核对最终交付文件与实际测试结果。服务有取消路径时，还应触发一次取消，检查保存材料、用量和拥有资源的清理结果。</p>
 <p>历史实验继续保留原版本信息，旧结果的模型、任务、提示词与限制也应一起保存。OCE 集成按它记录的框架依赖解释，评测职责见 <a href="../evaluation-boundary/index.html">用 OCE 评测 OC 的 Agent、Team 和 Workflow</a>。默认 Agent 的具体变化见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/migrations/0.8.0.md">0.8.0 迁移</a>，当前公开接口见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">包指南</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/upgrade-existing-integration.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/upgrade-existing-integration.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E8%AE%B0%E5%BD%95%E6%AD%A3%E5%9C%A8%E8%BF%90%E8%A1%8C%E7%9A%84%E5%AE%89%E8%A3%85">记录正在运行的安装</a><a href="#%E6%B2%BF%E8%BF%81%E7%A7%BB%E8%AE%B0%E5%BD%95%E6%89%BE%E5%88%B0%E8%A1%8C%E4%B8%BA%E5%8F%98%E5%8C%96">沿迁移记录找到行为变化</a><a href="#%E6%A0%B8%E5%AF%B9%E9%85%8D%E7%BD%AE%E4%B8%8E%E6%89%A9%E5%B1%95%E6%8E%A5%E5%85%A5">核对配置与扩展接入</a><a href="#%E7%94%A8%E5%8E%9F%E4%BB%BB%E5%8A%A1%E9%AA%8C%E8%AF%81%E5%8D%87%E7%BA%A7">用原任务验证升级</a></aside>
 </div>

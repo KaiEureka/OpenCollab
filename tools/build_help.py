@@ -153,7 +153,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 <main id="content" tabindex="-1">
 <p class="category">{html.escape(category)}</p>
 {body}
-<footer class="article-footer"><a href="{source_path}">Markdown 源文档</a><span>依据源码 {config['verified_ref'][:8]}</span><a href="{project}">返回项目主页</a></footer>
+<footer class="article-footer"><a href="{source_path}">Markdown 源文档</a><a href="{config['source_commit_url']}">OpenCollab {config['documented_version']}</a><a href="{project}">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong>{toc}</aside>
 </div>

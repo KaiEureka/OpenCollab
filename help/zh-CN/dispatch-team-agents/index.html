@@ -41,9 +41,9 @@
 }
 </code></pre>
 <p><code>context</code> 应提供已经确认的线索、必要片段和约束。子成员有自己的消息历史，显式传递的信息会进入它的启动任务。它能使用哪些文件和命令取决于该角色的工具与执行环境。默认团队允许 Analyst 派发 Coder 和 Tester，新增角色需要同时声明职责、工具和拓扑边。</p>
-<p>工具以延迟调用连接父子结果。父成员会暂停等待，同一批发出的多个 spawn 可以并行执行，整批结果齐备后再继续。需要并行处理两个对象时，应分别派发两个任务，并明确各自修改的文件范围与最终汇总要求。实际并发仍受预算、调度与模型请求能力约束。</p>
+<p>派发后，父成员暂停等待子任务结果。同一批发出的多个 spawn 可以并行执行，整批结果齐备后，父成员继续处理。需要并行处理两个对象时，应分别派发两个任务，并明确各自修改的文件范围与最终汇总要求。实际并发仍受预算、调度与模型请求能力约束。</p>
 <h2 id="重复任务与固定名册">重复任务与固定名册</h2>
-<p>同一任务正在被处理时，重复派发会返回原有 <code>aid</code> 和说明，原任务完成结果仍沿原工具调用交付。应继续使用该任务的结果，再决定修订。把同一任务略改措辞连续重发，会增加资源消耗并让交付关系变复杂。</p>
+<p>同一任务正在被处理时，重复派发会返回原有 <code>aid</code> 和说明，原任务完成结果仍沿原工具调用交付。等待原任务结果后，再决定是否需要修订。需要补充信息时，可以向这个 aid 发消息。</p>
 <p><code>prebuild_team=True</code> 使用运行开始时的固定成员。此时继续创建成员会被拒绝，应先用 <code>team_status</code> 找到现有成员，再通过 <code>message_agent</code> 交接工作。派发和消息的等待方式见 <a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a>。</p>
 <h2 id="安排实现与审阅循环">安排实现与审阅循环</h2>
 <p>需要实现后自动审阅的场景，可以给入口配置 <code>spawn_with_review</code>，并允许它到达 <code>coder</code> 和 <code>reviewer</code>。内置默认团队的角色与工具需要相应扩展。</p>
@@ -57,7 +57,7 @@
 <p>完成结果中的 <code>aid</code> 可以关联成员、回答与文件变化。入口声明采纳工具时，应采用成功直接 Coder 的结果，再派发新的 Tester 检查交付目录。实现与审阅循环的通过结果仍需对应到实际交付文件，具体见 <a href="../adopt-team-changes/index.html">采用队友改动并验证交付</a>。</p>
 <p>参数与延迟行为见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/spawn.py">派发工具</a>，角色组织方法见 <a href="../configure-team/index.html">Team 完整指南与团队配置</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/dispatch-team-agents.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/dispatch-team-agents.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BC%A0%E6%B8%85%E4%BB%BB%E5%8A%A1%E4%B8%8E%E5%B7%B2%E7%9F%A5%E4%BF%A1%E6%81%AF">传清任务与已知信息</a><a href="#%E9%87%8D%E5%A4%8D%E4%BB%BB%E5%8A%A1%E4%B8%8E%E5%9B%BA%E5%AE%9A%E5%90%8D%E5%86%8C">重复任务与固定名册</a><a href="#%E5%AE%89%E6%8E%92%E5%AE%9E%E7%8E%B0%E4%B8%8E%E5%AE%A1%E9%98%85%E5%BE%AA%E7%8E%AF">安排实现与审阅循环</a></aside>
 </div>

@@ -60,16 +60,16 @@ client = OpenCollab(&quot;.&quot;, environment_providers={
 <p>之后在运行中写 <code>await client.workflow(flow, inputs, isolation=&quot;custom&quot;)</code>。<code>flow</code> 是调用方自己的异步工作流，<code>inputs</code> 是它的输入字典。也可以在 Team 文件或角色中写 <code>isolation: custom</code>。策略名需要合法，并且与注册键保持一致。</p>
 <h2 id="工厂如何使用运行信息">工厂如何使用运行信息</h2>
 <p><code>workspace</code> 是调用方项目位置，<code>base_environment</code> 是真实来源环境。<code>owned_save_dir</code> 指向当前运行产物目录，<code>owned_output_paths</code> 帮助环境区分运行自己写出的记录与任务源内容。<code>enable_adoption</code> 表示运行需要采纳能力，这会影响候选准备和交付方式。</p>
-<p>环境池实现公开的 <code>opencollab.environments.EnvironmentPool</code>。<code>acquire(role, source=...)</code> 接收角色和实际父环境或审阅源，返回已经准备好执行工具的 Environment。审阅源可能来自另一策略，也可能位于容器中，工厂应按环境操作读取其内容。直接从宿主同名目录复制，会让审阅任务读到错误版本。</p>
+<p>环境池需要实现公开的 <code>opencollab.environments.EnvironmentPool</code> 接口。<code>acquire(role, source=...)</code> 接收角色和实际父环境或审阅源，返回已经准备好执行工具的 Environment。审阅源可能来自另一策略，也可能位于容器中，工厂应按环境操作读取其内容。直接从宿主同名目录复制，会让审阅任务读到错误版本。</p>
 <h2 id="为新后端实现同一组操作">为新后端实现同一组操作</h2>
-<p>接入远端执行服务时，可以先让一个环境完成真实的文件写入与读取，再运行一个短命令并核对退出码。接着申请两份环境，让它们写入同名文件，观察内容是否按预期独立。这些操作能说明后端实际提供了怎样的隔离。</p>
-<p>环境池还应明确实例与资源的关系。例如环境对象可以代表一份会话租约，底层容器由池统一管理。多个视图引用同一资源时，归还其中一个视图应保留其他视图仍在使用的资源。先把这层所有权表达清楚，后续审阅与清理更容易保持一致。</p>
+<p>接入远端执行服务时，先在一个环境中写入并读取文件，执行短命令并查看退出码。再申请两份环境，分别写入同名文件，观察内容是否独立。这样可以直接检查文件操作、命令执行和隔离是否可用。</p>
+<p>明确环境对象与底层资源的关系。例如，环境对象可以代表一份会话租约，底层容器由池统一管理。多个环境视图引用同一资源时，归还其中一个视图后，资源仍需保留到其他使用者结束。审阅和清理都应遵循这一所有权关系。</p>
 <h2 id="把分配交付与释放一起实现">把分配、交付与释放一起实现</h2>
 <p><code>adopt(patch)</code> 将增量应用到交付工作区。<code>release_env(environment)</code> 归还一次分配，<code>release()</code> 结束池拥有的资源。传入的源环境保持借用关系，释放应针对池分配的资源。Environment 需要提供准备、文件读写、命令执行、撤销、停止和清理操作，详细签名见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/ports.py">公开端口</a>。</p>
-<p>取消可能发生在资源申请途中。提供器需要追踪尚未结束的申请，等它得到明确结果再完成撤销。补丁导出失败时，应保留可恢复的文件与资源信息，并让同一个池能够再次清理。先运行一次真实文件写入、命令取消和导出失败恢复，可以发现单看工厂返回类型无法识别的问题。</p>
-<p>接入前应说明提供器的文件范围、进程范围、网络和权限限制。VM 专用后端仍处于<a href="../vm-environment-extension/index.html">扩展规划</a>。实现自己的 VM 环境时，上述生命周期同样需要完成。环境池组合行为见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/session_environments.py">策略池实现</a>，已有环境的所有权见 <a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a>。</p>
+<p>取消可能发生在资源申请途中。提供器需要追踪尚未结束的申请，等它得到明确结果再完成撤销。补丁导出失败时，应保留可恢复的文件与资源信息，并让同一个池能够再次清理。接入时实际执行文件写入、命令取消和导出失败恢复，检查这些操作是否符合资源的所有权和清理要求。</p>
+<p>为使用者说明提供器的文件共享范围、进程与网络隔离方式，以及权限限制。VM 专用后端仍处于<a href="../vm-environment-extension/index.html">扩展规划</a>。实现自己的 VM 环境时，上述生命周期同样需要完成。环境池组合行为见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/session_environments.py">策略池实现</a>，已有环境的所有权见 <a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/custom-environment-providers.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/custom-environment-providers.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E4%B8%80%E4%B8%AA%E5%8F%AF%E5%B7%A5%E4%BD%9C%E7%9A%84%E6%8F%90%E4%BE%9B%E5%99%A8%E5%BC%80%E5%A7%8B">从一个可工作的提供器开始</a><a href="#%E5%B7%A5%E5%8E%82%E5%A6%82%E4%BD%95%E4%BD%BF%E7%94%A8%E8%BF%90%E8%A1%8C%E4%BF%A1%E6%81%AF">工厂如何使用运行信息</a><a href="#%E4%B8%BA%E6%96%B0%E5%90%8E%E7%AB%AF%E5%AE%9E%E7%8E%B0%E5%90%8C%E4%B8%80%E7%BB%84%E6%93%8D%E4%BD%9C">为新后端实现同一组操作</a><a href="#%E6%8A%8A%E5%88%86%E9%85%8D%E4%BA%A4%E4%BB%98%E4%B8%8E%E9%87%8A%E6%94%BE%E4%B8%80%E8%B5%B7%E5%AE%9E%E7%8E%B0">把分配、交付与释放一起实现</a></aside>
 </div>

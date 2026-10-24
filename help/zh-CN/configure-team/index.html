@@ -37,7 +37,7 @@
 opencollab team show --team-config team.yaml
 opencollab --team-config team.yaml --workspace .
 </code></pre>
-<p><code>team init</code> 导出当前内置团队并保留已存在的目标文件，<code>team show</code> 读取并展示入口、角色工具与拓扑。这两条准备命令可以在配置 API 凭据前执行。最终根命令才启动协作。CLI 的 <code>--team-config</code> 或 SDK 的 <code>team(config=...)</code> 优先选择团队文件，其次是环境变量 <code>OPENCOLLAB_TEAM_FILE</code>。文件名恰好叫 <code>team.yaml</code> 并不会让它被自动采用。</p>
+<p><code>team init</code> 导出当前内置团队并保留已存在的目标文件，<code>team show</code> 读取并展示入口、角色工具与拓扑。这两条准备命令可以在配置 API 凭据前执行。最终根命令才启动协作。CLI 的 <code>--team-config</code> 或 SDK 的 <code>team(config=...)</code> 优先选择团队文件，其次是环境变量 <code>OPENCOLLAB_TEAM_FILE</code>。使用自建的 <code>team.yaml</code> 时，通过上述选项或变量显式选择。</p>
 <p>省略团队文件时，内置团队由 Analyst、Coder 和 Tester 组成，入口为 <code>analyst</code>。Analyst 拥有派发与采纳工具，Coder 负责修改，Tester 执行验证。内置拓扑只允许 Analyst 到达 Coder 和 Tester。角色声明会先出现在团队组织记录中，按需派发后才产生相应的活跃成员。</p>
 <h2 id="声明角色与实际执行能力">声明角色与实际执行能力</h2>
 <p>以下配置给入口明确的交付职责，Coder 修改文件，Tester 读取并运行项目命令。</p>
@@ -59,9 +59,9 @@ topology:
   coder: []
   tester: []
 </code></pre>
-<p><code>entry</code> 指定接收用户任务的 agent 0。省略时先寻找名为 <code>lead</code> 的角色，再取第一个声明角色。角色名是身份，不能包含路径分隔符、首尾空格或控制字符，Unicode 与大小写归一后发生碰撞也会报错。显示名称不同于用途描述，修改身份会影响拓扑和寻址。</p>
+<p><code>entry</code> 指定接收用户任务的 agent 0。省略时先寻找名为 <code>lead</code> 的角色，再取第一个声明角色。角色名是身份，不能包含路径分隔符、首尾空格或控制字符，Unicode 与大小写归一后发生碰撞也会报错。修改角色名后，需要同步更新拓扑和消息寻址。</p>
 <p>每个角色需要 <code>prompt</code> 或 <code>prompt_file</code>。文件路径相对团队文件所在目录，并受安全读取与目录范围检查。两者同时出现时，内联 <code>prompt</code> 优先。较长职责可以放到专用提示词文件，以便维护。</p>
-<p><code>tools</code> 是角色可调用的工具集合，角色可显式配置 <code>model</code>、<code>temperature</code>、<code>thinking</code>、<code>thinking_params</code> 和 <code>profile</code>。未设置的模型与采样项继承客户端全局值，<code>temperature: 0.0</code> 会显式覆盖全局值。profile 提供基础提示词、上下文处理和安全配置，角色职责与工具选择仍共同决定本次能力。工具列表中的 Bash 还需满足执行环境与权限要求。</p>
+<p><code>tools</code> 是角色可调用的工具集合，角色可显式配置 <code>model</code>、<code>temperature</code>、<code>thinking</code>、<code>thinking_params</code> 和 <code>profile</code>。未设置的模型与采样项继承客户端全局值，<code>temperature: 0.0</code> 会显式覆盖全局值。profile 提供基础提示词、上下文处理和安全配置，角色职责与工具选择仍共同决定本次能力。Bash 的执行还取决于环境和权限设置。</p>
 <h2 id="拓扑同时约束派发和消息">拓扑同时约束派发和消息</h2>
 <p><code>topology</code> 是有向图。上例的 manager 可以创建 coder 和 tester，也可以在具备 <code>message_agent</code> 工具时给这两种角色发消息。角色想回信，需要自己拥有消息工具，并且拓扑允许相反方向。要让 coder 回信，可以给它增加 <code>message_agent</code>，并把 <code>coder: []</code> 改为 <code>coder: [manager]</code>。</p>
 <p>工作区共享由隔离配置决定，通信图管理成员之间的显式协作。若角色调用一个 Workflow，Workflow 内部由它自己的 Python 代码组织执行。使用入口见 <a href="../dispatch-team-agents/index.html">派发 Agent 任务并安排审阅</a> 和 <a href="../message-team-agents/index.html">向队友发消息并继续协作</a>。</p>
@@ -99,12 +99,12 @@ asyncio.run(main())
 <p>SDK 使用这份文件时传入 <code>config=&quot;configs/team.collab.yaml&quot;</code> 与 <code>prebuild_team=True</code>，串行交接再加 <code>serialize_turns=True</code>。宿主 shell 权限由 <code>allow_unisolated_shell=True</code> 选择。根命令的 <code>--team-config</code> 负责选择文件，固定名册创建由 SDK 或这个专用脚本完成。脚本为成员 shell 设置关闭 pytest 缓存和 Python 字节码的默认环境值，并保留调用方已有设置，便于导出工作树改动。</p>
 <p>启动参数与结果摘要见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/scripts/run_collab_team.py">固定名册启动脚本</a>，角色交接职责见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/team.collab.yaml">自带团队文件</a>。</p>
 <h2 id="自定义程度与结果确认">自定义程度与结果确认</h2>
-<p>角色名与职责可以按业务改写，入口也可以换成研究者、分诊成员或调度成员。需要让入口直接处理文件时，给它相应文件工具即可。需要让它选择已注册工作流时，可以添加 run_workflow 工具。成员编写并运行自己的工作单元时，使用对应的工作流管理能力，详见 <a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>。</p>
+<p>角色名与职责可以按业务改写，入口也可以换成研究者、分诊成员或调度成员。入口要直接处理文件时，给它相应文件工具。要选择已注册工作流时，添加 run_workflow 工具。成员编写并运行自己的工作单元时，使用对应的工作流管理能力，详见 <a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>。</p>
 <p>按需团队可以对不同对象派发多次同角色任务。相同角色的多个成员各有 aid 和独立会话，消息寻址时应指定具体 aid。固定名册则让同一成员通过后续消息继续处理新工作，这两种安排会形成不同的上下文积累和预算使用方式。</p>
-<p>SDK 调用完成后，先读 result.status 与 result.reason，再核对 output 里的完成说明和产物目录。工作树中的实现需要显式采纳，采用后才安排新的验证成员。若入口本身也隔离，交付补丁还需要由调用方应用到最终项目。团队配置确定协作能力，实际执行记录说明这些能力在本次任务中怎样被使用。</p>
+<p>SDK 调用完成后，先读 result.status 与 result.reason，再核对 output 里的完成说明和产物目录。工作树中的实现需要显式采纳，采用后才安排新的验证成员。若入口本身也隔离，交付补丁还需要由调用方应用到最终项目。执行记录可以用来查看各成员实际调用了哪些工具、交付了哪些改动。</p>
 <p>配置字段与默认值见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/team_config.py">团队配置实现</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md">配置指南</a>。预算安排见 <a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/configure-team.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/configure-team.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E5%BD%93%E5%89%8D%E5%86%85%E7%BD%AE%E5%9B%A2%E9%98%9F%E5%BC%80%E5%A7%8B%E7%BC%96%E8%BE%91">从当前内置团队开始编辑</a><a href="#%E5%A3%B0%E6%98%8E%E8%A7%92%E8%89%B2%E4%B8%8E%E5%AE%9E%E9%99%85%E6%89%A7%E8%A1%8C%E8%83%BD%E5%8A%9B">声明角色与实际执行能力</a><a href="#%E6%8B%93%E6%89%91%E5%90%8C%E6%97%B6%E7%BA%A6%E6%9D%9F%E6%B4%BE%E5%8F%91%E5%92%8C%E6%B6%88%E6%81%AF">拓扑同时约束派发和消息</a><a href="#%E9%80%89%E6%8B%A9%E6%8C%89%E9%9C%80%E6%88%90%E5%91%98%E6%88%96%E5%9B%BA%E5%AE%9A%E5%90%8D%E5%86%8C">选择按需成员或固定名册</a><a href="#%E8%BF%90%E8%A1%8C%E8%87%AA%E5%B8%A6%E7%9A%84%E5%9B%BA%E5%AE%9A%E5%90%8D%E5%86%8C%E5%9B%A2%E9%98%9F">运行自带的固定名册团队</a><a href="#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%A8%8B%E5%BA%A6%E4%B8%8E%E7%BB%93%E6%9E%9C%E7%A1%AE%E8%AE%A4">自定义程度与结果确认</a></aside>
 </div>

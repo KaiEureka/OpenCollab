@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">结果、轨迹与评测</p>
 <h1 id="用实际测试验证-agent-的交付">用实际测试验证 Agent 的交付</h1>
-<p>OC 可以通过原生命令执行项目测试，并用 <code>evidence_tools</code> 收集支持的测试记录。这样，候选选择能读取实际执行目标与结果，而非依赖 Agent 的口头总结。</p>
+<p>OC 可以执行项目原生测试命令，并用 <code>evidence_tools</code> 收集支持的测试记录。选择候选时，可以直接查看实际执行的测试目标与结果。</p>
 <h2 id="使用支持的工具组合">使用支持的工具组合</h2>
 <pre><code class="language-python">from opencollab.tools import evidence_tools
 
@@ -46,7 +46,7 @@ print(candidate.verified_targets)
 </code></pre>
 <h2 id="什么结果可以作为通过证据">什么结果可以作为通过证据</h2>
 <p>观察器支持规定形式的 pytest、<code>go test -json</code> 和 Django 测试入口。pytest 使用 <code>-rA</code> 有助于保留逐项通过记录。退出码、目标、执行目录与输出截断情况会参与解释。</p>
-<p>帮助输出、零测试收集、只执行 collection，以及被截断而缺少足够结果的输出，应读取为尚未验证。某个命令进程正常退出，也可能没有执行你真正关心的测试。</p>
+<p>帮助输出、零测试收集、只执行 collection，以及截断后缺少足够结果的输出，都记为尚未验证。判断测试是否通过时，需要同时确认目标确实执行并有对应结果。</p>
 <h2 id="接入应用已经执行的测试">接入应用已经执行的测试</h2>
 <p>应用通过自己的执行服务取得命令结果时，可以用公开 <code>has_pass_evidence</code> 解释受支持测试的捕获输出。下面片段中的 <code>result</code> 是刚完成的命令结果，应保留原始退出码、标准输出、标准错误和截断标志。</p>
 <pre><code class="language-python">from opencollab.tools import has_pass_evidence
@@ -63,10 +63,10 @@ print(passed)
 <p>该函数读取已有输出，命令执行由调用方完成。传入实际 runner 和目标，才能按对应测试记录解释结果。需要自动保存命令、执行目录和后续修改影响时，使用前面的 <code>evidence_tools</code> 或用 <code>BashEvidence</code> 包装自己的 Bash 工具。<code>VerificationTool</code> 协议允许扩展工具暴露当前 <code>verified_targets</code>，自定义测试结果仍由工具自己的解析器提供。</p>
 <h2 id="后续修改怎样影响记录">后续修改怎样影响记录</h2>
 <p>同一目标重跑会更新当前证据，失败或中断会影响先前通过状态。观察到的文件修改会清除当前通过目标，并把旧记录标为适用性未知。未识别为受支持测试的 Bash 命令也可能具有副作用，因此需要重新建立证据。</p>
-<p>历史记录保留原始退出状态和 verified 信息，当前候选是否仍受这些结果支持，则看 applicability 及后续修改。最后交付前应检查被采用的版本与被验证的版本一致。</p>
+<p>历史记录保留原始退出状态和 verified 信息。判断结果是否适用于当前候选时，查看 applicability 及后续修改，并在交付前确认采用的版本与测试的版本一致。</p>
 <h2 id="工作区与相同文件名">工作区与相同文件名</h2>
 <p>测试路径按实际执行工作区解释。<code>cd tests &amp;&amp; pytest -rA test_example.py</code> 与根目录下相应路径的关系需要按环境解析，两个目录里同名文件也可能是不同目标。读取记录时保留原命令和执行目录，便于复核。</p>
-<p>正式 benchmark 的评分由 OCE 和对应验证器负责，开发过程中这些观察记录可以辅助决定候选与发现问题。</p>
+<p>正式 benchmark 由 OCE 和对应验证器评分。开发时可以用这些测试记录选择候选、发现问题。</p>
 <h2 id="检查补丁涉及的文件">检查补丁涉及的文件</h2>
 <p>需要把测试目标与候选改动对应时，可以通过公开 <code>opencollab.patches</code> 解析 Git 补丁。</p>
 <pre><code class="language-python">from pathlib import Path
@@ -82,7 +82,7 @@ print(patch_paths(patch))
 <h2 id="源码与进一步阅读">源码与进一步阅读</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/test-evidence.md">docs/test-evidence.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/evidence/bash_evidence.py">opencollab/adapters/tools/evidence/bash_evidence.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/tools.py">opencollab/tools.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/patches.py">opencollab/patches.py</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/native-test-evidence.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/native-test-evidence.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BD%BF%E7%94%A8%E6%94%AF%E6%8C%81%E7%9A%84%E5%B7%A5%E5%85%B7%E7%BB%84%E5%90%88">使用支持的工具组合</a><a href="#%E4%BB%80%E4%B9%88%E7%BB%93%E6%9E%9C%E5%8F%AF%E4%BB%A5%E4%BD%9C%E4%B8%BA%E9%80%9A%E8%BF%87%E8%AF%81%E6%8D%AE">什么结果可以作为通过证据</a><a href="#%E6%8E%A5%E5%85%A5%E5%BA%94%E7%94%A8%E5%B7%B2%E7%BB%8F%E6%89%A7%E8%A1%8C%E7%9A%84%E6%B5%8B%E8%AF%95">接入应用已经执行的测试</a><a href="#%E5%90%8E%E7%BB%AD%E4%BF%AE%E6%94%B9%E6%80%8E%E6%A0%B7%E5%BD%B1%E5%93%8D%E8%AE%B0%E5%BD%95">后续修改怎样影响记录</a><a href="#%E5%B7%A5%E4%BD%9C%E5%8C%BA%E4%B8%8E%E7%9B%B8%E5%90%8C%E6%96%87%E4%BB%B6%E5%90%8D">工作区与相同文件名</a><a href="#%E6%A3%80%E6%9F%A5%E8%A1%A5%E4%B8%81%E6%B6%89%E5%8F%8A%E7%9A%84%E6%96%87%E4%BB%B6">检查补丁涉及的文件</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>

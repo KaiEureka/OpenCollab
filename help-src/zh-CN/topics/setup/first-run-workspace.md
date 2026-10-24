@@ -40,7 +40,7 @@
 
 ## 准备项目与模型设置
 
-先按安装指南完成源码环境。把下面的 `/path/to/application` 换成一个已经存在的项目目录。SDK 也要求传入的工作区是目录，建立清晰的项目路径能减少配置和产物位置混淆。
+按安装指南准备好源码环境，再把下面的 `/path/to/application` 换成已有项目目录。CLI 和 SDK 都要求工作区已经存在，并从该目录读取项目文件。
 
 在 OpenCollab 源码根目录复制配置示例，然后用编辑器填写所用服务的 provider、base URL、物理模型名称和凭据。
 
@@ -92,7 +92,7 @@ uv run opencollab workflow list --workspace /path/to/application
 uv run opencollab workflow run duo --help
 ```
 
-在确实打算让 Duo 在宿主项目执行命令时，可以按下面的形式启动。
+下面的命令允许 Duo 在宿主项目中执行 shell 命令。
 
 ```bash
 uv run opencollab workflow run duo --workspace /path/to/application \
@@ -100,7 +100,7 @@ uv run opencollab workflow run duo --workspace /path/to/application \
   --args '{"allow_unisolated_shell":true}'
 ```
 
-`--task` 写入工作流的 `goal` 参数。使用 `--args` 提供 `goal` 时，删除 `--task`，避免重复输入。需要隔离进程执行的项目，可先按执行环境指南选择合适环境再运行。
+`--task` 写入工作流的 `goal` 参数。如果已在 `--args` 中提供 `goal`，命令中省略 `--task`。需要进程隔离时，按执行环境指南准备环境后再运行。
 
 ## 来源
 

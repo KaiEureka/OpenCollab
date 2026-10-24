@@ -33,7 +33,7 @@
 <h1 id="从-python-调用-opencollab">从 Python 调用 OpenCollab</h1>
 <p>在已有 Python 程序中导入 <code>OpenCollab</code>，构造一个指向项目目录的客户端，再 <code>await</code> 调用 <code>agent</code>、<code>team</code> 或 <code>workflow</code>，就能把执行结果接入自己的程序。三个入口返回统一的 <code>RunResult</code>，模型与传输配置在客户端构造时解析一次。</p>
 <h2 id="用一个完整脚本开始">用一个完整脚本开始</h2>
-<p>以下程序适合先检查自己的项目。它沿用配置文件和进程变量中的模型设置，使用只读工具，并明确给出执行额度与整次任务期限。</p>
+<p>以下脚本使用只读工具检查项目，沿用配置文件和进程变量中的模型设置，并设置执行额度与任务期限。</p>
 <pre><code class="language-python">import asyncio
 from opencollab import OpenCollab, RunError
 
@@ -60,7 +60,7 @@ asyncio.run(main())
 <p>把脚本放在项目根目录，在安装了 OpenCollab 的环境中运行。工作区必须已经存在。<code>artifacts</code> 必须是新目录或空目录，下一次任务应选新的位置。Web 服务、Notebook 或已有事件循环的程序直接 <code>await main()</code>，由宿主程序管理事件循环。</p>
 <h2 id="选择执行方式">选择执行方式</h2>
 <p><code>agent()</code> 适合一个 Agent 连续完成任务，当前默认 Base 采用 Single2。<code>agent2()</code> 是明确选择 Single2 的便捷入口。调用时可设置 <code>tools</code>、<code>system_prompt</code>、<code>budget</code>、<code>max_steps</code> 和 <code>run_control</code>。<code>steps</code> 是旧步数别名，与 <code>max_steps</code> 同时传入会报错。</p>
-<p>选择入口时先看任务的控制方式。只需连续阅读、修改和测试时可先用单 Agent。希望角色自行安排协作时使用 Team，已有明确阶段和程序条件时选择 Workflow。三种方式都可以在应用里检查同一种状态结构，便于统一保存日志和展示结果。</p>
+<p>连续阅读、修改和测试可以使用单 Agent。让角色自行安排协作时使用 Team，按明确阶段和程序条件执行时使用 Workflow。三个入口返回相同的状态结构，应用可以统一保存日志和展示结果。</p>
 <p><code>team()</code> 让成员按照团队工具和关系决定交接。它的 <code>config=</code> 是团队 YAML 文件路径，与构造客户端时 <code>config={...}</code> 的模型运行设置不同。先通过 <code>opencollab team init team.yaml</code> 准备团队文件，再检查角色工具和执行环境。下面是放在已有 <code>async</code> 函数中的调用，<code>client</code> 沿用前面的实例。</p>
 <pre><code class="language-python">result = await client.team(
     &quot;分析目标问题，安排实现与验证，并提交结果。&quot;,
@@ -92,13 +92,13 @@ asyncio.run(main())
 </code></pre>
 <h2 id="接入结果和扩展">接入结果和扩展</h2>
 <p><code>status</code> 为 <code>completed</code>、<code>stopped</code> 或 <code>failed</code>，<code>reason</code> 保留停止原因，<code>output</code> 可保留部分工作。<code>raise_for_status()</code> 对完成结果返回自身，其他状态抛出带原始结果的 <code>RunError</code>。参数错误发生在执行前，生命周期或持久化故障也可能直接抛出 <code>RunError</code>，应用应在调用边界处理。</p>
-<p>通过 <code>opencollab.tools</code>、<code>opencollab.environments</code>、<code>opencollab.workflows</code> 和 <code>opencollab.profiles</code> 使用公开扩展入口。<code>client.configuration</code> 提供只读且已筛除秘密的有效配置。<code>create_model_client()</code> 可创建同配置的原生模型客户端，调用方负责在使用后执行 <code>await model.close()</code>。这些接口适合诊断与集成，普通任务可直接使用三个运行入口。</p>
+<p>通过 <code>opencollab.tools</code>、<code>opencollab.environments</code>、<code>opencollab.workflows</code> 和 <code>opencollab.profiles</code> 使用公开扩展入口。<code>client.configuration</code> 提供只读且已筛除秘密的有效配置。<code>create_model_client()</code> 可创建同配置的原生模型客户端，调用方负责在使用后执行 <code>await model.close()</code>。应用可以通过这些接口接入配置检查和自定义模型调用。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L96">opencollab/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L107">opencollab/sdk/client.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L213">opencollab/sdk/client.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L408">opencollab/sdk/client.py</a></p>
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a>　<a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a>　<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a>　<a href="../run-results/index.html">读取运行结果与判断任务是否完成</a>　<a href="../artifacts-and-history/index.html">找到运行记录、会话和交付文件</a>　<a href="../tool-selection/index.html">选择 Agent 能使用的工具</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/python-sdk-entrypoints.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/python-sdk-entrypoints.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%94%A8%E4%B8%80%E4%B8%AA%E5%AE%8C%E6%95%B4%E8%84%9A%E6%9C%AC%E5%BC%80%E5%A7%8B">用一个完整脚本开始</a><a href="#%E9%80%89%E6%8B%A9%E6%89%A7%E8%A1%8C%E6%96%B9%E5%BC%8F">选择执行方式</a><a href="#%E6%8E%A5%E5%85%A5%E7%BB%93%E6%9E%9C%E5%92%8C%E6%89%A9%E5%B1%95">接入结果和扩展</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

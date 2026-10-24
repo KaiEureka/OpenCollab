@@ -1,6 +1,8 @@
 # OC 中文帮助中心
 
-OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装、模型配置、团队协作、Workflow、执行环境与结果检查。文档依据 OC main 提交 [`e7946a42`](https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41)，说明该版本的公开接口及运行行为。
+从这里了解 OpenCollab 的安装配置、团队协作和 Workflow 开发，查找隔离、调试与运行记录的使用方法。可以按下面的任务入口开始，也可以直接搜索功能名或遇到的问题。
+
+适用版本为 [OpenCollab 0.9.5](https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41)。
 
 [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab) · [阅读路径](reading-paths.md) · [问题导航](questions.md)
 
@@ -36,7 +38,7 @@ OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装�
 | 指南 | 解决的问题 |
 | --- | --- |
 | [配置从哪里读取以及哪一项生效](topics/models/configuration-precedence.md) | 解释某项配置为什么生效，并稳定地让 CLI 或 SDK 读取选定配置。 |
-| [配置参数与环境变量速查](topics/models/configuration-reference.md) | 按环境变量、SDK 字段和运行入口查找默认值与详细用法。 |
+| [配置参数与环境变量速查](topics/models/configuration-reference.md) | 按环境变量、SDK 字段和运行入口查找现有配置的默认值与详细用法。 |
 | [接入模型端点与认证凭据](topics/models/provider-endpoint-credentials.md) | 将 OpenAI 兼容或原生 Anthropic 端点接入 OpenCollab，并选对模型和认证方式。 |
 | [逻辑模型路由与共享请求容量](topics/models/model-routing-request-capacity.md) | 让不同角色或进程选择明确后端，并协调同一台机器上的模型请求容量。 |
 | [选择调用协议与流式响应](topics/models/wire-protocol-streaming.md) | 为端点选择正确的 Chat Completions、Responses 或 Anthropic Messages 路径，并配置流式接收。 |
@@ -97,7 +99,7 @@ OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装�
 | [超时、重试与请求卡住诊断](topics/operations/timeouts-retries.md) | 按卡住的位置调整模型请求或整次任务的时间限制，并理解重试如何停止。 |
 | [保存会话与恢复历史](topics/operations/session-save-resume.md) | 找到已保存的会话，恢复终端主会话历史，并了解恢复后预算和执行状态如何延续。 |
 | [中断任务与检查资源清理](topics/operations/cancellation-cleanup.md) | 从终端或 Python 中停止正在运行的任务，并确认部分工作、用量和环境的最终状态。 |
-| [检查有效配置与定位常见启动故障](topics/operations/configuration-diagnostics.md) | 用可核对的信息定位配置、模型能力、CLI 参数和端点连接中的常见问题。 |
+| [检查有效配置与定位常见启动故障](topics/operations/configuration-diagnostics.md) | 查看有效配置、模型能力和错误记录，定位 CLI 参数与端点连接中的常见问题。 |
 
 ## 工具、Skill 与扩展
 
@@ -114,7 +116,7 @@ OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装�
 
 | 指南 | 解决的问题 |
 | --- | --- |
-| [读取运行结果与判断任务是否完成](topics/observability/run-results.md) | 正确处理 RunResult 和 RunError，把框架完成状态与实际任务验证分开理解。 |
+| [读取运行结果与判断任务是否完成](topics/observability/run-results.md) | 读取 RunResult、处理 RunError，并结合测试结果判断任务是否完成。 |
 | [找到运行记录、会话和交付文件](topics/observability/artifacts-and-history.md) | 运行结束后定位对应目录，区分产物、原始会话、轨迹和可再生缓存。 |
 | [查看 Agent 做了什么](topics/observability/trace-and-events.md) | 通过轨迹和事件定位模型调用、工具执行、交接与停止原因。 |
 | [统计 token、缓存命中和费用](topics/observability/token-cache-cost.md) | 从实际用量记录计算开销，理解推理、缓存和重试对总量的影响。 |
@@ -129,6 +131,6 @@ OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装�
 | [一次任务如何从输入走到工具执行](topics/architecture/runtime-execution-model.md) | 理解模型、Session、调度器和执行环境怎样合作，并找到实际行为由谁控制。 |
 | [Session 如何保存进度并继续执行](topics/architecture/session-state-lifecycle.md) | 读懂会话状态、停止原因和恢复方式，判断继续运行会从哪里开始。 |
 | [OpenCollab 负责什么以及如何扩展](topics/architecture/extension-and-evaluation-boundaries.md) | 把业务需求放到合适的扩展位置，并理解 OpenCollab 与评测项目各自维护什么。 |
-| [从示例接入自己的服务](topics/architecture/service-integration-lifecycle.md) | 把一次 SDK 演示接入业务服务，并明确运行身份、结果处理与资源清理责任。 |
+| [从示例接入自己的服务](topics/architecture/service-integration-lifecycle.md) | 把 SDK 调用接入业务服务，关联运行记录，并处理结果与资源清理。 |
 | [升级已有安装、团队和 SDK 集成](topics/architecture/upgrade-existing-integration.md) | 从已有版本迁移到选定版本，核对默认行为和公开接口，并验证原有任务继续按预期运行。 |
 | [反馈问题、请求帮助与提交改进建议](topics/architecture/report-problem-and-request-help.md) | 选择正确反馈入口，用最小复现和必要记录让维护者理解遇到的问题。 |

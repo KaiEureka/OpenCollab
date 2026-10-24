@@ -33,7 +33,7 @@
 <h1 id="先认识-agentsessionteam-和-workflow">先认识 Agent、Session、Team 和 Workflow</h1>
 <p>OC 把模型调用、工具执行、会话状态和协作组织放在一个运行框架里。你可以让一个 Agent 处理任务，也可以把工作分给一个 Team，或用 Python 写明每一步怎样交接。模型服务、执行环境和结果记录可以分别配置。</p>
 <h2 id="从一次任务理解框架">从一次任务理解框架</h2>
-<p>用户提出目标后，模型接收当前会话内容，返回文字或工具调用。OC 检查调用参数及可用工具，把调用交给执行环境，再将结果送回模型。这个往返会持续到任务结束、触及限制或运行被取消。模型输出一条命令与系统实际执行了这条命令，属于过程中的两个阶段。</p>
+<p>用户提出目标后，模型接收当前会话内容，返回文字或工具调用。OC 检查调用参数及可用工具，把调用交给执行环境，再将结果送回模型。这个往返会持续到任务结束、触及限制或运行被取消。模型先提出工具调用，执行环境实际运行后，结果才返回会话。</p>
 <p>Agent 表示带有模型、提示和工具配置的执行角色。Session 保存一次对话的消息、执行阶段、用量和等待状态。同一角色可以参与多次任务，每次任务需要清楚关联到相应会话。</p>
 <h2 id="三种使用方式">三种使用方式</h2>
 <table>
@@ -62,10 +62,10 @@
 </tr>
 </tbody>
 </table>
-<p>三种方式共用底层会话和工具机制。Team 中的一个成员可以获得调用 Workflow 的能力，Workflow 又能启动 Agent 会话。读代码时应区分“组织任务的控制器”和“实际与模型往返的会话”。</p>
+<p>三种方式共用底层会话和工具机制。Team 中的一个成员可以获得调用 Workflow 的能力，Workflow 又能启动 Agent 会话。任务组织方式决定何时调用会话，会话负责与模型交互并执行工具。</p>
 <h2 id="默认入口是什么">默认入口是什么</h2>
 <p><code>opencollab --workspace .</code> 启动内置 Self-Collaboration 团队。SDK 的 <code>OpenCollab(...).agent(...)</code> 是单 Agent 入口，当前 Base 配置映射到 Single2。Duo、Weave 与 Reconstruct 则是已经实现的具体 Workflow。</p>
-<p>因此，“默认 CLI”“Base Agent”和“Duo”各自代表不同入口。配置工具时也要区分普通编码工具和需要 Team 调度器的协作工具。</p>
+<p>配置工具时，普通编码工具可用于单 Agent，Team 协作工具需要团队调度器支持。</p>
 <h2 id="哪些信息会共享">哪些信息会共享</h2>
 <p>每个会话分别保存对话。任务说明、显式消息、返回结果决定成员收到的信息。文件是否共享由执行环境和隔离策略决定。两个 Agent 可以拥有独立对话却编辑同一个目录，也可以拥有独立工作树并通过补丁交付。模型请求容量又是另一项设置，负责约束同时发往服务端的请求。</p>
 <p>先根据任务选择运行方式，再确定工作区、模型和工具，最后配置预算及结果保存。这样可以逐项观察配置是否符合预期。</p>
@@ -73,7 +73,7 @@
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">opencollab/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py">opencollab/sdk/client.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/domain/session.py">opencollab/domain/session.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md">docs/runtime-design.md</a></p>
 <p><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a> · <a href="../base-single2/index.html">使用 Base 单 Agent 与 Single2 配置</a> · <a href="../configure-team/index.html">Team 完整指南与团队配置</a> · <a href="../run-registered-workflow/index.html">Workflow 完整指南与运行入口</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/orientation/concepts-and-modes.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/orientation/concepts-and-modes.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E4%B8%80%E6%AC%A1%E4%BB%BB%E5%8A%A1%E7%90%86%E8%A7%A3%E6%A1%86%E6%9E%B6">从一次任务理解框架</a><a href="#%E4%B8%89%E7%A7%8D%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F">三种使用方式</a><a href="#%E9%BB%98%E8%AE%A4%E5%85%A5%E5%8F%A3%E6%98%AF%E4%BB%80%E4%B9%88">默认入口是什么</a><a href="#%E5%93%AA%E4%BA%9B%E4%BF%A1%E6%81%AF%E4%BC%9A%E5%85%B1%E4%BA%AB">哪些信息会共享</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>

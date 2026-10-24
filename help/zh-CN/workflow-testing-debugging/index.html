@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
 <h1 id="验证与调试自定义-workflow">验证与调试自定义 Workflow</h1>
-<p>调试 Workflow 时，可以先验证普通 Python 控制流，再检查 ctx 调用与真实工具路径，最后验证任务交付。每层使用能直接观察的结果，分支有没有走到、工具有没有执行、文件内容是否正确，分别由对应证据回答。这样能快速定位问题来自编排、会话、环境还是应用行为。</p>
+<p>调试 Workflow 时，可以先验证普通 Python 控制流，再检查 ctx 调用与真实工具路径，最后验证任务交付。检查分支执行记录、工具回执和实际文件内容，可以定位问题来自编排、会话、环境还是应用行为。</p>
 <h2 id="先执行普通-python">先执行普通 Python</h2>
 <p>以下完整脚本用一个最小替身记录会话调用，验证分支与结果传递。它只使用 Python 标准库，可先在本地运行。</p>
 <pre><code class="language-python">import asyncio
@@ -64,7 +64,7 @@ asyncio.run(main())
 </code></pre>
 <p>替身提供可控输出，适合验证条件、迭代上限、参数拼接和 None 处理。涉及文件和副作用的步骤，可以检查实际文件内容或由应用测试环境提供实现。观察关键行为后再增加复杂度，通常能减少定位范围。</p>
 <h2 id="再执行-sdk-路径">再执行 SDK 路径</h2>
-<p>以下 SDK 脚本会真实建立 Workflow 上下文并执行集合，流程中没有模型请求。它验证阶段函数参数、集合输出与最终运行状态。</p>
+<p>以下 SDK 脚本会真实建立 Workflow 上下文并执行集合，流程由普通 Python 和集合方法完成，用来验证阶段函数参数、集合输出与最终运行状态。</p>
 <pre><code class="language-python">import asyncio
 from tempfile import TemporaryDirectory
 from opencollab import OpenCollab
@@ -96,13 +96,13 @@ asyncio.run(main())
 <p>工具路径验证应检查真正的文件或工具输出。让角色写入一个已知内容的文件，再从绑定环境读取。让角色运行任务原生检查，再读取退出状态和测试记录。Docker 工具使用容器工作区，普通 Workflow Python 留在调用方进程，验证路径前先确认执行位置。</p>
 <h2 id="验证失败与最终交付">验证失败与最终交付</h2>
 <p>有额度、时限和写入行为的流程应实际触发相关失败，观察部分文件是否保留、结果是否包含对应停止原因，以及清理是否完成。<code>agent_run</code> 的 <code>cleanup_complete</code> 和 <code>workspace_ready</code> 帮助判断能否继续，<code>RunResult.agent_failures</code> 保留内部失败，候选错误中的恢复位置帮助保全未交付工作。</p>
-<p>最终检查从任务要求的入口进入。库修改调用公开函数，命令任务运行真实命令并比较输出，数据任务读取实际产物，服务任务检查接口行为。Duo 的采用结果说明选定变化已经交付，Weave 的 <code>delivery_ok</code> 依赖实际执行检查。工作流 completed、模型声称完成、工具确实执行与任务通过验证，应分别读取各自的结果。</p>
+<p>最终检查从任务要求的入口进入。库修改调用公开函数，命令任务运行真实命令并比较输出，数据任务读取实际产物，服务任务检查接口行为。Duo 的采用结果说明选定变化已经交付，Weave 的 <code>delivery_ok</code> 依赖实际执行检查。从运行状态查看流程是否完成，从工具回执查看操作是否执行，再从实际检查结果确认任务是否通过验证。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L91">opencollab/README.md</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/result.py#L18">opencollab/sdk/result.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow.py#L734">opencollab/application/workflow.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/tests/interfaces/test_sdk_workflow_nested_collections.py#L10">tests/interfaces/test_sdk_workflow_nested_collections.py</a>。</p>
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a>、<a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a>、<a href="../duo-workflow/index.html">使用 Duo 生成并选择双候选方案</a>、<a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-testing-debugging.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-testing-debugging.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%85%88%E6%89%A7%E8%A1%8C%E6%99%AE%E9%80%9A-python">先执行普通 Python</a><a href="#%E5%86%8D%E6%89%A7%E8%A1%8C-sdk-%E8%B7%AF%E5%BE%84">再执行 SDK 路径</a><a href="#%E8%A7%82%E5%AF%9F%E9%98%B6%E6%AE%B5%E4%BC%9A%E8%AF%9D%E4%B8%8E%E6%96%87%E4%BB%B6">观察阶段、会话与文件</a><a href="#%E9%AA%8C%E8%AF%81%E5%A4%B1%E8%B4%A5%E4%B8%8E%E6%9C%80%E7%BB%88%E4%BA%A4%E4%BB%98">验证失败与最终交付</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>

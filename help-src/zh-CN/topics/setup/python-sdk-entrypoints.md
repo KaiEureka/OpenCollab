@@ -46,7 +46,7 @@
 
 ## 用一个完整脚本开始
 
-以下程序适合先检查自己的项目。它沿用配置文件和进程变量中的模型设置，使用只读工具，并明确给出执行额度与整次任务期限。
+以下脚本使用只读工具检查项目，沿用配置文件和进程变量中的模型设置，并设置执行额度与任务期限。
 
 ```python
 import asyncio
@@ -79,7 +79,7 @@ asyncio.run(main())
 
 `agent()` 适合一个 Agent 连续完成任务，当前默认 Base 采用 Single2。`agent2()` 是明确选择 Single2 的便捷入口。调用时可设置 `tools`、`system_prompt`、`budget`、`max_steps` 和 `run_control`。`steps` 是旧步数别名，与 `max_steps` 同时传入会报错。
 
-选择入口时先看任务的控制方式。只需连续阅读、修改和测试时可先用单 Agent。希望角色自行安排协作时使用 Team，已有明确阶段和程序条件时选择 Workflow。三种方式都可以在应用里检查同一种状态结构，便于统一保存日志和展示结果。
+连续阅读、修改和测试可以使用单 Agent。让角色自行安排协作时使用 Team，按明确阶段和程序条件执行时使用 Workflow。三个入口返回相同的状态结构，应用可以统一保存日志和展示结果。
 
 `team()` 让成员按照团队工具和关系决定交接。它的 `config=` 是团队 YAML 文件路径，与构造客户端时 `config={...}` 的模型运行设置不同。先通过 `opencollab team init team.yaml` 准备团队文件，再检查角色工具和执行环境。下面是放在已有 `async` 函数中的调用，`client` 沿用前面的实例。
 
@@ -120,7 +120,7 @@ asyncio.run(main())
 
 `status` 为 `completed`、`stopped` 或 `failed`，`reason` 保留停止原因，`output` 可保留部分工作。`raise_for_status()` 对完成结果返回自身，其他状态抛出带原始结果的 `RunError`。参数错误发生在执行前，生命周期或持久化故障也可能直接抛出 `RunError`，应用应在调用边界处理。
 
-通过 `opencollab.tools`、`opencollab.environments`、`opencollab.workflows` 和 `opencollab.profiles` 使用公开扩展入口。`client.configuration` 提供只读且已筛除秘密的有效配置。`create_model_client()` 可创建同配置的原生模型客户端，调用方负责在使用后执行 `await model.close()`。这些接口适合诊断与集成，普通任务可直接使用三个运行入口。
+通过 `opencollab.tools`、`opencollab.environments`、`opencollab.workflows` 和 `opencollab.profiles` 使用公开扩展入口。`client.configuration` 提供只读且已筛除秘密的有效配置。`create_model_client()` 可创建同配置的原生模型客户端，调用方负责在使用后执行 `await model.close()`。应用可以通过这些接口接入配置检查和自定义模型调用。
 
 ## 来源
 

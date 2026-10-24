@@ -104,7 +104,7 @@ opencollab workflow run reconstruct \
 | `complexity_gate` | false | 让高复杂度惩罚影响晋级 |
 | `domain_check` | false | 检查提议数字范围 |
 
-这些是已有探索策略选项，可按任务选择。启用随机比例时还要提供 `random_inputs(k, exclude)`，返回独立生成且新鲜的输入。`kind` 可为 `list`、`two_lists`、`int`、`pair`、`string`、`points` 或 `other`，配合 `lo`、`hi` 与 `is_float` 描述输入域。
+按任务需要选择探索策略。启用随机比例时还要提供 `random_inputs(k, exclude)`，返回独立生成且尚未使用的输入。`kind` 可为 `list`、`two_lists`、`int`、`pair`、`string`、`points` 或 `other`，配合 `lo`、`hi` 与 `is_float` 描述输入域。
 
 前六个计数参数采用正整数，`random_share` 在 0 到 1 之间，策略开关在 JSON 中使用布尔值。`examples_shown` 缩小提议角色的样例展示窗口，编码角色和候选验证仍使用全部已知样例。
 

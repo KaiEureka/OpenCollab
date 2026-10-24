@@ -31,13 +31,13 @@
 <main id="content" tabindex="-1">
 <p class="category">架构、集成与维护</p>
 <h1 id="一次任务如何从输入走到工具执行">一次任务如何从输入走到工具执行</h1>
-<p>一次 OpenCollab 任务会先组装配置、会话与执行环境，再把消息和工具说明发给模型。模型返回工具调用后，运行时校验参数、检查权限并执行工具，工具结果随后进入会话，供下一次模型请求使用。最终回答与实际工具执行可以通过运行记录分别观察。</p>
+<p>一次 OpenCollab 任务会先组装配置、会话与执行环境，再把消息和工具说明发给模型。模型返回工具调用后，运行时校验参数、检查权限并执行工具，工具结果随后进入会话，供下一次模型请求使用。运行记录可用于查看最终回答与实际工具执行过程。</p>
 <h2 id="从入口到模型请求">从入口到模型请求</h2>
 <p><code>OpenCollab.agent</code> 运行单个 Agent，<code>team</code> 建立成员和调度关系，<code>workflow</code> 运行调用方定义的 Python 编排。三种入口都围绕 Session 执行模型与工具交互。Session 持有消息、计数与阶段，environment 指向工具操作的真实工作区。</p>
 <p>上下文由有序片段构成。角色采用 profile 时，先加入 profile 的基础提示词，再加入角色职责。团队信息、技能目录和项目概览按适用条件加入，派发任务作为启动用户内容。工具 schema 单独传给模型服务，其中描述工具名称、参数与用途。保存的完整会话与经过长度处理的请求视图承担不同职责。</p>
 <h2 id="模型怎样发起真实操作">模型怎样发起真实操作</h2>
 <p>模型可以返回普通内容，也可以返回工具调用。收到调用后，运行时先解析名称和 JSON 参数，按工具 schema 校验，再从当前角色可用工具中查找实现。执行时传入带 Agent 身份与环境的运行信息，文件工具读取对应工作区，Bash 在对应环境中启动进程。</p>
-<p>控制工具行为有多个位置。提示词说明任务与约束，<code>tool_choice</code> 引导当前请求选择工具，配置的工具集合决定可调用能力，运行时权限检查决定这次操作是否获准，执行环境则决定文件、进程和网络的实际范围。项目希望只读分析时，可以直接只给读取工具。</p>
+<p>提示词说明任务与约束，<code>tool_choice</code> 引导当前请求选择工具。配置的工具集合决定可调用能力，运行时检查操作权限，执行环境决定文件、进程和网络的实际范围。只读分析任务可以直接使用读取工具。</p>
 <pre><code class="language-python">import asyncio
 from opencollab import OpenCollab
 from opencollab.tools import builtin_tools
@@ -55,13 +55,13 @@ async def main():
 
 asyncio.run(main())
 </code></pre>
-<p>示例中的产物目录需要新建或为空。运行后可以在轨迹中确认模型请求提供了 <code>file_read</code>，随后查找工具调用及实际返回片段，再对应最终回答中的引用。这样能看见模型选择、工具读取与回答形成之间的关系。项目里没有该文件时，读取结果也会为模型提供可见的错误。</p>
+<p>示例中的产物目录需要新建或为空。运行后可以在轨迹中确认模型请求提供了 <code>file_read</code>，随后查找工具调用及实际返回片段，再对应最终回答中的引用。这些记录展示了模型选择工具、读取内容和组织回答的过程。项目里没有该文件时，读取结果也会为模型提供可见的错误。</p>
 <h2 id="工具结果与任务结束">工具结果与任务结束</h2>
-<p>工具输出与原工具调用配对保存，然后进入后续请求。派发子成员属于延迟结果，Session 会等整批关联事件填齐后继续。消息交接则会在接收方后续回合加入用户消息，具体见 <a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a>。</p>
-<p>模型给出最终回答时，Session 可以进入 <code>DONE</code>。受预算、步数或其他运行限制影响时，会进入 <code>STOPPED</code> 并保留原因。未处理故障进入 <code>ERROR</code>。SDK 再将这些过程整理为运行结果。任务是否满足业务要求，还要查看实际文件、命令结果或外部系统状态。修改交付见 <a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>，执行权限见 <a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a>。</p>
+<p>工具输出与原工具调用配对保存，然后进入后续请求。派发子成员会产生延迟结果，Session 等整批关联事件的结果到齐后继续。消息交接则会在接收方后续回合加入用户消息，具体见 <a href="../session-state-lifecycle/index.html">Session 如何保存进度并继续执行</a>。</p>
+<p>模型给出最终回答时，Session 可以进入 <code>DONE</code>。受预算、步数或其他运行限制影响时，会进入 <code>STOPPED</code> 并保留原因。未处理故障进入 <code>ERROR</code>。SDK 再将这些状态整理为运行结果。验收任务时，查看实际文件、命令结果或外部系统状态。修改交付见 <a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>，执行权限见 <a href="../shell-permissions-execution/index.html">管理终端权限并确认命令结果</a>。</p>
 <p>实现路径见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/session_run.py">会话执行</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/tool_execution.py">工具执行</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md">上下文设计</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/runtime-execution-model.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/runtime-execution-model.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E5%85%A5%E5%8F%A3%E5%88%B0%E6%A8%A1%E5%9E%8B%E8%AF%B7%E6%B1%82">从入口到模型请求</a><a href="#%E6%A8%A1%E5%9E%8B%E6%80%8E%E6%A0%B7%E5%8F%91%E8%B5%B7%E7%9C%9F%E5%AE%9E%E6%93%8D%E4%BD%9C">模型怎样发起真实操作</a><a href="#%E5%B7%A5%E5%85%B7%E7%BB%93%E6%9E%9C%E4%B8%8E%E4%BB%BB%E5%8A%A1%E7%BB%93%E6%9D%9F">工具结果与任务结束</a></aside>
 </div>

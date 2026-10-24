@@ -69,7 +69,7 @@
 </tr>
 </tbody>
 </table>
-<p>公开 <code>builtin_tools</code> 构造普通编码工具。协作工具由 Team 的运行环境接线，应在团队角色中声明。</p>
+<p>公开 <code>builtin_tools</code> 构造普通编码工具。协作工具由 Team 运行环境提供，在团队角色中声明后使用。</p>
 <h2 id="给-sdk-选择工具">给 SDK 选择工具</h2>
 <pre><code class="language-python">import asyncio
 from opencollab import OpenCollab
@@ -86,7 +86,7 @@ async def main():
 
 asyncio.run(main())
 </code></pre>
-<p>示例只授予读取与差异工具，模型没有原生写入或 Bash 工具。要观察实际选中的工具，可查看运行指标 <code>agent_tool_names</code>。<code>profile_tool_names(&quot;base&quot;)</code> 返回的是 profile 默认列表，显式传入工具后应以实际运行记录为准。</p>
+<p>示例授予读取与差异工具，适合查看项目文件并说明测试入口。要观察实际选中的工具，可查看运行指标 <code>agent_tool_names</code>。<code>profile_tool_names(&quot;base&quot;)</code> 返回的是 profile 默认列表，显式传入工具后应以实际运行记录为准。</p>
 <h2 id="工具存在还需要运行条件">工具存在还需要运行条件</h2>
 <p><code>builtin_tools</code> 的 <code>headless=True</code> 会要求 shell 工具运行在提供进程隔离的环境中。明确选择 <code>headless=False</code> 会允许相应宿主 shell 路径，应结合实际调用环境确认。工作树解决目录分离，宿主权限与网络仍由父环境决定。</p>
 <p><code>allow_file_creation=False</code> 控制原生文件创建能力。它与整个运行的命令权限是不同设置，Bash 能执行的内容需要通过独立的权限与环境策略管理。</p>
@@ -139,12 +139,12 @@ print(profile_tool_limits('single2'))
 <p>各值采用 1 到 10,000,000 的整数。工作流启用 profile 后，<code>builtin_tools</code> 继承该 profile 的默认工具上限，再应用显式 <code>limits</code>。<code>profile_tool_names</code> 和 <code>profile_tool_limits</code> 分别用于查询默认工具顺序及上限，后者返回独立字典，适合用于配置展示。<code>evidence_tools</code> 采用同样的参数，再增加真实测试记录。</p>
 <p>字符上限决定本次工具结果能展示多少内容。大文件仍可通过 <code>offset</code> 和 <code>limit</code> 分页读取，搜索可以缩小 <code>path</code> 和 <code>glob</code>，差异可以按文件或 <code>stat_only</code> 查看。按实际问题缩小范围，通常能让后续角色取得更完整的相关内容。</p>
 <h2 id="常见配置错误">常见配置错误</h2>
-<p>工具名称重复会被拒绝。<code>limits</code> 中出现未选中的工具也会报错。把 <code>spawn_agent</code> 交给 <code>builtin_tools</code> 构造会失败，因为该 helper 支持的名称由普通工具集合定义。Team 中需要使用注册名，并确保通信拓扑允许相关操作。</p>
-<p>模型只输出文字时，先检查实际发出的工具 schema，再判断提示与工具选择设置。工具列表中有某项能力，只说明该调用可以请求它，是否真正使用应看工具回执。</p>
+<p>工具名称重复会被拒绝。<code>limits</code> 中出现未选中的工具也会报错。<code>builtin_tools</code> 接受普通编码工具名称，传入 <code>spawn_agent</code> 会报错。Team 中需要使用注册名，并确保通信拓扑允许相关操作。</p>
+<p>模型只输出文字时，先检查实际发出的工具 schema，再判断提示与工具选择设置。工具列表决定可请求的能力，工具回执记录实际执行的操作。</p>
 <h2 id="源码与进一步阅读">源码与进一步阅读</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/tools.py">opencollab/tools.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/tool_registry.py">opencollab/bootstrap/tool_registry.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">opencollab/README.md</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/extensions/tool-selection.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/extensions/tool-selection.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%B7%A5%E5%85%B7%E7%B1%BB%E5%88%AB">工具类别</a><a href="#%E7%BB%99-sdk-%E9%80%89%E6%8B%A9%E5%B7%A5%E5%85%B7">给 SDK 选择工具</a><a href="#%E5%B7%A5%E5%85%B7%E5%AD%98%E5%9C%A8%E8%BF%98%E9%9C%80%E8%A6%81%E8%BF%90%E8%A1%8C%E6%9D%A1%E4%BB%B6">工具存在还需要运行条件</a><a href="#%E8%B0%83%E6%95%B4%E5%B7%A5%E5%85%B7%E8%BE%93%E5%87%BA%E5%A4%A7%E5%B0%8F">调整工具输出大小</a><a href="#%E5%B8%B8%E8%A7%81%E9%85%8D%E7%BD%AE%E9%94%99%E8%AF%AF">常见配置错误</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>

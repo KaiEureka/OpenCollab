@@ -33,7 +33,7 @@
 <h1 id="超时重试与请求卡住诊断">超时、重试与请求卡住诊断</h1>
 <p>请求等待在哪个阶段发生，就调整该阶段的超时。模型连接、首个流事件、流事件之间的空闲和 provider 请求各有独立设置。整次任务的期限通过 SDK <code>timeout=</code> 设置，执行结束后的资源清理由 <code>cleanup_timeout=</code> 另行限制。</p>
 <h2 id="根据停顿位置选设置">根据停顿位置选设置</h2>
-<p>以下变量单位都是秒，默认值适合先运行再根据服务表现调整。</p>
+<p>以下变量的单位均为秒。先用默认值运行，再根据端点表现调整。</p>
 <table>
 <thead>
 <tr>
@@ -65,7 +65,7 @@
 </tr>
 </tbody>
 </table>
-<p>服务连接困难时，先排查地址与网络，再看连接限制。已经建立连接但生成很慢时，可调整首事件等待。输出到一半长时间停顿时，检查流空闲限制和尾部完成事件。单纯增加整次任务期限，仍会保留这些请求阶段的限制。</p>
+<p>服务连接困难时，先排查地址与网络，再看连接限制。已经建立连接但生成很慢时，可调整首事件等待。输出到一半长时间停顿时，检查流空闲限制和尾部完成事件。这些请求阶段的限制独立于整次任务期限，调整总期限时也应查看对应阶段的设置。</p>
 <p>下面是一组可以写进选定 env 文件的设置。数值需要按实际端点表现选择，修改文件后重新构造 SDK 客户端。</p>
 <pre><code class="language-dotenv">OPENCOLLAB_LLM_CONNECT_TIMEOUT=30
 OPENCOLLAB_LLM_FIRST_EVENT_TIMEOUT=240
@@ -93,9 +93,9 @@ async def main() -&gt; None:
 
 asyncio.run(main())
 </code></pre>
-<p>工作流角色的 <code>timeout=</code> 限制该角色，SDK <code>workflow(timeout=...)</code> 限制整次工作流。<code>cleanup_timeout</code> 应为有限正数，描述执行结束后框架等待自己拥有的资源停止的时段。没有 token 或步数上限的运行也保留这些时间限制。</p>
+<p>工作流角色的 <code>timeout=</code> 限制该角色，SDK <code>workflow(timeout=...)</code> 限制整次工作流。<code>cleanup_timeout</code> 应为有限正数，用于限制执行结束后框架等待自身资源停止的时间。没有 token 或步数上限的运行也保留这些时间限制。</p>
 <h2 id="工具执行卡住时调整哪一层">工具执行卡住时调整哪一层</h2>
-<p>Bash 的 <code>timeout</code> 工具参数决定命令执行期限，默认为 120 秒。工具调度器还给普通工具一次外层期限，依次采用调用参数 <code>timeout</code>、工具自己的 <code>default_timeout</code>，最后采用 <code>OPENCOLLAB_TOOL_EXECUTION_TIMEOUT</code> 的 180 秒默认值。在这项基础上增加 10 秒清理余量，再由 <code>OPENCOLLAB_TOOL_EXECUTION_MAX_TIMEOUT</code> 截断，默认最多 900 秒。派发等待等声明了专用等待规则的工具沿用各自的控制方式。</p>
+<p>Bash 的 <code>timeout</code> 工具参数决定命令执行期限，默认为 120 秒。工具调度器还对普通工具设置外层执行期限，依次采用调用参数 <code>timeout</code>、工具自己的 <code>default_timeout</code>，最后采用 <code>OPENCOLLAB_TOOL_EXECUTION_TIMEOUT</code> 的 180 秒默认值。在这项基础上增加 10 秒清理余量，再由 <code>OPENCOLLAB_TOOL_EXECUTION_MAX_TIMEOUT</code> 截断，默认最多 900 秒。派发等待等声明了专用等待规则的工具沿用各自的控制方式。</p>
 <p>例如项目测试需要 20 分钟，可以在启动进程前提高外层最大期限，并让 Agent 的 Bash 调用明确使用 <code>timeout=1200</code>。同时给整个任务留下模型分析、命令执行与交付所需时间。下面选择可信宿主项目，并明确允许动态子成员在宿主执行命令。</p>
 <pre><code class="language-bash">export OPENCOLLAB_TOOL_EXECUTION_MAX_TIMEOUT=1800
 opencollab --workspace /path/to/application \
@@ -108,14 +108,14 @@ opencollab --workspace /path/to/application \
 <p><code>provider_error_time_budget</code> 默认 0，此时只按重试次数控制。设置正数后，失败尝试及重试延迟还共同受到该时间额度限制，次数或时间任一先达到上限都会结束重试。<code>llm_max_retries=0</code> 关闭这类额外尝试。它们与请求超时共同决定一次失败调用可能占用的时间。</p>
 <p>同一工作流中的会话、总结与候选共享该工作流的 provider 重试时间额度。由 <code>create_model_client()</code> 创建的客户端用于新的 SDK Agent 或 Workflow 运行时，会得到该次运行的新额度。</p>
 <h2 id="记录停止时的最终状态">记录停止时的最终状态</h2>
-<p>看到 timeout 后，先保留状态、原因和 <code>metrics</code>，再检查轨迹、会话与可用文件。部分输出可能已经保存，迟到的 provider usage 会在框架拥有的清理阶段结算一次。开始和取消事件的零已知 token 只是当时观测值，最终用量应结合完成记录和清理结果。</p>
+<p>看到 timeout 后，先保留状态、原因和 <code>metrics</code>，再检查轨迹、会话与可用文件。部分输出可能已经保存，迟到的 provider usage 会在框架拥有的清理阶段结算一次。开始或取消事件中 token 为零，表示当时尚未记录到用量。最终用量应结合完成记录和清理结果。</p>
 <p>复查故障时记录有效协议、四类超时、重试次数、失败时间额度和错误发生阶段。<code>agent_failures</code> 中的类型、HTTP 状态与 <code>exception_chain</code> 可以帮助区分连接、provider 与执行环境问题，完整轨迹则用来找到对应调用。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L94">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/config.py#L199">opencollab/bootstrap/config.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L34">docs/evaluation-runtime.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L121">docs/evaluation-runtime.md</a></p>
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a>　<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a>　<a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/timeouts-retries.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/timeouts-retries.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%A0%B9%E6%8D%AE%E5%81%9C%E9%A1%BF%E4%BD%8D%E7%BD%AE%E9%80%89%E8%AE%BE%E7%BD%AE">根据停顿位置选设置</a><a href="#%E7%BB%99%E6%95%B4%E4%B8%AA%E4%BB%BB%E5%8A%A1%E8%AE%BE%E7%BD%AE%E6%9C%9F%E9%99%90">给整个任务设置期限</a><a href="#%E5%B7%A5%E5%85%B7%E6%89%A7%E8%A1%8C%E5%8D%A1%E4%BD%8F%E6%97%B6%E8%B0%83%E6%95%B4%E5%93%AA%E4%B8%80%E5%B1%82">工具执行卡住时调整哪一层</a><a href="#%E9%87%8D%E8%AF%95%E6%AC%A1%E6%95%B0%E5%92%8C%E5%A4%B1%E8%B4%A5%E6%97%B6%E9%97%B4%E9%A2%9D%E5%BA%A6">重试次数和失败时间额度</a><a href="#%E8%AE%B0%E5%BD%95%E5%81%9C%E6%AD%A2%E6%97%B6%E7%9A%84%E6%9C%80%E7%BB%88%E7%8A%B6%E6%80%81">记录停止时的最终状态</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

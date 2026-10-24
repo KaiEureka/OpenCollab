@@ -37,7 +37,7 @@
 <p>安全问题使用 <a href="https://github.com/RISE-X-Lab/OpenCollab/security/advisories/new">Security Advisories 私密报告</a>。框架涉及模型生成代码执行、凭据和容器资源，报告应说明触发条件、影响范围与复现材料。仓库安全策略中给出的目标是在 72 小时内确认收到。</p>
 <h2 id="让维护者复现同一个问题">让维护者复现同一个问题</h2>
 <p>Bug 模板需要实际行为、复现步骤、编排模式和调用接口。补充模型与 provider、包版本或 Git 提交，能帮助区分配置问题与执行路径差异。命令应包含关键选项，SDK 示例保留触发错误的最小函数及参数，团队文件则保留相关角色、工具与拓扑。</p>
-<p>下面用一个假设的补丁交付问题说明英文反馈的组织方式。请把版本、任务和观察替换为实际记录。</p>
+<p>下面是一份补丁交付问题的英文反馈示例。提交时填写实际版本、任务和观察结果。</p>
 <pre><code class="language-text">Goal
 Apply a completed coder's changes to the delivery workspace.
 
@@ -57,14 +57,14 @@ Team through Python SDK, with the exact package version and commit attached.
 Evidence
 Include the sanitized tool result, final diff, and relevant traceback.
 </code></pre>
-<p>Git 协作文本使用英文，日常交流与原有翻译文档可以继续使用中文。观察应尽量具体，例如是哪一个文件保留旧内容、工具返回了什么、命令退出码是什么。最小复现可以保留一个小项目和一次工具操作，使维护者直接执行。</p>
+<p>描述观察时，写明哪个文件保留旧内容、工具返回什么、命令退出码是多少。最小复现可以保留一个小项目和一次工具操作，使维护者直接执行。</p>
 <h2 id="选择并处理相关记录">选择并处理相关记录</h2>
-<p>运行结果中的 <code>status</code>、<code>reason</code>、<code>agent_failures</code> 和 <code>metrics[&quot;run_id&quot;]</code> 可以关联问题。产物目录、清单和轨迹能展示调用顺序，保存会话能帮助理解当时模型看到的任务。配置问题可以附经过整理的有效配置字段和相关 CLI 参数。</p>
-<p>提交前应移除 API key、授权头、带凭据的 URL、私有仓库内容与敏感日志。完整轨迹可能包含任务文件和模型回答，分享时先检查实际内容。保留错误类型、调用顺序、必要参数和与问题相关的片段，通常足以说明失败过程。</p>
+<p>运行结果中的 <code>status</code>、<code>reason</code>、<code>agent_failures</code> 和 <code>metrics[&quot;run_id&quot;]</code> 可以关联问题。产物目录、清单和轨迹能展示调用顺序，保存会话能帮助理解当时模型看到的任务。配置问题可以附上生效的配置字段和相关 CLI 参数。</p>
+<p>提交前应移除 API key、授权头、带凭据的 URL、私有仓库内容与敏感日志。完整轨迹可能包含任务文件和模型回答，分享时先检查实际内容。保留错误类型、调用顺序、必要参数和相关日志片段，让维护者能够还原失败过程。</p>
 <p>收到修复版本后，用原复现步骤再次执行，检查原先出错的文件或操作，并将观察补充到同一问题。说明使用的修复提交、实际执行命令和最终结果，可以帮助维护者判断问题是否得到解决。</p>
 <p>模板字段见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/bug_report.yml">Bug report</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/question.yml">使用问题</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/.github/ISSUE_TEMPLATE/feature_request.yml">功能建议</a>。安全处理见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/SECURITY.md">安全策略</a>，相关记录的读取方式见 <a href="../run-results/index.html">读取运行结果与判断任务是否完成</a> 和 <a href="../trace-and-events/index.html">查看 Agent 做了什么</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/report-problem-and-request-help.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/report-problem-and-request-help.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E9%80%89%E6%8B%A9%E5%8F%8D%E9%A6%88%E5%85%A5%E5%8F%A3">选择反馈入口</a><a href="#%E8%AE%A9%E7%BB%B4%E6%8A%A4%E8%80%85%E5%A4%8D%E7%8E%B0%E5%90%8C%E4%B8%80%E4%B8%AA%E9%97%AE%E9%A2%98">让维护者复现同一个问题</a><a href="#%E9%80%89%E6%8B%A9%E5%B9%B6%E5%A4%84%E7%90%86%E7%9B%B8%E5%85%B3%E8%AE%B0%E5%BD%95">选择并处理相关记录</a></aside>
 </div>

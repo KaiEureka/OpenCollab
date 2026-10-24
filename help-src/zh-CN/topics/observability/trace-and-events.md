@@ -37,7 +37,7 @@
 
 交互 CLI 使用 `--trace`。Workflow 默认记录编排轨迹，保存目录由运行配置确定。SDK 调用可以设置 `artifacts` 并保留 trace，之后从结果目录定位 JSONL 记录。
 
-轨迹中常见信息包括运行标识、成员标识、角色、事件类型、模型用量和工具结果。按时间与会话串联事件，能看到请求开始、工具调用、通信和任务停止的关系。
+轨迹中常见信息包括运行标识、成员标识、角色、事件类型、模型用量和工具结果。按时间与会话串联事件，可以还原请求、工具调用、通信与停止的先后顺序。
 
 ## 离线读取 JSONL
 
@@ -61,7 +61,7 @@ for identity, count in counts.items():
     print(identity, count)
 ```
 
-定位一次模型请求时，将 `llm_call_started`、`llm_call` 与 `llm_call_cancelled` 的 payload 按 `response_session_id` 和 `session_step` 对应起来。完成记录里的 `request_tool_names` 与 `request_tool_choice` 表示应用准备交给模型的工具视图，`tool_exec` 则记录实际工具操作。`context_shaping` 展示上下文处理，`message_sent` 与 `message_refused` 展示通信决策。针对具体问题继续读取 payload，能从事件数量追到实际输入和结果。
+定位一次模型请求时，将 `llm_call_started`、`llm_call` 与 `llm_call_cancelled` 的 payload 按 `response_session_id` 和 `session_step` 对应起来。完成记录里的 `request_tool_names` 与 `request_tool_choice` 表示应用准备交给模型的工具视图，`tool_exec` 则记录实际工具操作。`context_shaping` 展示上下文处理，`message_sent` 与 `message_refused` 展示通信决策。需要查看具体调用时，继续读取 payload 中的输入和结果。
 
 ## 订阅运行事件
 
@@ -81,7 +81,7 @@ for event in events:
 
 `on_event` 与持久化 trace 独立，设置 `trace=False` 仍可以接收回调。`RunEvent` 包含 `type`、`run_id`、`session_id`、`aid`、`used_tokens`、`steps` 和独立复制的 `data`。其中 `used_tokens` 是会话累计值，`usage` 事件的 `data["total_tokens"]` 是该次已记账用量。事件适合观察用量、预算决策、上下文处理、错误、停止和清理过程，工具执行细节从 trace 或完整会话读取。
 
-回调应尽快同步返回。要写数据库或网络服务，可以在应用中把事件转交队列。回调错误会保留在 `result.metrics["observation_errors"]`，`ctx.agent_run` 则通过返回值的 `observation_errors` 提供。回调会继续属于原运行，直到迟到用量结算和清理结束时收到 `cleanup_completed`。
+回调应尽快同步返回。要写数据库或网络服务，可以在应用中把事件转交队列。回调错误会保留在 `result.metrics["observation_errors"]`，`ctx.agent_run` 则通过返回值的 `observation_errors` 提供。回调持续接收原运行的事件，直到迟到用量结算、清理结束，并收到 `cleanup_completed`。
 
 ## 从停止原因回查
 
@@ -91,7 +91,7 @@ for event in events:
 
 ## trace 与业务结论
 
-一条“准备测试”的模型文本证明了计划。工具命令及实际结果才能说明执行行为。类似地，声明通信边与实际成功发送属于不同证据。先选择要回答的问题，再找对应事件，能减少把界面状态或模型描述当作完成证明的误解。
+查看测试计划时读模型文本，确认测试执行时读工具命令与实际结果。分析通信时，先从声明读取允许的通信方向，再从发送记录确认实际消息。根据问题选择对应事件，便能找到支撑结论的记录。
 
 日志可能包含任务源码、用户输入和工具输出。分享给他人前应检查内容范围，并按项目要求处理凭据和私密数据。
 

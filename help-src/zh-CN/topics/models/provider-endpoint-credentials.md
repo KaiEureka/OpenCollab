@@ -58,7 +58,7 @@ OPENCOLLAB_API_KEY=your-api-key
 
 省略 base URL 时，OpenAI 路径默认使用 [OpenAI API 基地址](https://api.openai.com/v1)，原生 Anthropic 默认使用 [Anthropic API 基地址](https://api.anthropic.com)。配置也接受所选 provider 的 `OPENAI_BASE_URL` 或 `ANTHROPIC_BASE_URL` 作为后备变量，通用 `OPENCOLLAB_BASE_URL` 优先。
 
-原生 Anthropic 可把 provider 改成 `anthropic`，模型名改成服务支持的 Anthropic 模型，并使用下文认可的凭据。Responses 需要 OpenAI 兼容端点明确提供该 API，协议设置见相关指南。
+原生 Anthropic 可把 provider 改成 `anthropic`，填写服务支持的 Anthropic 模型名，并按下表配置凭据。Responses 需要 OpenAI 兼容端点明确提供该 API，协议设置见相关指南。
 
 ## 选定认证来源
 
@@ -76,7 +76,7 @@ OPENCOLLAB_API_KEY=your-api-key
 
 ## 在程序里连接本地兼容服务
 
-本地服务沿用相同的 OpenAI 兼容路径。以下代码只构造客户端，地址和模型名由调用方提供的环境变量读取。运行任务前还需保证服务已启动，接口协议和认证与实际部署相符。
+本地服务沿用相同的 OpenAI 兼容配置。先启动服务并准备环境变量，再用以下代码构造客户端。地址、模型名和认证信息应与服务部署一致。
 
 ```python
 import os
@@ -97,7 +97,7 @@ print(client.configuration["model"])
 
 ## 遇到启动和请求错误
 
-CLI 会在缺少所选路径认可的凭据时给出提示。地址能访问但返回 401 时，核对最终选择的认证变量与服务要求。返回模型未知或接口不存在时，核对模型名和协议路径。构造客户端能检查配置类型，离线模型检查能查看内置能力，实际连接检查需要发送请求。保存故障时记录状态码、发生阶段和有效非秘密设置，便于继续定位。
+CLI 会提示所选 provider 缺少的凭据。返回 401 时，检查实际选择的认证变量是否符合服务要求。返回模型未知或接口不存在时，检查模型名和协议路径。客户端构造会检查配置类型，离线模型检查会读取内置能力表，连接情况则通过实际请求观察。排查故障时，记录状态码、发生阶段及筛除凭据后的有效配置。
 
 ## 来源
 

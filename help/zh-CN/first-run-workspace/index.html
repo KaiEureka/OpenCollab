@@ -33,7 +33,7 @@
 <h1 id="在自己的项目中完成第一次运行">在自己的项目中完成第一次运行</h1>
 <p>从 OpenCollab 源码根目录启动 CLI，并用 <code>--workspace</code> 指向自己的项目，就能在终端完成第一次任务。根命令默认启动 Self-Collaboration 团队，入口是 Analyst，内部成员使用 Coder 和 Tester。工作区决定 Agent 操作的项目文件，启动命令所在目录则决定使用哪个源码环境。</p>
 <h2 id="准备项目与模型设置">准备项目与模型设置</h2>
-<p>先按安装指南完成源码环境。把下面的 <code>/path/to/application</code> 换成一个已经存在的项目目录。SDK 也要求传入的工作区是目录，建立清晰的项目路径能减少配置和产物位置混淆。</p>
+<p>按安装指南准备好源码环境，再把下面的 <code>/path/to/application</code> 换成已有项目目录。CLI 和 SDK 都要求工作区已经存在，并从该目录读取项目文件。</p>
 <p>在 OpenCollab 源码根目录复制配置示例，然后用编辑器填写所用服务的 provider、base URL、物理模型名称和凭据。</p>
 <pre><code class="language-bash">cp configs/.env.example configs/.env
 </code></pre>
@@ -62,18 +62,18 @@ OPENCOLLAB_API_KEY=your-api-key
 <pre><code class="language-bash">uv run opencollab workflow list --workspace /path/to/application
 uv run opencollab workflow run duo --help
 </code></pre>
-<p>在确实打算让 Duo 在宿主项目执行命令时，可以按下面的形式启动。</p>
+<p>下面的命令允许 Duo 在宿主项目中执行 shell 命令。</p>
 <pre><code class="language-bash">uv run opencollab workflow run duo --workspace /path/to/application \
   --task '修复指定问题，并运行项目验证。' \
   --args '{&quot;allow_unisolated_shell&quot;:true}'
 </code></pre>
-<p><code>--task</code> 写入工作流的 <code>goal</code> 参数。使用 <code>--args</code> 提供 <code>goal</code> 时，删除 <code>--task</code>，避免重复输入。需要隔离进程执行的项目，可先按执行环境指南选择合适环境再运行。</p>
+<p><code>--task</code> 写入工作流的 <code>goal</code> 参数。如果已在 <code>--args</code> 中提供 <code>goal</code>，命令中省略 <code>--task</code>。需要进程隔离时，按执行环境指南准备环境后再运行。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/README.zh-CN.md#L47">README.zh-CN.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L44">opencollab/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/cli/main.py#L58">opencollab/adapters/cli/main.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L123">opencollab/sdk/client.py</a></p>
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../install-source-checkout/index.html">安装前提与版本选择</a>　<a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../interactive-cli-controls/index.html">默认终端交互与命令参数位置</a>　<a href="../session-save-resume/index.html">保存会话与恢复历史</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/first-run-workspace.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/first-run-workspace.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%87%86%E5%A4%87%E9%A1%B9%E7%9B%AE%E4%B8%8E%E6%A8%A1%E5%9E%8B%E8%AE%BE%E7%BD%AE">准备项目与模型设置</a><a href="#%E5%90%AF%E5%8A%A8%E5%B9%B6%E8%A7%82%E5%AF%9F%E4%B8%80%E6%AC%A1%E4%BB%BB%E5%8A%A1">启动并观察一次任务</a><a href="#%E6%89%BE%E5%88%B0%E8%BF%90%E8%A1%8C%E8%AE%B0%E5%BD%95">找到运行记录</a><a href="#%E5%B0%9D%E8%AF%95%E5%B7%A5%E4%BD%9C%E6%B5%81%E5%85%A5%E5%8F%A3">尝试工作流入口</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

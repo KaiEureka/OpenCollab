@@ -31,15 +31,15 @@
 <main id="content" tabindex="-1">
 <p class="category">Team 与子 Agent</p>
 <h1 id="采用队友改动并验证交付">采用队友改动并验证交付</h1>
-<p>入口成员可以用 <code>adopt_agent</code> 把当前轮成功完成的直接 Coder 子任务改动写入团队交付目录。采用后应创建新的 Tester，让它验证用户最终会得到的文件。独立工作树中的成功回答与源目录更新之间，由这个显式动作连接。</p>
+<p>入口成员可以用 <code>adopt_agent</code> 把当前轮成功完成的直接 Coder 子任务改动写入团队交付目录。采用后创建新的 Tester，验证交付目录中的文件。Coder 在独立工作树完成修改后，由入口通过这一步更新源目录。</p>
 <h2 id="从成功完成结果取得-aid">从成功完成结果取得 aid</h2>
 <p>入口角色的 <code>tools</code> 要包含 <code>adopt_agent</code>。Coder 成功结束后，完成结果会附带可采用的 aid。例如看到 <code>Completed coder aid=3</code>，入口可以发出下列工具调用。</p>
 <pre><code class="language-json">{&quot;aid&quot;: 3}
 </code></pre>
 <p>工具只接收 <code>aid</code>，值为正整数。运行时会确认调用者是拥有该能力的入口成员、对象是它的直接 coder 子成员，并且对象已经在当前入口轮次成功完成。成员角色名按规范化形式检查。失败、停止、其他角色或先前轮次的结果需要先处理其状态，才能进入对应的交付过程。</p>
 <h2 id="独立实现怎样进入交付目录">独立实现怎样进入交付目录</h2>
-<p>声明采纳工具的 Team 会从当前源文件内容准备子任务，包括用户尚未提交的修改和已采纳的实现。Coder 在自己的环境中修改，完成后捕获整份变化。采用时保留源仓库索引，将独立增量合入交付目录。</p>
-<p>同一文件发生冲突时，采纳操作会拒绝应用并保持交付文件完整。错误会指出完整候选材料的恢复位置。应先导出补丁，比较源目录与候选的实际差异，再安排冲突处理。让新任务基于已更新交付目录继续修改，通常比反复应用同一冲突补丁更容易理解。</p>
+<p>声明采纳工具的 Team 会根据当前源文件准备子任务，包含用户尚未提交的修改和已采纳的实现。Coder 在自己的环境中修改，完成后运行时捕获全部变化。采用时将该候选的增量合入交付目录，并保留源仓库索引。</p>
+<p>同一文件发生冲突时，采纳操作会拒绝应用并保持交付文件完整。错误会指出完整候选材料的恢复位置。先导出补丁，比较源目录与候选的实际差异，再处理冲突。也可以让新任务从已更新的交付目录继续修改。</p>
 <p>共享环境中，Coder 已经直接修改交付目录，工具会说明这些变化已经存在。独立环境中，工具成功返回采用结果后，才能在交付目录观察到相应修改。入口自身也被显式隔离时，最终还需要取出入口补丁，具体见 <a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>。</p>
 <h2 id="修订和重复采用">修订和重复采用</h2>
 <p>在同一个活动入口轮次内，同一 Coder 后续完成新修订时，运行时会计算它相对上次成功采用结果的增量。再次采用只应用新增变化。重复采用完全相同的完成结果，会返回 already adopted，并保持交付文件状态。</p>
@@ -49,7 +49,7 @@
 <p>最终报告应给出改变了哪些文件、采用是否成功以及执行了哪些项目验证。测试命令的退出码和目标执行情况共同说明验证结果，完整回答可关联本次运行的产物记录。</p>
 <p>工具参数见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/tools/adopt_agent.py">采纳工具</a>，当前轮次与增量处理见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/_scheduler_team.py">调度器实现</a>，团队整体配置见 <a href="../configure-team/index.html">Team 完整指南与团队配置</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/adopt-team-changes.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/team/adopt-team-changes.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E6%88%90%E5%8A%9F%E5%AE%8C%E6%88%90%E7%BB%93%E6%9E%9C%E5%8F%96%E5%BE%97-aid">从成功完成结果取得 aid</a><a href="#%E7%8B%AC%E7%AB%8B%E5%AE%9E%E7%8E%B0%E6%80%8E%E6%A0%B7%E8%BF%9B%E5%85%A5%E4%BA%A4%E4%BB%98%E7%9B%AE%E5%BD%95">独立实现怎样进入交付目录</a><a href="#%E4%BF%AE%E8%AE%A2%E5%92%8C%E9%87%8D%E5%A4%8D%E9%87%87%E7%94%A8">修订和重复采用</a><a href="#%E8%AE%A9-tester-%E6%A3%80%E6%9F%A5%E5%B7%B2%E7%BB%8F%E9%87%87%E7%94%A8%E7%9A%84%E5%86%85%E5%AE%B9">让 Tester 检查已经采用的内容</a></aside>
 </div>

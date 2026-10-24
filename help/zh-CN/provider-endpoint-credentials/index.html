@@ -40,7 +40,7 @@ OPENCOLLAB_MODEL=your-model-id
 OPENCOLLAB_API_KEY=your-api-key
 </code></pre>
 <p>省略 base URL 时，OpenAI 路径默认使用 <a href="https://api.openai.com/v1">OpenAI API 基地址</a>，原生 Anthropic 默认使用 <a href="https://api.anthropic.com">Anthropic API 基地址</a>。配置也接受所选 provider 的 <code>OPENAI_BASE_URL</code> 或 <code>ANTHROPIC_BASE_URL</code> 作为后备变量，通用 <code>OPENCOLLAB_BASE_URL</code> 优先。</p>
-<p>原生 Anthropic 可把 provider 改成 <code>anthropic</code>，模型名改成服务支持的 Anthropic 模型，并使用下文认可的凭据。Responses 需要 OpenAI 兼容端点明确提供该 API，协议设置见相关指南。</p>
+<p>原生 Anthropic 可把 provider 改成 <code>anthropic</code>，填写服务支持的 Anthropic 模型名，并按下表配置凭据。Responses 需要 OpenAI 兼容端点明确提供该 API，协议设置见相关指南。</p>
 <h2 id="选定认证来源">选定认证来源</h2>
 <p>凭据优先顺序随端点变化。空字符串和空白值视为未设置。同一个变量存在于 shell 和文件时，shell 值优先，专用变量与通用变量之间则先比较下表的变量顺序。</p>
 <table>
@@ -68,7 +68,7 @@ OPENCOLLAB_API_KEY=your-api-key
 <p>原生 bearer token 放进 <code>Authorization</code> 请求头。表中的优先级跨配置来源生效，因此文件中的 provider 专用 key 可以优先于进程环境里的通用 key。切换服务后出现认证异常时，先检查旧的专用变量是否仍然存在。</p>
 <p>显式 CLI <code>--api-key</code> 或 SDK <code>api_key=</code> 优先于自动选择，SDK <code>config</code> 中显式 <code>auth_token</code> 随后优先于环境凭据。<code>auth_token</code> 用于原生 Anthropic bearer 认证。凭据文件应保持在本地，终端诊断使用筛除秘密的有效配置。</p>
 <h2 id="在程序里连接本地兼容服务">在程序里连接本地兼容服务</h2>
-<p>本地服务沿用相同的 OpenAI 兼容路径。以下代码只构造客户端，地址和模型名由调用方提供的环境变量读取。运行任务前还需保证服务已启动，接口协议和认证与实际部署相符。</p>
+<p>本地服务沿用相同的 OpenAI 兼容配置。先启动服务并准备环境变量，再用以下代码构造客户端。地址、模型名和认证信息应与服务部署一致。</p>
 <pre><code class="language-python">import os
 from opencollab import OpenCollab
 
@@ -84,13 +84,13 @@ print(client.configuration[&quot;model&quot;])
 </code></pre>
 <p>需要多个服务时，使用 <code>model_routes</code> 为每条逻辑路由声明独立的端点和凭据。角色可选逻辑名称，实际请求仍发送该路由声明的物理模型名。请求容量也可按后端协调。</p>
 <h2 id="遇到启动和请求错误">遇到启动和请求错误</h2>
-<p>CLI 会在缺少所选路径认可的凭据时给出提示。地址能访问但返回 401 时，核对最终选择的认证变量与服务要求。返回模型未知或接口不存在时，核对模型名和协议路径。构造客户端能检查配置类型，离线模型检查能查看内置能力，实际连接检查需要发送请求。保存故障时记录状态码、发生阶段和有效非秘密设置，便于继续定位。</p>
+<p>CLI 会提示所选 provider 缺少的凭据。返回 401 时，检查实际选择的认证变量是否符合服务要求。返回模型未知或接口不存在时，检查模型名和协议路径。客户端构造会检查配置类型，离线模型检查会读取内置能力表，连接情况则通过实际请求观察。排查故障时，记录状态码、发生阶段及筛除凭据后的有效配置。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L31">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/cli/main.py#L61">opencollab/adapters/cli/main.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/config.py#L124">opencollab/bootstrap/config.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/model-routing.md#L47">docs/model-routing.md</a></p>
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a>　<a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a>　<a href="../model-routing-request-capacity/index.html">逻辑模型路由与共享请求容量</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/provider-endpoint-credentials.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/provider-endpoint-credentials.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E9%85%8D%E7%BD%AE%E4%B8%80%E4%B8%AA%E7%AB%AF%E7%82%B9">配置一个端点</a><a href="#%E9%80%89%E5%AE%9A%E8%AE%A4%E8%AF%81%E6%9D%A5%E6%BA%90">选定认证来源</a><a href="#%E5%9C%A8%E7%A8%8B%E5%BA%8F%E9%87%8C%E8%BF%9E%E6%8E%A5%E6%9C%AC%E5%9C%B0%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1">在程序里连接本地兼容服务</a><a href="#%E9%81%87%E5%88%B0%E5%90%AF%E5%8A%A8%E5%92%8C%E8%AF%B7%E6%B1%82%E9%94%99%E8%AF%AF">遇到启动和请求错误</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

@@ -3,7 +3,7 @@
   "id": "run-results",
   "title": "读取运行结果与判断任务是否完成",
   "category": "observability",
-  "summary": "正确处理 RunResult 和 RunError，把框架完成状态与实际任务验证分开理解。",
+  "summary": "读取 RunResult、处理 RunError，并结合测试结果判断任务是否完成。",
   "aliases": [
     "completed",
     "stopped",
@@ -31,7 +31,7 @@
 
 # 读取运行结果与判断任务是否完成
 
-SDK 的 `agent`、`team` 和 `workflow` 都返回 `RunResult`。先读取 `status` 与 `reason`，再消费输出和产物，能够清楚区分任务正常结束、被限制停止以及执行失败。
+SDK 的 `agent`、`team` 和 `workflow` 都返回 `RunResult`。先读取 `status` 与 `reason`，确认运行是正常结束、达到限制还是执行失败，再处理输出和产物。
 
 ## 主要字段
 
@@ -46,9 +46,9 @@ SDK 的 `agent`、`team` 和 `workflow` 都返回 `RunResult`。先读取 `statu
 | `metrics` | 运行指标及补充恢复、清理信息 |
 | `agent_failures` | 工作流中记录的子 Agent 失败 |
 
-`ok` 在 `status == "completed"` 时为真。完成状态表示运行入口正常完成，项目功能是否正确仍需根据测试或任务验证判断。工作流可以在处理了某个 Agent 失败后返回，因此也应查看 `agent_failures`。
+`ok` 在 `status == "completed"` 时为真。完成状态表示运行入口正常完成，项目功能则根据测试或任务验证结果判断。工作流可以在处理了某个 Agent 失败后返回，因此也应查看 `agent_failures`。
 
-`RunResult` 是 Python 返回值，`error`、`Path` 以及自定义 Workflow 输出可能需要在写入业务 JSON 前转换。服务可以显式保存 `status`、`reason`、`tokens`、`str(artifacts)`、`metrics["run_id"]` 和必要的输出字段，示例见 [从示例接入自己的服务](../architecture/service-integration-lifecycle.md)。失败诊断应保留异常类型和关联记录，并按服务的访问权限保存。
+将 `RunResult` 写入业务 JSON 前，先转换无法直接序列化的 `error`、`Path` 或自定义 Workflow 输出。服务可以显式保存 `status`、`reason`、`tokens`、`str(artifacts)`、`metrics["run_id"]` 和必要的输出字段，示例见 [从示例接入自己的服务](../architecture/service-integration-lifecycle.md)。失败诊断应保留异常类型和关联记录，并按服务的访问权限保存。
 
 ## 在应用中处理结果
 

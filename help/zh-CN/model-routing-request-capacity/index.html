@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">模型接入与配置</p>
 <h1 id="逻辑模型路由与共享请求容量">逻辑模型路由与共享请求容量</h1>
-<p><code>model_routes</code> 用逻辑名称选择完整的模型后端，适合让不同角色使用不同服务，或让多个独立 Team 和 Workflow 进程共享同一后端的请求容量。每条路由声明物理模型、provider、协议、地址和认证。请求与用量记录保留物理模型名称，便于核对真正调用的服务。</p>
+<p><code>model_routes</code> 用逻辑名称选择完整的模型后端，适合让不同角色使用不同服务，或让多个独立 Team 和 Workflow 进程共享同一后端的请求容量。每条路由声明物理模型、provider、协议、地址和认证。请求与用量记录保留物理模型名称，便于查看实际调用的模型。</p>
 <h2 id="定义一条逻辑路由">定义一条逻辑路由</h2>
 <p>下面的代码构造名为 <code>worker</code> 的路由，并准备同机请求池目录。<code>MODEL_BASE_URL</code>、<code>MODEL_NAME</code> 和 <code>MODEL_API_KEY</code> 由调用方提前配置，示例构造客户端时完成凭据解析。</p>
 <pre><code class="language-python">import os
@@ -62,11 +62,11 @@ print(client.configuration[&quot;model_routes&quot;])
 <p>相同映射也可以放进 SDK 构造配置的 <code>model_routes</code> 字段，或将 JSON 对象写入 <code>OPENCOLLAB_MODEL_ROUTES</code>。构造参数优先。Team 角色的 <code>model</code> 可填写逻辑名称，未出现在映射中的名称按普通物理模型处理，使用默认 provider 配置。路由只解析一次，即使其物理名称恰好也是另一条逻辑名称，也保持当前声明。</p>
 <h2 id="限制同机后端请求">限制同机后端请求</h2>
 <p><code>request_pool</code> 与 <code>request_capacity</code> 必须成对提供。池目录必须是已存在的绝对本地目录，所有参与进程访问同一个目录，才能共享操作系统文件锁。<code>request_capacity=2</code> 允许同时占有两个模型请求槽。等待名额的调用尚未进入后端请求阶段。</p>
-<p>请求获得名额后，在 provider 重试期间继续占用，原生请求完成或取消清理结束后释放。执行工具前会释放名额，所以父 Agent 等待子任务时可把模型容量留给子任务。进程终止时操作系统释放其锁。</p>
+<p>请求获得名额后，在 provider 重试期间继续占用，模型请求完成或取消清理结束后释放。执行工具前会释放名额，因此父 Agent 等待子任务时，子任务仍可使用模型容量。进程终止时操作系统释放其锁。</p>
 <p>顶层可使用 <code>OPENCOLLAB_REQUEST_POOL</code> 和 <code>OPENCOLLAB_REQUEST_CAPACITY</code>，或 SDK 同名小写字段。路由自己的成对设置优先。多个模型名称指向同一后端容量时，可以共享一个池。Workflow 的 <code>concurrency</code> 限制 Agent 会话数，请求池限制同时进入后端的请求，两者应分别按任务和服务能力设置。</p>
 <h2 id="改容量和使用容器">改容量和使用容器</h2>
 <p>池内 <code>capacity</code> 文件记录容量，独立进程给同一池配置不同容量时会报冲突。运行期间保留池目录及锁文件。需要改容量时，先停止全部参与进程，清空池目录内容，再以新容量重新启动。</p>
-<p>容器中的模型客户端必须把同一宿主目录挂载到配置的绝对路径。两个容器分别创建同名目录会形成独立容量。池路径属于运行 Python 模型客户端的进程，工具所在容器可能是另一处环境，排错时应先确认客户端在哪里运行。</p>
+<p>容器中的模型客户端必须把同一宿主目录挂载到配置的绝对路径。两个容器分别创建同名目录会形成独立容量。池路径由运行 Python 模型客户端的进程访问。工具可能在另一个容器中执行，挂载池目录时应以模型客户端所在环境为准。</p>
 <h2 id="多台机器共同访问服务">多台机器共同访问服务</h2>
 <p>多机协调由公共后端或外部网关负责。让各路由的 <code>base_url</code> 指向同一网关，并在网关设置后端容量。网关需要支持所选 Chat Completions、Responses 或 Messages，保留模型身份、推理参数和续轮数据。网络断开后仍继续运行的服务端任务，由后端的取消策略管理。本地池适用于具备可靠 OS 文件锁的同机文件系统。</p>
 <h2 id="来源">来源</h2>
@@ -74,7 +74,7 @@ print(client.configuration[&quot;model_routes&quot;])
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a>　<a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a>　<a href="../cancellation-cleanup/index.html">中断任务与检查资源清理</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/model-routing-request-capacity.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/model-routing-request-capacity.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%AE%9A%E4%B9%89%E4%B8%80%E6%9D%A1%E9%80%BB%E8%BE%91%E8%B7%AF%E7%94%B1">定义一条逻辑路由</a><a href="#%E9%99%90%E5%88%B6%E5%90%8C%E6%9C%BA%E5%90%8E%E7%AB%AF%E8%AF%B7%E6%B1%82">限制同机后端请求</a><a href="#%E6%94%B9%E5%AE%B9%E9%87%8F%E5%92%8C%E4%BD%BF%E7%94%A8%E5%AE%B9%E5%99%A8">改容量和使用容器</a><a href="#%E5%A4%9A%E5%8F%B0%E6%9C%BA%E5%99%A8%E5%85%B1%E5%90%8C%E8%AE%BF%E9%97%AE%E6%9C%8D%E5%8A%A1">多台机器共同访问服务</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

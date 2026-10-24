@@ -3,7 +3,7 @@
   "id": "configuration-diagnostics",
   "title": "检查有效配置与定位常见启动故障",
   "category": "operations",
-  "summary": "用可核对的信息定位配置、模型能力、CLI 参数和端点连接中的常见问题。",
+  "summary": "查看有效配置、模型能力和错误记录，定位 CLI 参数与端点连接中的常见问题。",
   "aliases": [
     "怎么排错",
     "缺 API key",
@@ -42,7 +42,7 @@
 
 # 检查有效配置与定位常见启动故障
 
-先根据故障发生阶段选择检查入口。启动前的配置错误查看有效设置与类型，命令解析错误查看选项位置，工作流找不到时查看发现目录，模型请求失败时查看协议和错误分类。执行已经开始后，则结合 `RunResult.reason`、子 Agent 故障和轨迹定位。
+根据报错阶段选择检查入口。配置加载失败时查看生效设置和字段类型，命令解析失败时查看选项位置，找不到工作流时查看加载目录，模型请求失败时查看协议和错误分类。执行开始后的问题可结合 `RunResult.reason`、子 Agent 故障和轨迹定位。
 
 ## 先读取客户端生效设置
 
@@ -100,7 +100,7 @@ opencollab workflow list --workspace /path/to/application
 opencollab workflow run duo --help
 ```
 
-需要在自己的 Python 程序里读取团队声明时，使用 `opencollab.teams`。公开查询函数按实际团队加载规则返回入口优先的角色名、声明工具、profile、角色额度和上下文策略，适合给配置编辑器或运行前展示提供数据。实际运行后再从成员记录确认工具过滤与交接行为，完整示例见 [检查团队是否真的按分工协作](../observability/collaboration-adherence.md)。
+需要在自己的 Python 程序里读取团队声明时，使用 `opencollab.teams`。公开查询函数按团队加载规则返回角色名、声明工具、profile、角色额度和上下文策略，入口角色排在首位。配置编辑器可以用这些信息展示待运行的团队。实际运行后再从成员记录确认工具过滤与交接行为，完整示例见 [检查团队是否真的按分工协作](../observability/collaboration-adherence.md)。
 
 ## 处理常见格式与入口错误
 
@@ -118,9 +118,9 @@ uv run python scripts/check_dashscope.py --workspace /path/to/application
 
 它会输出服务返回的一段文本，并在结束时关闭客户端。该步骤会产生真实请求与用量，离线能力查询则只读取本地元数据。
 
-## 保存可继续复查的信息
+## 保留故障记录
 
-运行结束后保留 `status`、`reason`、`metrics` 与产物路径。`agent_failures` 保留经过筛除秘密的子 provider 故障类型、HTTP 状态等信息。`exception_chain` 提供类型、模块、整数 errno 和状态码，适合定位嵌套或 OS 故障。利用同一 `run_id` 关联会话、manifest 和轨迹，再检查对应模型调用与清理记录。
+运行结束后保留 `status`、`reason`、`metrics` 与产物路径。`agent_failures` 保留已脱敏的子 provider 故障类型、HTTP 状态等信息。`exception_chain` 提供类型、模块、整数 errno 和状态码，适合定位嵌套或 OS 故障。利用同一 `run_id` 关联会话、manifest 和轨迹，再检查对应模型调用与清理记录。
 
 ## 来源
 

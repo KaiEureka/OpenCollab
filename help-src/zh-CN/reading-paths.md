@@ -2,7 +2,7 @@
 
 [帮助中心](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
 
-每条路径按理解与使用顺序排列，同一指南可以从不同路径进入。
+选择你要完成的任务，按顺序阅读相关指南。熟悉的部分可以跳过，直接进入需要的章节。
 
 ## 刚接触 OC
 

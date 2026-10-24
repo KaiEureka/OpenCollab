@@ -37,7 +37,7 @@
 
 # 选择调用协议与流式响应
 
-OpenAI 兼容服务默认使用 `chat_completions`，提供 Responses API 的兼容服务可选择 `responses`，原生 Anthropic 使用 Messages。协议应与端点提供的接口一致。Chat 流式接收默认关闭，确实需要接收 reasoning 增量或流事件时，通过独立开关启用。
+OpenAI 兼容服务默认使用 `chat_completions`，提供 Responses API 的兼容服务可选择 `responses`，原生 Anthropic 使用 Messages。协议应与端点提供的接口一致。Chat 流式接收默认关闭，需要 reasoning 增量或流事件时可通过独立开关启用。
 
 ## 按服务选择协议
 
@@ -52,7 +52,7 @@ OPENCOLLAB_MODEL=your-model-id
 
 切换 Responses 时，把共享协议字段改成 `responses`，并确认端点支持对应 API。原生 Anthropic 则使用 `provider=anthropic`，共享 `wire_protocol` 字段保持 `chat_completions`，框架据 provider 选择 Messages 传输。把原生 Anthropic 与 `responses` 组合会在配置校验时失败。
 
-SDK 可通过构造配置选择协议。下面只构造客户端，随后打印最终选择，实际运行沿用已准备的凭据。
+SDK 可通过构造配置选择协议。下面的代码构造客户端并打印所选协议，调用运行入口时使用已配置的凭据。
 
 ```python
 from opencollab import OpenCollab
@@ -81,9 +81,9 @@ OPENCOLLAB_LLM_STREAM_IDLE_TIMEOUT=180
 
 ## 保留工具调用之间的续轮信息
 
-模型返回的普通回答、reasoning、工具调用和协议原生数据各有用途。需要 thinking 续轮或模型能力要求时，Chat 历史保留 `reasoning_content`，包括声明支持该行为的 DeepSeek 模型。其它 Chat 请求使用普通 assistant 内容和工具调用。
+Chat 会在启用 thinking 续轮，或模型协议要求回传推理内容时，保留历史 `reasoning_content`。这包括已声明要求回传推理内容的 DeepSeek 模型，关闭新一轮 thinking 后仍按协议保留历史内容。其它 Chat 请求使用普通 assistant 内容和工具调用。
 
-Responses 路径保留 response items、provider 身份和相应 response session 信息。原生 Anthropic 保留签名 thinking blocks 及原始顺序，工具返回后继续按协议重放。自建传输包装器或网关时，应完整保留这些协议数据，避免只取可见文本拼回历史。
+Responses 路径保留 response items、provider 身份和相应 response session 信息。原生 Anthropic 保留签名 thinking blocks 及原始顺序，工具返回后继续按协议重放。自建传输包装器或网关也需要完整保留这些数据，模型才能在工具返回后继续生成。
 
 ## 识别流式中断的位置
 

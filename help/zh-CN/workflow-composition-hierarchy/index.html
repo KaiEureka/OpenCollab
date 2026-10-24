@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
 <h1 id="理解-agentteam-与-workflow-的调用层级">理解 Agent、Team 与 Workflow 的调用层级</h1>
-<p>同一个 Python 应用可以通过 SDK 启动 Agent、Team 和 Workflow。三种入口都返回 <code>RunResult</code>，各自的控制方式有所区别。Agent 执行单次会话，Team 让成员按角色和通信关系协作，Workflow 由异步 Python 函数安排步骤。组合时先确定谁创建运行、谁支付额度、谁负责停止和交付。</p>
+<p>同一个 Python 应用可以通过 SDK 启动 Agent、Team 和 Workflow。三种入口都返回 <code>RunResult</code>，各自的控制方式有所区别。Agent 执行单次会话，Team 让成员按角色和通信关系协作，Workflow 由异步 Python 函数安排步骤。组合时先确定运行的创建者，以及额度、停止和交付由谁管理。</p>
 <h2 id="在宿主使用三个入口">在宿主使用三个入口</h2>
 <pre><code class="language-python">from opencollab import OpenCollab
 
@@ -52,7 +52,7 @@ async def run_independent_examples(workspace, team_config):
 <p>这段函数展示独立运行的显式调用，<code>team_config</code> 应指向实际 Team 配置。各次运行分别返回状态、输出和产物。它们使用同一个 client 配置，预算仍按各次入口传入的值处理，工作区的先前改动会按环境策略影响后续运行。</p>
 <h2 id="在-workflow-内组合步骤">在 Workflow 内组合步骤</h2>
 <p><code>ctx.agent</code> 与 <code>ctx.agent_run</code> 建立属于当前 Workflow 的会话，共享该运行的额度和容量，并按当前环境策略执行工具。使用 <code>await helper(ctx, args)</code> 调用普通异步子函数时，资源归属也继续保持在当前 ctx。</p>
-<p>如果整套子流程需要候选环境，可用 <code>ctx.candidate_workflow(fn, args, label=...)</code>。其子会话受父运行的会话容量、集合容量和绝对期限管理，返回 <code>CandidateRun</code>，供父流程检查后采用。当前候选子上下文未配备新候选后端，继续组合更深的普通函数适合复用逻辑。</p>
+<p>如果整套子流程需要候选环境，可用 <code>ctx.candidate_workflow(fn, args, label=...)</code>。其子会话受父运行的会话容量、集合容量和绝对期限管理，返回 <code>CandidateRun</code>，供父流程检查后采用。当前候选子上下文未配备新候选后端。子流程要继续拆分逻辑时，可以调用普通异步函数。</p>
 <h2 id="team-成员怎样进入-workflow">Team 成员怎样进入 Workflow</h2>
 <table>
 <thead>
@@ -93,16 +93,15 @@ async def run_independent_examples(workspace, team_config):
 <p>两类 Team 工具都应在角色配置中显式声明。<code>run_workflow</code> 适合成员调用已知流程并等待结果。<code>manage_workflow</code> 适合成员先编写代码、启动，再用 <code>status</code>、<code>wait</code>、<code>result</code> 和 <code>stop</code> 管理该 id。后者需要成员具备 bash 权限，并在目标环境拥有安装了 OpenCollab 的解释器。</p>
 <p><code>manage_workflow</code> 的有限子预算会预留父成员余额，省略时取得未预留余额的一半。父成员完成或停止时，会停止仍活跃的子运行。将某个 child id 发给其他成员供阅读，仍需由原创建成员执行对应管理操作。</p>
 <h2 id="在-python-中启动独立-team">在 Python 中启动独立 Team</h2>
-<p>公开 <code>ctx</code> 提供 Agent、集合与候选操作，当前没有 <code>ctx.team</code> 方法。需要在一套业务流程中运行 Team 时，可以从宿主代码显式调用 <code>OpenCollab.team</code>。如果把独立 SDK 调用放进自定义 Workflow 的函数体，它仍是一项独立运行，需要作者连接外层的额度和生命期。</p>
+<p>公开 <code>ctx</code> 提供 Agent、集合与候选操作，<code>ctx.team</code> 尚未提供。业务流程中的独立 Team 通过宿主 SDK 的 <code>OpenCollab.team</code> 启动。如果把独立 SDK 调用放进自定义 Workflow 的函数体，它仍是一项独立运行，需要作者连接外层的额度和生命期。</p>
 <p>例如外层 Workflow 有 50,000 token 预算，内层独立 <code>oc.team(..., budget=30000)</code> 的调用应由应用确认是否属于同一个业务总额。需要统一停止时，应用应拥有内层任务并传播取消，等待其清理后再释放环境。产物目录、模型客户端与调用方环境也应由明确的拥有者负责。</p>
-<p>因此，复用小逻辑时把 ctx 传给普通函数，比较候选时采用候选接口，成员执行运行时源文件时采用管理工具，独立组织 Team 时在宿主显式管理运行。每个选择都对应一条实际的调用路径和清理责任。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md#L121">opencollab/README.md</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/workflows.py#L21">opencollab/workflows.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/examples/member-authored-workflow/README.md#L42">examples/member-authored-workflow/README.md</a>。</p>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py">opencollab/sdk/client.py</a>。</p>
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../choose-working-mode/index.html">按任务选择默认 CLI、Base、Team 或 Workflow</a>、<a href="../team-run-workflow/index.html">让 Team 成员调用已注册 Workflow</a>、<a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>、<a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a>、<a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-composition-hierarchy.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-composition-hierarchy.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%9C%A8%E5%AE%BF%E4%B8%BB%E4%BD%BF%E7%94%A8%E4%B8%89%E4%B8%AA%E5%85%A5%E5%8F%A3">在宿主使用三个入口</a><a href="#%E5%9C%A8-workflow-%E5%86%85%E7%BB%84%E5%90%88%E6%AD%A5%E9%AA%A4">在 Workflow 内组合步骤</a><a href="#team-%E6%88%90%E5%91%98%E6%80%8E%E6%A0%B7%E8%BF%9B%E5%85%A5-workflow">Team 成员怎样进入 Workflow</a><a href="#%E5%9C%A8-python-%E4%B8%AD%E5%90%AF%E5%8A%A8%E7%8B%AC%E7%AB%8B-team">在 Python 中启动独立 Team</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>

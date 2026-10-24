@@ -57,7 +57,7 @@
         )
     return {'finding': finding, 'detail': detail}
 </code></pre>
-<p><code>schema</code> 通过结构化捕获工具取得并校验字典。捕获未满足要求时，运行时会带着已有历史作一次纠正尝试。模式保证返回数据的结构，字段内容与业务判断仍由实际依据和调用方规则判断。自由文本路径返回字符串，常见会话构建、运行失败或调用时限到达时可返回 <code>None</code>。</p>
+<p><code>schema</code> 通过结构化捕获工具取得并校验字典。捕获未满足要求时，运行时会带着已有历史作一次纠正尝试。schema 校验返回数据的结构，字段内容和业务判断则需要结合任务依据与调用方规则验证。自由文本路径返回字符串，常见会话构建、运行失败或调用时限到达时可返回 <code>None</code>。</p>
 <p><code>prompt</code> 是本次任务，<code>label</code> 用于记录，<code>tools</code> 决定会话能调用的工具。使用空集合适合只处理给定文字的角色。<code>budget</code> 从共享余额申请一次调用额度，未用预留在清理后释放。额度耗尽可能在会话创建前抛出预算异常，调用方应结合顶层结果处理。</p>
 <h2 id="取得执行快照">取得执行快照</h2>
 <pre><code class="language-python">from opencollab import RunControl
@@ -87,17 +87,17 @@ async def inspect_files(ctx, args):
     }
 </code></pre>
 <p><code>agent_run</code> 的结果为 <code>WorkflowAgentResult</code>，还包含实际硬额度 <code>hard_budget_tokens</code>、软额度 <code>soft_budget_tokens</code> 及 <code>observation_errors</code>。申请值会受共享余额和其他预留影响，回调看到的是实际授权。<code>RunControl</code> 可在硬额度内决定软额度扩展，也可同步接收事件。</p>
-<p><code>system_prompt</code> 显式设置时替换本次角色默认系统提示词。所选 Agent profile 仍提供工具配置、上下文处理及安全行为。profile 在 SDK 的 <code>agent_profile</code> 选择，省略时保留工作流角色自身配置。<code>agent_run</code> 还接受工具配置名称或工具对象序列。需要固定能力集合时显式传对象最直观。</p>
+<p><code>system_prompt</code> 显式设置时替换本次角色默认系统提示词。所选 Agent profile 仍提供工具配置、上下文处理及安全行为。profile 在 SDK 的 <code>agent_profile</code> 选择，省略时保留工作流角色自身配置。<code>agent_run</code> 还接受工具配置名称或工具对象序列。要明确指定每项工具时，传入工具对象序列。</p>
 <h2 id="时限环境与失败">时限、环境与失败</h2>
 <p><code>timeout</code> 限制本次会话运行，<code>max_steps</code> 限制会话步数，工作流外层的 <code>timeout</code> 则限制整次运行。清理时限单独控制已取消的工具与模型任务怎样结束。<code>agent_run</code> 清理未完成时返回 <code>failed</code> 和 <code>cleanup incomplete</code>，并阻止共享上下文继续启动工作。只有 <code>cleanup_complete</code> 为真时，快照中的用量才可按稳定结果理解。后续依赖同一环境的步骤还应检查 <code>workspace_ready</code>。</p>
-<p>省略 <code>isolation</code> 继承运行策略，<code>False</code> 选择 <code>shared</code>，<code>True</code> 选择 <code>worktree</code>，字符串可选 <code>shared</code>、<code>worktree</code> 与已配置的容器或自定义策略。文件隔离策略与会话历史各自控制不同资源。Docker 策略把工具放进容器，普通 Workflow 的 Python 编排继续在调用方进程执行。</p>
-<p><code>ctx.agent</code> 的 <code>tool_choice</code> 与 <code>thinking</code> 用于自由文本路径，结构化路径遵循捕获阶段的请求策略。<code>agent_run</code> 直接提供状态和回调，两种方法参数应按各自签名使用。顶层 <code>RunResult.agent_failures</code> 保留内部失败，外部取消会继续向调用方传播。最终交付还要通过真实入口、测试或验证器检查。</p>
+<p>省略 <code>isolation</code> 继承运行策略，<code>False</code> 选择 <code>shared</code>，<code>True</code> 选择 <code>worktree</code>，字符串可选 <code>shared</code>、<code>worktree</code> 与已配置的容器或自定义策略。会话历史在每次调用时重新建立，文件是否共享由隔离策略决定。Docker 策略把工具放进容器，普通 Workflow 的 Python 编排继续在调用方进程执行。</p>
+<p><code>ctx.agent</code> 的 <code>tool_choice</code> 与 <code>thinking</code> 用于自由文本路径，结构化路径遵循捕获阶段的请求策略。<code>agent_run</code> 直接提供状态和回调，两种方法参数应按各自签名使用。顶层 <code>RunResult.agent_failures</code> 保留内部失败，外部取消会继续向调用方传播。交付结果通过应用真实入口、测试或验证器检查。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/workflows.py#L21">opencollab/workflows.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow.py#L503">opencollab/application/workflow.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow_agent_run.py#L17">opencollab/application/workflow_agent_run.py</a>。</p>
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a>、<a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a>、<a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a>、<a href="../weave-workflow/index.html">使用 Weave 分组执行并检查交付</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-agent-calls.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-agent-calls.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E7%94%A8%E5%9B%9E%E7%AD%94%E6%8E%A8%E5%8A%A8%E4%B8%8B%E4%B8%80%E6%AD%A5">用回答推动下一步</a><a href="#%E5%8F%96%E5%BE%97%E6%89%A7%E8%A1%8C%E5%BF%AB%E7%85%A7">取得执行快照</a><a href="#%E6%97%B6%E9%99%90%E7%8E%AF%E5%A2%83%E4%B8%8E%E5%A4%B1%E8%B4%A5">时限、环境与失败</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>

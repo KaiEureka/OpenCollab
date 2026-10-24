@@ -31,10 +31,10 @@
 <main id="content" tabindex="-1">
 <p class="category">架构、集成与维护</p>
 <h1 id="session-如何保存进度并继续执行">Session 如何保存进度并继续执行</h1>
-<p>Session 把一次 Agent 对话中的消息、累计用量、当前阶段和待处理事件保存为可继续的运行状态。等待子任务时，它可以停在事件等待阶段，结果到齐后继续。新用户轮次会重新开始本轮执行，累计 token 与步数仍属于同一个会话生命周期。</p>
+<p>Session 保存 Agent 对话中的消息、累计用量、当前阶段和待处理事件，以便后续继续执行。等待子任务时，它可以停在事件等待阶段，结果到齐后继续。新用户轮次会重新开始本轮执行，累计 token 与步数仍属于同一个会话生命周期。</p>
 <h2 id="会话里保存了什么">会话里保存了什么</h2>
 <p><code>SessionState.messages</code> 保存完整对话，包括用户输入、模型回复、工具调用与结果。<code>used_tokens</code> 记录累计输入加输出，<code>step_count</code> 记录会话累计步骤，<code>context_tokens</code> 反映最近一次请求的输入大小。阶段与 <code>terminal_reason</code> 共同说明当前进展和终止原因。</p>
-<p>待处理事件表关联延迟工具调用与结果。调度器排入但尚未安全交给模型的用户消息会单独保存。外部用户新一轮输入也有接受与开始执行之间的状态记录。这样可以在保存、等待和恢复之间保留消息顺序。</p>
+<p>待处理事件表关联延迟工具调用与结果。调度器已排队、等待加入模型请求的用户消息会单独保存。新一轮外部用户输入也会记录从接收到开始执行的状态，以便在保存、等待和恢复时保留消息顺序。</p>
 <h2 id="一轮如何推进">一轮如何推进</h2>
 <table>
 <thead>
@@ -74,11 +74,11 @@
 </tr>
 </tbody>
 </table>
-<p>普通工具执行结束后会保存，再回到前置检查。派发工具留下延迟结果时，Session 进入 <code>AWAITING_EVENTS</code>，待整批结果填齐后经过保存恢复执行。某一步包含 <code>submit</code> 时，也会先完成本步保存，再结束当前回合。</p>
+<p>普通工具执行结束后会保存，再回到前置检查。派发工具产生延迟结果时，Session 进入 <code>AWAITING_EVENTS</code>，待整批结果到齐并保存后继续执行。某一步包含 <code>submit</code> 时，也会先完成本步保存，再结束当前回合。</p>
 <p><code>DONE</code> 保存最终回答，<code>STOPPED</code> 保存停止原因和可用进展，<code>ERROR</code> 保存未处理故障。新消息可以让已结束当前回合的成员重新执行。Team 的整体结束还需等待活动成员与待投递消息处理完毕，具体见 <a href="../wait-for-team-results/index.html">等待队友结果并读懂团队状态</a>。</p>
 <h2 id="新轮次与进程重启">新轮次与进程重启</h2>
 <p>同一 Session 接受新用户输入时，会重置本轮的循环检测、进度信号和临时工具选择等状态，累计额度继续保留。独立的 SDK <code>agent</code> 调用通常创建新会话，Workflow 的多次 <code>ctx.agent</code> 也分别创建对话。要让后续调用使用先前结论，应显式传入输出或共享需要的文件。</p>
-<p>从保存记录恢复时，使用量、终态和可恢复的等待关系会被保留。模型请求和工具执行中的进程内协程已经结束，恢复会从 <code>IDLE</code> 重新进入运行过程。排队消息、工具结果配对和延迟用量仍需按保存内容继续处理。</p>
+<p>从保存记录恢复时，累计用量、结束状态和可恢复的等待关系会被保留。模型请求和工具执行中的进程内协程已经结束，恢复会从 <code>IDLE</code> 重新进入运行过程。排队消息、工具结果配对和延迟用量仍需按保存内容继续处理。</p>
 <p>读取保存材料可以使用公开接口。</p>
 <pre><code class="language-python">from opencollab import OpenCollab
 
@@ -89,7 +89,7 @@ print(sorted(snapshot))
 <h2 id="完整记录与模型视图">完整记录与模型视图</h2>
 <p>完整消息用于追踪与恢复，发给模型的视图会按上下文压力裁剪和压缩。当前上下文来源包括 profile、角色、团队、技能、派发任务与项目概览，通用外部记忆来源需要另行接入。状态定义见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/domain/session.py">会话状态实现</a>，持久化与上下文关系见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/runtime-design.md">运行设计</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/session-state-lifecycle.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/session-state-lifecycle.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BC%9A%E8%AF%9D%E9%87%8C%E4%BF%9D%E5%AD%98%E4%BA%86%E4%BB%80%E4%B9%88">会话里保存了什么</a><a href="#%E4%B8%80%E8%BD%AE%E5%A6%82%E4%BD%95%E6%8E%A8%E8%BF%9B">一轮如何推进</a><a href="#%E6%96%B0%E8%BD%AE%E6%AC%A1%E4%B8%8E%E8%BF%9B%E7%A8%8B%E9%87%8D%E5%90%AF">新轮次与进程重启</a><a href="#%E5%AE%8C%E6%95%B4%E8%AE%B0%E5%BD%95%E4%B8%8E%E6%A8%A1%E5%9E%8B%E8%A7%86%E5%9B%BE">完整记录与模型视图</a></aside>
 </div>

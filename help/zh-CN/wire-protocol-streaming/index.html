@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">模型接入与配置</p>
 <h1 id="选择调用协议与流式响应">选择调用协议与流式响应</h1>
-<p>OpenAI 兼容服务默认使用 <code>chat_completions</code>，提供 Responses API 的兼容服务可选择 <code>responses</code>，原生 Anthropic 使用 Messages。协议应与端点提供的接口一致。Chat 流式接收默认关闭，确实需要接收 reasoning 增量或流事件时，通过独立开关启用。</p>
+<p>OpenAI 兼容服务默认使用 <code>chat_completions</code>，提供 Responses API 的兼容服务可选择 <code>responses</code>，原生 Anthropic 使用 Messages。协议应与端点提供的接口一致。Chat 流式接收默认关闭，需要 reasoning 增量或流事件时可通过独立开关启用。</p>
 <h2 id="按服务选择协议">按服务选择协议</h2>
 <p>Chat Completions 路径可以在 env 文件中明确写出默认值。模型名和地址均替换为所用服务提供的值。</p>
 <pre><code class="language-dotenv">OPENCOLLAB_PROVIDER=openai
@@ -40,7 +40,7 @@ OPENCOLLAB_BASE_URL=https://your-endpoint.example/v1
 OPENCOLLAB_MODEL=your-model-id
 </code></pre>
 <p>切换 Responses 时，把共享协议字段改成 <code>responses</code>，并确认端点支持对应 API。原生 Anthropic 则使用 <code>provider=anthropic</code>，共享 <code>wire_protocol</code> 字段保持 <code>chat_completions</code>，框架据 provider 选择 Messages 传输。把原生 Anthropic 与 <code>responses</code> 组合会在配置校验时失败。</p>
-<p>SDK 可通过构造配置选择协议。下面只构造客户端，随后打印最终选择，实际运行沿用已准备的凭据。</p>
+<p>SDK 可通过构造配置选择协议。下面的代码构造客户端并打印所选协议，调用运行入口时使用已配置的凭据。</p>
 <pre><code class="language-python">from opencollab import OpenCollab
 
 client = OpenCollab(
@@ -59,8 +59,8 @@ OPENCOLLAB_LLM_STREAM_IDLE_TIMEOUT=180
 </code></pre>
 <p>收到的 reasoning 文本会进入轨迹。Chat 流需要同时收到终止 <code>finish_reason</code> 和 token usage 才算正常完成。终端已经显示文字时仍可能在等待尾部统计，最终应结合运行状态判断。Responses 的流式行为由选定模型的能力设置控制，Chat 开关仅作用于 Chat Completions。</p>
 <h2 id="保留工具调用之间的续轮信息">保留工具调用之间的续轮信息</h2>
-<p>模型返回的普通回答、reasoning、工具调用和协议原生数据各有用途。需要 thinking 续轮或模型能力要求时，Chat 历史保留 <code>reasoning_content</code>，包括声明支持该行为的 DeepSeek 模型。其它 Chat 请求使用普通 assistant 内容和工具调用。</p>
-<p>Responses 路径保留 response items、provider 身份和相应 response session 信息。原生 Anthropic 保留签名 thinking blocks 及原始顺序，工具返回后继续按协议重放。自建传输包装器或网关时，应完整保留这些协议数据，避免只取可见文本拼回历史。</p>
+<p>Chat 会在启用 thinking 续轮，或模型协议要求回传推理内容时，保留历史 <code>reasoning_content</code>。这包括已声明要求回传推理内容的 DeepSeek 模型，关闭新一轮 thinking 后仍按协议保留历史内容。其它 Chat 请求使用普通 assistant 内容和工具调用。</p>
+<p>Responses 路径保留 response items、provider 身份和相应 response session 信息。原生 Anthropic 保留签名 thinking blocks 及原始顺序，工具返回后继续按协议重放。自建传输包装器或网关也需要完整保留这些数据，模型才能在工具返回后继续生成。</p>
 <h2 id="识别流式中断的位置">识别流式中断的位置</h2>
 <p>连接阶段一直无结果时，先看连接超时。已连接但没有首事件时，查看 <code>llm_first_event_timeout</code>。已经收到部分内容又停止推进时，查看 <code>llm_stream_idle_timeout</code>，同时保留请求级 <code>llm_timeout</code>。各值单位为秒，整次 SDK 任务的 <code>timeout</code> 另行设置。</p>
 <p>离线模型检查可以查看安装版本中的能力默认值，<code>configuration</code> 显示客户端生效协议与传输参数。若启用流式后才出现错误，检查服务对 <code>stream_options</code>、尾部 usage 和终止事件的支持，再结合停止原因与轨迹继续定位。</p>
@@ -69,7 +69,7 @@ OPENCOLLAB_LLM_STREAM_IDLE_TIMEOUT=180
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a>　<a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/wire-protocol-streaming.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/wire-protocol-streaming.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%8C%89%E6%9C%8D%E5%8A%A1%E9%80%89%E6%8B%A9%E5%8D%8F%E8%AE%AE">按服务选择协议</a><a href="#%E5%BC%80%E5%90%AF-chat-%E6%B5%81%E5%BC%8F%E6%8E%A5%E6%94%B6">开启 Chat 流式接收</a><a href="#%E4%BF%9D%E7%95%99%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8%E4%B9%8B%E9%97%B4%E7%9A%84%E7%BB%AD%E8%BD%AE%E4%BF%A1%E6%81%AF">保留工具调用之间的续轮信息</a><a href="#%E8%AF%86%E5%88%AB%E6%B5%81%E5%BC%8F%E4%B8%AD%E6%96%AD%E7%9A%84%E4%BD%8D%E7%BD%AE">识别流式中断的位置</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

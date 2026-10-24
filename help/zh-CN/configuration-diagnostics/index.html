@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>检查有效配置与定位常见启动故障 · OpenCollab 帮助中心</title>
-<meta name="description" content="用可核对的信息定位配置、模型能力、CLI 参数和端点连接中的常见问题。">
+<meta name="description" content="查看有效配置、模型能力和错误记录，定位 CLI 参数与端点连接中的常见问题。">
 <link rel="canonical" href="https://rise-x-lab.github.io/OpenCollab/help/zh-CN/configuration-diagnostics/index.html">
 <link rel="stylesheet" href="../../assets/help.css">
 <script type="module" src="../../assets/help.mjs"></script>
@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">预算、上下文与运行恢复</p>
 <h1 id="检查有效配置与定位常见启动故障">检查有效配置与定位常见启动故障</h1>
-<p>先根据故障发生阶段选择检查入口。启动前的配置错误查看有效设置与类型，命令解析错误查看选项位置，工作流找不到时查看发现目录，模型请求失败时查看协议和错误分类。执行已经开始后，则结合 <code>RunResult.reason</code>、子 Agent 故障和轨迹定位。</p>
+<p>根据报错阶段选择检查入口。配置加载失败时查看生效设置和字段类型，命令解析失败时查看选项位置，找不到工作流时查看加载目录，模型请求失败时查看协议和错误分类。执行开始后的问题可结合 <code>RunResult.reason</code>、子 Agent 故障和轨迹定位。</p>
 <h2 id="先读取客户端生效设置">先读取客户端生效设置</h2>
 <p>构造客户端会解析工作区、进程变量、env 文件和显式覆盖。下面的程序只查询本地配置，适合确认修改是否进入新客户端。</p>
 <pre><code class="language-python">from opencollab import OpenCollab
@@ -75,7 +75,7 @@ print(profile_tool_names(&quot;base&quot;))
 opencollab workflow list --workspace /path/to/application
 opencollab workflow run duo --help
 </code></pre>
-<p>需要在自己的 Python 程序里读取团队声明时，使用 <code>opencollab.teams</code>。公开查询函数按实际团队加载规则返回入口优先的角色名、声明工具、profile、角色额度和上下文策略，适合给配置编辑器或运行前展示提供数据。实际运行后再从成员记录确认工具过滤与交接行为，完整示例见 <a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a>。</p>
+<p>需要在自己的 Python 程序里读取团队声明时，使用 <code>opencollab.teams</code>。公开查询函数按团队加载规则返回角色名、声明工具、profile、角色额度和上下文策略，入口角色排在首位。配置编辑器可以用这些信息展示待运行的团队。实际运行后再从成员记录确认工具过滤与交接行为，完整示例见 <a href="../collaboration-adherence/index.html">检查团队是否真的按分工协作</a>。</p>
 <h2 id="处理常见格式与入口错误">处理常见格式与入口错误</h2>
 <p>SDK <code>config</code> 使用小写字段名，未知字段会被拒绝。团队 YAML 也按 schema 检查，字段拼写错误应直接修正。<code>thinking_params</code> 与 CLI <code>--args</code> 需要 JSON 对象，数组和残缺 JSON 会失败。预算为正整数，超时为有限正数，空凭据与空地址视为未设置。</p>
 <p>模型与预算选项属于具体运行入口。<code>workflow run NAME --workspace PATH --model MODEL</code> 是有效位置，把这些选项放在 <code>workflow</code> 前会触发根选项位置错误。名称未知时，先用相同工作区执行 <code>workflow list</code>，再核对 <code>OPENCOLLAB_WORKFLOWS_DIR</code>。</p>
@@ -84,16 +84,16 @@ opencollab workflow run duo --help
 <pre><code class="language-bash">uv run python scripts/check_dashscope.py --workspace /path/to/application
 </code></pre>
 <p>它会输出服务返回的一段文本，并在结束时关闭客户端。该步骤会产生真实请求与用量，离线能力查询则只读取本地元数据。</p>
-<h2 id="保存可继续复查的信息">保存可继续复查的信息</h2>
-<p>运行结束后保留 <code>status</code>、<code>reason</code>、<code>metrics</code> 与产物路径。<code>agent_failures</code> 保留经过筛除秘密的子 provider 故障类型、HTTP 状态等信息。<code>exception_chain</code> 提供类型、模块、整数 errno 和状态码，适合定位嵌套或 OS 故障。利用同一 <code>run_id</code> 关联会话、manifest 和轨迹，再检查对应模型调用与清理记录。</p>
+<h2 id="保留故障记录">保留故障记录</h2>
+<p>运行结束后保留 <code>status</code>、<code>reason</code>、<code>metrics</code> 与产物路径。<code>agent_failures</code> 保留已脱敏的子 provider 故障类型、HTTP 状态等信息。<code>exception_chain</code> 提供类型、模块、整数 errno 和状态码，适合定位嵌套或 OS 故障。利用同一 <code>run_id</code> 关联会话、manifest 和轨迹，再检查对应模型调用与清理记录。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/model-inspection.md#L1">docs/model-inspection.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L156">opencollab/sdk/client.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/scripts/check_dashscope.py#L24">scripts/check_dashscope.py</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L367">configs/README.md</a></p>
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../configuration-precedence/index.html">配置从哪里读取以及哪一项生效</a>　<a href="../provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a>　<a href="../thinking-reasoning-sampling/index.html">配置深度思考与采样参数</a>　<a href="../timeouts-retries/index.html">超时、重试与请求卡住诊断</a>　<a href="../trace-and-events/index.html">查看 Agent 做了什么</a>　<a href="../run-results/index.html">读取运行结果与判断任务是否完成</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/configuration-diagnostics.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/operations/configuration-diagnostics.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%85%88%E8%AF%BB%E5%8F%96%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%94%9F%E6%95%88%E8%AE%BE%E7%BD%AE">先读取客户端生效设置</a><a href="#%E7%A6%BB%E7%BA%BF%E6%9F%A5%E7%9C%8B%E6%A8%A1%E5%9E%8B%E5%92%8C%E8%A7%92%E8%89%B2%E8%83%BD%E5%8A%9B">离线查看模型和角色能力</a><a href="#%E5%A4%84%E7%90%86%E5%B8%B8%E8%A7%81%E6%A0%BC%E5%BC%8F%E4%B8%8E%E5%85%A5%E5%8F%A3%E9%94%99%E8%AF%AF">处理常见格式与入口错误</a><a href="#%E6%98%BE%E5%BC%8F%E6%89%A7%E8%A1%8C%E4%B8%80%E6%AC%A1%E8%BF%9E%E6%8E%A5%E6%A3%80%E6%9F%A5">显式执行一次连接检查</a><a href="#%E4%BF%9D%E5%AD%98%E5%8F%AF%E7%BB%A7%E7%BB%AD%E5%A4%8D%E6%9F%A5%E7%9A%84%E4%BF%A1%E6%81%AF">保存可继续复查的信息</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%85%88%E8%AF%BB%E5%8F%96%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%94%9F%E6%95%88%E8%AE%BE%E7%BD%AE">先读取客户端生效设置</a><a href="#%E7%A6%BB%E7%BA%BF%E6%9F%A5%E7%9C%8B%E6%A8%A1%E5%9E%8B%E5%92%8C%E8%A7%92%E8%89%B2%E8%83%BD%E5%8A%9B">离线查看模型和角色能力</a><a href="#%E5%A4%84%E7%90%86%E5%B8%B8%E8%A7%81%E6%A0%BC%E5%BC%8F%E4%B8%8E%E5%85%A5%E5%8F%A3%E9%94%99%E8%AF%AF">处理常见格式与入口错误</a><a href="#%E6%98%BE%E5%BC%8F%E6%89%A7%E8%A1%8C%E4%B8%80%E6%AC%A1%E8%BF%9E%E6%8E%A5%E6%A3%80%E6%9F%A5">显式执行一次连接检查</a><a href="#%E4%BF%9D%E7%95%99%E6%95%85%E9%9A%9C%E8%AE%B0%E5%BD%95">保留故障记录</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>
 </body>
 </html>

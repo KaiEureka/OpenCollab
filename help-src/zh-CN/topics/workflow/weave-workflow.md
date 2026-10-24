@@ -207,7 +207,7 @@ async def launch(workspace, checkpoint, groups, check_commands):
     return result.raise_for_status().output
 ```
 
-检查点父目录应已存在，继续时使用原工作区中的真实文件成果。同步 `save_state`、`on_update(kind, state, data)` 与 `on_event(phase, event)` 适合保存短记录。自定义工具需要让适配器的 `source_snapshot()` 和 `progress()` 观察到真实文件变化和通过的检查，才能参与原生的重检与软额度扩展。`group_prompt`、`repair_prompt` 和 `improved` 可分别调整任务说明、修复说明及进展比较，`affects_prior_groups` 可声明某些变化需要扩大对先前组的检查。
+检查点的父目录应已存在，恢复时使用原工作区中已经生成的文件。同步 `save_state`、`on_update(kind, state, data)` 与 `on_event(phase, event)` 适合保存短记录。提供自定义工具时，通过适配器的 `source_snapshot()` 和 `progress()` 报告文件变化及通过的检查，Weave 据此重新检查受影响的组并扩展软额度。`group_prompt`、`repair_prompt` 和 `improved` 可分别调整任务说明、修复说明及进展比较，`affects_prior_groups` 可声明某些变化需要扩大对先前组的检查。
 
 ## 读取交付结果
 

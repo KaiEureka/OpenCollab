@@ -34,7 +34,7 @@
 <p>深度思考和采样参数通过客户端配置设置，团队角色还可覆盖自己的 <code>thinking</code> 与 <code>temperature</code>。OpenCollab 默认 <code>thinking=false</code>，实际请求字段由协议和模型能力决定。选择参数时先确认物理模型及协议，再设置该服务支持的原生格式。</p>
 <h2 id="查看默认行为">查看默认行为</h2>
 <p>当前能力声明中，<code>qwen3.8-flash</code> 的 Chat 请求显式发送 <code>enable_thinking=false</code>。<code>deepseek-flash</code>、<code>deepseek-v4-pro</code> 和 <code>deepseek-v4-flash</code> 在 Chat 与 Anthropic 路径使用 disabled thinking，Responses 将 <code>reasoning</code> 的 <code>effort</code> 设为 <code>none</code>。显式 Responses reasoning effort 优先于该默认。普通模型的实际默认按 provider 能力处理。</p>
-<p>可以先用 <code>inspect_model_runtime</code> 查看已安装运行时的模型能力，再用 <code>OpenCollab.configuration</code> 查看显式覆盖。能力检查查询本地表，服务端能否接受参数仍应结合所用端点。</p>
+<p><code>inspect_model_runtime</code> 显示已安装版本的模型能力，<code>OpenCollab.configuration</code> 显示显式覆盖值。本地能力表用于构造请求，参数支持情况以所用端点为准。</p>
 <h2 id="为-chat-和-responses-设置推理">为 Chat 和 Responses 设置推理</h2>
 <p>OpenAI 兼容 Chat 的 <code>thinking_params</code> 通过 <code>extra_body</code> 发送。下面是服务接受 <code>enable_thinking</code> 时可用的 env 写法。</p>
 <pre><code class="language-dotenv">OPENCOLLAB_THINKING=true
@@ -58,15 +58,15 @@ OPENCOLLAB_THINKING_PARAMS={&quot;thinking&quot;:{&quot;type&quot;:&quot;enabled
 <p>原生 thinking 请求会按能力省略 <code>temperature</code>。支持的较早 Claude 4 手动 thinking 模型、Claude Opus 4.6 与 Sonnet 4.6 的 adaptive thinking，以及已声明的 DeepSeek 原生 Anthropic 模型，可按能力使用 0.95 到 1.0 的 <code>top_p</code>。更新模型遵守各自采样要求。工具续轮需要保留原生 thinking blocks 和签名数据，框架的标准传输负责处理。</p>
 <h2 id="调整采样与角色覆盖">调整采样与角色覆盖</h2>
 <p>全局 <code>temperature</code> 默认 0.2，范围为 0 到 2，显式 0.0 有效。<code>top_p</code> 范围为 0 到 1，省略时使用 provider 默认。在支持采样的原生 Claude 4 普通请求里，显式 <code>top_p</code> 优先于温度。模型或 thinking 模式要求时，请求构造器会省略相应采样字段。</p>
-<p>团队 YAML 的角色可把 <code>temperature</code> 设为 0.0，把 <code>thinking</code> 设为 true，未设置的字段继承全局值。更详细的原生 thinking 参数放在客户端模型设置中，角色配置字段应按团队 schema 使用。</p>
+<p>团队 YAML 的角色可把 <code>temperature</code> 设为 0.0，把 <code>thinking</code> 设为 true，省略时继承全局值。原生 thinking 的详细参数通过客户端模型设置传入，角色可用字段见团队 schema。</p>
 <h2 id="留出会话额度">留出会话额度</h2>
-<p>单次输出上限与整次会话 <code>budget</code> 分开控制。有限会话在确定输出空间前先保留输入 token，手动 thinking 还需要思考额度与回答空间。剩余额度低于组合最低需求时会以 budget-exceeded 原因停止，并保留已完成工具结果及用量。遇到请求前参数错误，先核对模型与格式，遇到额度停止，再检查会话预算、输入长度和单次输出上限。</p>
+<p>单次输出上限与整次会话 <code>budget</code> 分开控制。会话预算有限时，先为输入预留 token，再确定输出空间。手动 thinking 需要同时留出思考额度和回答空间，剩余额度低于最低需求时会以 budget-exceeded 原因停止，并保留已完成的工具结果及用量。参数错误时检查模型与格式，额度不足时检查会话预算、输入长度和单次输出上限。</p>
 <h2 id="来源">来源</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L140">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L162">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md#L192">configs/README.md</a>　<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/config.py#L176">opencollab/bootstrap/config.py</a></p>
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../wire-protocol-streaming/index.html">选择调用协议与流式响应</a>　<a href="../token-step-concurrency-limits/index.html">设置 token 预算、步数与运行并发</a>　<a href="../configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/thinking-reasoning-sampling.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/models/thinking-reasoning-sampling.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%9F%A5%E7%9C%8B%E9%BB%98%E8%AE%A4%E8%A1%8C%E4%B8%BA">查看默认行为</a><a href="#%E4%B8%BA-chat-%E5%92%8C-responses-%E8%AE%BE%E7%BD%AE%E6%8E%A8%E7%90%86">为 Chat 和 Responses 设置推理</a><a href="#%E4%BD%BF%E7%94%A8%E5%8E%9F%E7%94%9F-anthropic-thinking">使用原生 Anthropic thinking</a><a href="#%E8%B0%83%E6%95%B4%E9%87%87%E6%A0%B7%E4%B8%8E%E8%A7%92%E8%89%B2%E8%A6%86%E7%9B%96">调整采样与角色覆盖</a><a href="#%E7%95%99%E5%87%BA%E4%BC%9A%E8%AF%9D%E9%A2%9D%E5%BA%A6">留出会话额度</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

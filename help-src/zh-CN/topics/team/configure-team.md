@@ -53,7 +53,7 @@ opencollab team show --team-config team.yaml
 opencollab --team-config team.yaml --workspace .
 ```
 
-`team init` 导出当前内置团队并保留已存在的目标文件，`team show` 读取并展示入口、角色工具与拓扑。这两条准备命令可以在配置 API 凭据前执行。最终根命令才启动协作。CLI 的 `--team-config` 或 SDK 的 `team(config=...)` 优先选择团队文件，其次是环境变量 `OPENCOLLAB_TEAM_FILE`。文件名恰好叫 `team.yaml` 并不会让它被自动采用。
+`team init` 导出当前内置团队并保留已存在的目标文件，`team show` 读取并展示入口、角色工具与拓扑。这两条准备命令可以在配置 API 凭据前执行。最终根命令才启动协作。CLI 的 `--team-config` 或 SDK 的 `team(config=...)` 优先选择团队文件，其次是环境变量 `OPENCOLLAB_TEAM_FILE`。使用自建的 `team.yaml` 时，通过上述选项或变量显式选择。
 
 省略团队文件时，内置团队由 Analyst、Coder 和 Tester 组成，入口为 `analyst`。Analyst 拥有派发与采纳工具，Coder 负责修改，Tester 执行验证。内置拓扑只允许 Analyst 到达 Coder 和 Tester。角色声明会先出现在团队组织记录中，按需派发后才产生相应的活跃成员。
 
@@ -81,11 +81,11 @@ topology:
   tester: []
 ```
 
-`entry` 指定接收用户任务的 agent 0。省略时先寻找名为 `lead` 的角色，再取第一个声明角色。角色名是身份，不能包含路径分隔符、首尾空格或控制字符，Unicode 与大小写归一后发生碰撞也会报错。显示名称不同于用途描述，修改身份会影响拓扑和寻址。
+`entry` 指定接收用户任务的 agent 0。省略时先寻找名为 `lead` 的角色，再取第一个声明角色。角色名是身份，不能包含路径分隔符、首尾空格或控制字符，Unicode 与大小写归一后发生碰撞也会报错。修改角色名后，需要同步更新拓扑和消息寻址。
 
 每个角色需要 `prompt` 或 `prompt_file`。文件路径相对团队文件所在目录，并受安全读取与目录范围检查。两者同时出现时，内联 `prompt` 优先。较长职责可以放到专用提示词文件，以便维护。
 
-`tools` 是角色可调用的工具集合，角色可显式配置 `model`、`temperature`、`thinking`、`thinking_params` 和 `profile`。未设置的模型与采样项继承客户端全局值，`temperature: 0.0` 会显式覆盖全局值。profile 提供基础提示词、上下文处理和安全配置，角色职责与工具选择仍共同决定本次能力。工具列表中的 Bash 还需满足执行环境与权限要求。
+`tools` 是角色可调用的工具集合，角色可显式配置 `model`、`temperature`、`thinking`、`thinking_params` 和 `profile`。未设置的模型与采样项继承客户端全局值，`temperature: 0.0` 会显式覆盖全局值。profile 提供基础提示词、上下文处理和安全配置，角色职责与工具选择仍共同决定本次能力。Bash 的执行还取决于环境和权限设置。
 
 ## 拓扑同时约束派发和消息
 
@@ -142,10 +142,10 @@ SDK 使用这份文件时传入 `config="configs/team.collab.yaml"` 与 `prebuil
 
 ## 自定义程度与结果确认
 
-角色名与职责可以按业务改写，入口也可以换成研究者、分诊成员或调度成员。需要让入口直接处理文件时，给它相应文件工具即可。需要让它选择已注册工作流时，可以添加 run_workflow 工具。成员编写并运行自己的工作单元时，使用对应的工作流管理能力，详见 [让成员编写并管理自己的子 Workflow](../workflow/member-authored-workflow.md)。
+角色名与职责可以按业务改写，入口也可以换成研究者、分诊成员或调度成员。入口要直接处理文件时，给它相应文件工具。要选择已注册工作流时，添加 run_workflow 工具。成员编写并运行自己的工作单元时，使用对应的工作流管理能力，详见 [让成员编写并管理自己的子 Workflow](../workflow/member-authored-workflow.md)。
 
 按需团队可以对不同对象派发多次同角色任务。相同角色的多个成员各有 aid 和独立会话，消息寻址时应指定具体 aid。固定名册则让同一成员通过后续消息继续处理新工作，这两种安排会形成不同的上下文积累和预算使用方式。
 
-SDK 调用完成后，先读 result.status 与 result.reason，再核对 output 里的完成说明和产物目录。工作树中的实现需要显式采纳，采用后才安排新的验证成员。若入口本身也隔离，交付补丁还需要由调用方应用到最终项目。团队配置确定协作能力，实际执行记录说明这些能力在本次任务中怎样被使用。
+SDK 调用完成后，先读 result.status 与 result.reason，再核对 output 里的完成说明和产物目录。工作树中的实现需要显式采纳，采用后才安排新的验证成员。若入口本身也隔离，交付补丁还需要由调用方应用到最终项目。执行记录可以用来查看各成员实际调用了哪些工具、交付了哪些改动。
 
 配置字段与默认值见[团队配置实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/team_config.py)和[配置指南](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md)。预算安排见 [设置 token 预算、步数与运行并发](../operations/token-step-concurrency-limits.md)。

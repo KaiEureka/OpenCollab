@@ -34,18 +34,18 @@
 <p>隔离任务停止或补丁导出失败后，先保存完整改动，再清理工作树和容器。运行结果、错误信息和 SDK 指标会指出入口补丁或保留位置。父成员看到的摘要可能已截断，恢复时应读取完整补丁或保留目录里的实际文件。</p>
 <h2 id="从结果找到文件">从结果找到文件</h2>
 <p>显式隔离的 Team 入口会在回收前保存补丁，位置可从 <code>result.metrics.get(&quot;entry_patch&quot;)</code> 读取。调用方关闭轨迹后仍可获得这一份恢复材料。子任务出现失败或停止时，会尽可能在结果中交付已有改动，较大补丁则可能报告保留工作区。</p>
-<p>本地恢复位置是工作树路径。容器恢复位置形如完整容器 ID 加容器内目录，错误和保留提示会给出真实值。可以用 <code>docker cp CONTAINER_ID:/reported/workspace ./recovered-workspace</code> 把目录导出到一个新的恢复目录，再检查 Git 差异与任务产物。替换命令中的标记时，应逐项使用报错给出的值。</p>
+<p>本地恢复位置是工作树路径。容器恢复位置形如完整容器 ID 加容器内目录，错误和保留提示会给出真实值。可以用 <code>docker cp CONTAINER_ID:/reported/workspace ./recovered-workspace</code> 把目录导出到一个新的恢复目录，再检查 Git 差异与任务产物。命令中的容器 ID 和工作区路径使用报错给出的真实值。</p>
 <p>对于已经获得的补丁，先阅读内容，再在目标目录执行 <code>git apply --check /path/to/recovery.patch</code>，确认可应用后执行实际采纳。需要保留本机正在修改的文件时，先把恢复材料放在独立目录进行比较，再决定合并方式。</p>
 <h2 id="区分展示长度与捕获失败">区分展示长度与捕获失败</h2>
-<p>父任务通知和工具输出会限制展示长度，这有助于控制模型上下文。完整补丁捕获在独立的交付路径完成。导出失败、来源检查失败或完整内容无法进入通知时，原始文件仍是恢复依据。</p>
+<p>父任务通知和工具输出有展示长度限制，完整补丁会另行保存。导出失败、来源检查失败或通知无法容纳完整补丁时，从保留工作区读取原始文件进行恢复。</p>
 <p>带采纳能力的工作区在交付未完成时会保留物理内容，并拒绝过早释放。原生工作树在后续成功取得完整 <code>get_diff()</code> 后，可以清除相关保留状态并继续清理。自定义提供器也应提供对应的导出与重试流程。Team 采用冲突时给出的完整恢复补丁，应在释放运行资源前另行保存。</p>
 <h2 id="取消与资源所有权">取消与资源所有权</h2>
 <p>取消先撤销环境后续操作，并处理在途命令和文件操作，再进入资源释放。已撤销环境会阻止后续模型调用继续产生工具副作用。Workflow 中排队等待的调用也会检查环境状态。</p>
 <p>运行自己创建的工作树或容器由相应池拥有。外部传入的父环境由调用方拥有，连接已有容器时该容器仍由原服务管理。某个审阅环境依赖另一候选目录时，清理会先处理依赖者，保留来源直到导出与释放都结束。具体接法见 <a href="../execution-environments/index.html">让任务在指定目录或现有容器里执行</a>。</p>
-<p>如果清理再次失败，保存原报错、完整资源 ID 和已导出的材料，并对同一资源继续处理。用 <code>git worktree list</code>、目标目录文件和 <code>docker inspect</code> 核对实际状态，之后再进行针对性的回收。出现仍在运行的任务或未导出的改动时，应先完成它们的停止与保存。</p>
+<p>清理失败后，保存报错、完整资源 ID 和已导出的材料。用 <code>git worktree list</code>、目标目录文件和 <code>docker inspect</code> 确认资源状态，停止仍在运行的任务并导出改动，再重试清理对应资源。</p>
 <p>恢复行为可对照<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/session-isolation.zh-CN.md">隔离指南</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/_team_candidate_environment.py">候选环境保留机制</a>及<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/docker_isolation.py">Docker 池清理</a>。完整交付过程见 <a href="../candidate-delivery/index.html">把候选结果采纳到交付目录</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/workspace-recovery.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/workspace-recovery.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E7%BB%93%E6%9E%9C%E6%89%BE%E5%88%B0%E6%96%87%E4%BB%B6">从结果找到文件</a><a href="#%E5%8C%BA%E5%88%86%E5%B1%95%E7%A4%BA%E9%95%BF%E5%BA%A6%E4%B8%8E%E6%8D%95%E8%8E%B7%E5%A4%B1%E8%B4%A5">区分展示长度与捕获失败</a><a href="#%E5%8F%96%E6%B6%88%E4%B8%8E%E8%B5%84%E6%BA%90%E6%89%80%E6%9C%89%E6%9D%83">取消与资源所有权</a></aside>
 </div>

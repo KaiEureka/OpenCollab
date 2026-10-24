@@ -162,7 +162,7 @@ async def run_example(workspace):
 </tr>
 </tbody>
 </table>
-<p><code>agent</code> 的 <code>tools</code> 采用工具对象序列，运行实现也承接已配置的工具组选择。<code>agent_run</code> 支持工具组名称或对象序列。<code>isolation</code> 的运行实现接受布尔值、策略字符串或省略值，省略继承当前策略，<code>True</code> 选 worktree，<code>False</code> 选 shared。公开 Protocol 当前仍保留较窄的注解，开发时可结合实现与 SDK 用例核对。</p>
+<p><code>agent</code> 的 <code>tools</code> 采用工具对象序列，运行实现也支持已配置的工具组。<code>agent_run</code> 支持工具组名称或对象序列。<code>isolation</code> 的运行实现接受布尔值、策略字符串或省略值，省略继承当前策略，<code>True</code> 选 worktree，<code>False</code> 选 shared。公开 Protocol 当前仍保留较窄的注解，开发时可结合实现与 SDK 用例核对。</p>
 <p><code>schema</code> 应提供对象形状的 JSON Schema，捕获失败会作一次纠正尝试。<code>draft_findings</code> 用于探索前收集已有证据草稿，后续仍需实际探索和验证。自由文本路径的 <code>tool_choice</code> 和 <code>thinking</code> 按调用配置模型行为。</p>
 <p><code>WorkflowAgentResult</code> 包含 <code>output</code>、<code>status</code>、<code>reason</code>、<code>tokens</code>、<code>steps</code>、<code>session_id</code>、<code>hard_budget_tokens</code>、<code>soft_budget_tokens</code>、<code>cleanup_complete</code>、<code>workspace_ready</code> 和 <code>observation_errors</code>。清理完成后才能把用量视为稳定结果，依赖同一环境的后续步骤还应读取 <code>workspace_ready</code>。</p>
 <h2 id="集合组合与候选">集合、组合与候选</h2>
@@ -207,9 +207,9 @@ async def run_example(workspace):
 </tr>
 </tbody>
 </table>
-<p>当前 <code>pipeline</code> 在 <code>workflow_collections.py</code> 实现，SDK 嵌套集合测试覆盖实际调用，公开 Protocol 尚漏列该方法。集合普通异常转为单元 None，预算耗尽、环境撤销和取消按对应层级继续传播。</p>
-<p><code>CandidateRun</code> 保存 <code>label</code>、<code>output</code>、<code>diff</code>、<code>test_records</code>、<code>verified_targets</code>、<code>lifecycle_errors</code>、<code>source_revision</code>、<code>delivery_diff</code>、<code>delivery_paths</code>、<code>delivery_source_diff</code>，并提供 <code>effective_diff</code> 属性。候选执行、选择和采用是可分别观察的步骤。当前候选子流程自身未注入新的候选后端，继续复用普通子函数可保持资源关系清晰。</p>
-<h2 id="工作区验证与观察">工作区、验证与观察</h2>
+<p><code>pipeline</code> 的实际签名为 <code>pipeline(items, *stages, stop_on_none=True)</code>，由 <code>workflow_collections.py</code> 实现。当前公开 Protocol 的注解漏列此方法，编辑器可能提示属性缺失，SDK 嵌套集合用例可供核对。集合普通异常转为单元 None，预算耗尽、环境撤销和取消按对应层级继续传播。</p>
+<p><code>CandidateRun</code> 保存 <code>label</code>、<code>output</code>、<code>diff</code>、<code>test_records</code>、<code>verified_targets</code>、<code>lifecycle_errors</code>、<code>source_revision</code>、<code>delivery_diff</code>、<code>delivery_paths</code>、<code>delivery_source_diff</code>，并提供 <code>effective_diff</code> 属性。候选执行、选择和采用是可分别观察的步骤。当前候选子流程自身未注入新的候选后端，子流程可以通过普通子函数继续拆分逻辑。</p>
+<h2 id="工作区验证与运行记录">工作区、验证与运行记录</h2>
 <table>
 <thead>
 <tr>
@@ -291,9 +291,9 @@ async def run_example(workspace):
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a>、<a href="../workflow-agent-calls/index.html">在 Workflow 中调用 Agent 并处理结果</a>、<a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a>、<a href="../compose-workflow-candidates/index.html">组合子 Workflow 并采用候选结果</a>、<a href="../workflow-testing-debugging/index.html">验证与调试自定义 Workflow</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-public-api-map.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-public-api-map.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
-<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%90%AF%E5%8A%A8%E4%B8%80%E6%AC%A1%E8%BF%90%E8%A1%8C">启动一次运行</a><a href="#%E4%BC%9A%E8%AF%9D%E6%93%8D%E4%BD%9C">会话操作</a><a href="#%E9%9B%86%E5%90%88%E7%BB%84%E5%90%88%E4%B8%8E%E5%80%99%E9%80%89">集合、组合与候选</a><a href="#%E5%B7%A5%E4%BD%9C%E5%8C%BA%E9%AA%8C%E8%AF%81%E4%B8%8E%E8%A7%82%E5%AF%9F">工作区、验证与观察</a><a href="#%E5%B7%A5%E5%85%B7%E7%8E%AF%E5%A2%83%E5%92%8C%E7%BB%93%E6%9E%9C%E7%B1%BB%E5%9E%8B">工具、环境和结果类型</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
+<aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%90%AF%E5%8A%A8%E4%B8%80%E6%AC%A1%E8%BF%90%E8%A1%8C">启动一次运行</a><a href="#%E4%BC%9A%E8%AF%9D%E6%93%8D%E4%BD%9C">会话操作</a><a href="#%E9%9B%86%E5%90%88%E7%BB%84%E5%90%88%E4%B8%8E%E5%80%99%E9%80%89">集合、组合与候选</a><a href="#%E5%B7%A5%E4%BD%9C%E5%8C%BA%E9%AA%8C%E8%AF%81%E4%B8%8E%E8%BF%90%E8%A1%8C%E8%AE%B0%E5%BD%95">工作区、验证与运行记录</a><a href="#%E5%B7%A5%E5%85%B7%E7%8E%AF%E5%A2%83%E5%92%8C%E7%BB%93%E6%9E%9C%E7%B1%BB%E5%9E%8B">工具、环境和结果类型</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>
 </body>
 </html>

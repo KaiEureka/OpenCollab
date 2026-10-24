@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">安装与开始使用</p>
 <h1 id="使用-base-单-agent-与-single2-配置">使用 Base 单 Agent 与 Single2 配置</h1>
-<p><code>OpenCollab.agent()</code> 可以直接运行一个 Agent。当前 Base 默认配置映射到 Single2，<code>agent2()</code> 则明确选择 Single2。选择 Base 适合跟随框架默认实现，指定 <code>profile=&quot;single2&quot;</code> 适合需要在运行记录中固定实现名称的程序。这个映射自 OpenCollab 0.8 起采用，查看旧版本时应结合对应标签的文档。</p>
+<p><code>OpenCollab.agent()</code> 可以直接运行一个 Agent。当前 Base 默认配置映射到 Single2，<code>agent2()</code> 则明确选择 Single2。使用 Base 可以跟随框架的默认实现，指定 <code>profile=&quot;single2&quot;</code> 可以明确选择 Single2。这个映射自 OpenCollab 0.8 起采用，查看旧版本时应结合对应标签的文档。</p>
 <p>可以通过公开的 <code>opencollab.profiles</code> 在本地读取安装版本的映射，以下程序打印 <code>single2</code>、<code>single2</code> 和 <code>single2</code>。</p>
 <pre><code class="language-python">from opencollab.profiles import BASE_PROFILE, resolve_profile_name
 
@@ -60,10 +60,10 @@ async def main() -&gt; None:
 
 asyncio.run(main())
 </code></pre>
-<p>在已安装 OpenCollab 的 Python 环境运行脚本后，应看到完成状态、回答和实际 profile。<code>artifacts</code> 目录必须为新目录或空目录。第二次运行时换一个目录名，便于把结果和会话对应起来。<code>completed</code> 表示执行正常结束，任务要求的测试结果仍应从实际命令输出中判断。若任务以 <code>stopped</code> 结束，先结合 <code>reason</code> 查看是步数、token 还是期限触发，再决定后续额度。<code>failed</code> 则应查看错误和已有产物。</p>
+<p>在已安装 OpenCollab 的 Python 环境运行脚本，程序会打印状态、回答和实际 profile。<code>artifacts</code> 目录必须为新目录或空目录，每次运行使用新的目录保存记录。<code>completed</code> 表示执行正常结束，测试是否通过由实际命令输出判断。<code>stopped</code> 的原因记录在 <code>reason</code> 中，可据此调整步数、token 预算或期限。<code>failed</code> 时查看错误与已有产物。</p>
 <h2 id="需要修改和执行命令时">需要修改和执行命令时</h2>
 <p>默认 <code>tools=&quot;coding&quot;</code> 提供按顺序排列的 <code>bash</code>、<code>file_read</code>、<code>file_write</code>、<code>apply_patch</code>、<code>git_diff</code> 和 <code>grep</code>。Single2 默认最多运行 200 步。Bash 每个输出流保留最多 10,000 字符，较大的工具结果在上下文视图中保留头尾，总字符限额为 16,000。</p>
-<p>默认 Bash 要求能够隔离操作系统进程的环境，例如 Docker。使用本地环境读写文件时，文件工具仍然可用。若任务确实需要直接在宿主项目中执行命令，可显式构造工具。下面的代码放在已有 <code>async</code> 函数中，<code>client</code> 沿用前面的客户端。</p>
+<p>默认 Bash 要求执行环境具备操作系统进程隔离能力，例如 Docker。本地环境可以使用文件读写工具。需要直接在宿主项目中执行命令时，通过以下方式构造工具。代码放在已有 <code>async</code> 函数中，<code>client</code> 沿用前面的客户端。</p>
 <pre><code class="language-python">from opencollab.tools import builtin_tools, profile_tool_limits
 
 tools = builtin_tools(
@@ -78,7 +78,7 @@ result = await client.agent2(
     max_steps=80,
 )
 </code></pre>
-<p><code>headless=False</code> 允许这些工具使用宿主 shell，应在预期承载命令执行的工作区中使用。进程隔离和 Git 工作树解决不同问题，环境选择见相关指南。</p>
+<p><code>headless=False</code> 允许这些工具使用宿主 shell，命令会影响宿主环境。Git 工作树分开文件改动，进程隔离由执行环境提供，具体选择见相关指南。</p>
 <h2 id="调整提示与执行额度">调整提示与执行额度</h2>
 <p><code>system_prompt=</code> 会替换这次调用的默认系统提示。明确的工具对象保留自己的配置，模型、采样与请求超时由客户端设置。<code>budget</code> 限制会话累计输入与输出 token，<code>max_steps</code> 限制执行步数，单次模型输出另由 <code>max_output_tokens</code> 控制。旧参数 <code>steps</code> 是步数别名，同一次调用同时提供它和 <code>max_steps</code> 会报错。</p>
 <p><code>OPENCOLLAB_UNBOUNDED_LIMITS=true</code> 时，Base 和 Single2 仍遵守调用中显式给出的正数预算和步数，省略的限制采用无限制设置。查看 <code>result.status</code>、<code>result.reason</code> 与保存记录可以区分完成、额度停止和失败。需要成员自行决定交接时进入 Team，需要 Python 明确控制阶段时进入 Workflow。</p>
@@ -87,7 +87,7 @@ result = await client.agent2(
 <h2 id="相关指南">相关指南</h2>
 <p><a href="../python-sdk-entrypoints/index.html">从 Python 调用 OpenCollab</a>　<a href="../tool-selection/index.html">选择 Agent 能使用的工具</a>　<a href="../isolation-overview/index.html">隔离怎么选</a>　<a href="../run-results/index.html">读取运行结果与判断任务是否完成</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/base-single2.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/setup/base-single2.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E5%85%88%E5%AE%8C%E6%88%90%E4%B8%80%E6%AC%A1%E5%8F%AA%E8%AF%BB%E4%BB%BB%E5%8A%A1">先完成一次只读任务</a><a href="#%E9%9C%80%E8%A6%81%E4%BF%AE%E6%94%B9%E5%92%8C%E6%89%A7%E8%A1%8C%E5%91%BD%E4%BB%A4%E6%97%B6">需要修改和执行命令时</a><a href="#%E8%B0%83%E6%95%B4%E6%8F%90%E7%A4%BA%E4%B8%8E%E6%89%A7%E8%A1%8C%E9%A2%9D%E5%BA%A6">调整提示与执行额度</a><a href="#%E6%9D%A5%E6%BA%90">来源</a><a href="#%E7%9B%B8%E5%85%B3%E6%8C%87%E5%8D%97">相关指南</a></aside>
 </div>

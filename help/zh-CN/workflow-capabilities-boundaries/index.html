@@ -31,10 +31,10 @@
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
 <h1 id="判断-workflow-能实现的范围与运行边界">判断 Workflow 能实现的范围与运行边界</h1>
-<p>协作想法可以先拆成三个问题。控制顺序怎样表达，模型和工具怎样执行，运行外的业务状态由谁管理。普通 Python 能表达分支、循环、函数组合和动态依赖，OpenCollab 的 <code>ctx</code> 管理会话、容量、额度与候选环境，应用服务负责自己的数据库、外部系统和跨主机协调。按这三个来源安排方案，可以很快找到可执行的开发位置。</p>
+<p>协作想法可以先拆成三个问题。控制顺序怎样表达，模型和工具怎样执行，运行外的业务状态由谁管理。普通 Python 能表达分支、循环、函数组合和动态依赖，OpenCollab 的 <code>ctx</code> 管理会话、容量、额度与候选环境，应用服务负责自己的数据库、外部系统和跨主机协调。确定每部分由谁负责后，就可以选择对应的接口。</p>
 <h2 id="任意想法怎样变成程序">任意想法怎样变成程序</h2>
 <p>只要能用当前解释器、依赖和权限实现，Workflow 函数就能导入模块、调用业务函数、处理数据，再按输入或中间结果创建后续步骤。一个探索流程可以先观察资料，再判断缺少哪些信息，动态生成任务列表，最后汇总结果。分支用 <code>if</code>，有限迭代用 <code>for</code>，反馈循环用 <code>while</code>，这些语法由 Python 提供。</p>
-<p>想法需要转成可观察的输入、行动和停止条件。工作流代码决定模型结果怎样影响下一步，模型的报告随后还需由文件、工具回执和实际检查支持。较长阻塞操作应交给异步库、线程或应用拥有的独立进程，以便保留事件循环的并发与取消响应。</p>
+<p>设计流程时，先写出输入、操作和停止条件。工作流代码读取模型结果，决定下一步操作，并通过文件、工具回执和实际检查确认结果。较长阻塞操作应交给异步库、线程或应用拥有的独立进程，以便保留事件循环的并发与取消响应。</p>
 <h2 id="当前能力矩阵">当前能力矩阵</h2>
 <table>
 <thead>
@@ -139,7 +139,7 @@
 </table>
 <h2 id="动态图与组合深度">动态图与组合深度</h2>
 <p>Workflow 可以自行维护节点表、完成结果和依赖集合，选择就绪节点交给 <code>parallel</code>，再把结果送入下一批。通用图的节点语义、失败传播和停止条件由作者定义。Weave 已提供分组依赖规划，依赖环中的组会合入同一个会话，适合采用其现成分组协议的任务。</p>
-<p>普通异步子函数可以按业务拆分并共享 <code>ctx</code>。候选子流程建立独立候选环境，继续共享父会话容量、集合容量与绝对期限。当前默认候选子上下文未注入另一层候选后端，子流程内部再次建立候选需要集成提供相应能力。这样区分函数嵌套与环境嵌套，能够准确安排组合方式。</p>
+<p>普通异步子函数可以按业务拆分并共享 <code>ctx</code>。候选子流程建立独立候选环境，继续共享父会话容量、集合容量与绝对期限。当前默认候选子上下文未注入另一层候选后端，子流程内部再次建立候选需要集成提供相应能力。子函数适合继续拆分逻辑，候选后端负责额外环境的分配与交付。</p>
 <h2 id="代码与工具分别在哪里执行">代码与工具分别在哪里执行</h2>
 <table>
 <thead>
@@ -178,18 +178,18 @@
 </tbody>
 </table>
 <p>worktree 共享操作系统和 Git 对象存储，容器环境中的 worktree 仍位于该容器。Docker 策略需要可用 Docker daemon 和合适镜像，默认网络为 none，挂载和网络按 provider 配置。宿主 Python 直接使用 <code>Path</code> 或 <code>subprocess</code> 时，行为仍取决于宿主进程的位置，Agent 的 Docker 配置主要决定工具环境。</p>
-<p>自定义 provider 工厂每次为运行和策略创建 <code>EnvironmentPool</code>，负责 acquire、release 与 adopt。工具权限、工作区检查与输出限制仍按原协议生效。全环境候选后端还可决定活服务和文件如何一起交付。</p>
+<p>自定义 provider 工厂每次为运行和策略创建 <code>EnvironmentPool</code>，负责 acquire、release 与 adopt。自定义 provider 同样遵循工具权限、工作区检查与输出限制。全环境候选后端还可决定活服务和文件如何一起交付。</p>
 <h2 id="运行时源文件与业务服务">运行时源文件与业务服务</h2>
-<p>Team 成员可以用编辑工具生成 Python 文件，再通过 <code>manage_workflow launch</code> 在自己的环境启动。成员需要 bash 权限、安装了 OpenCollab 的 Python，以及其子会话要用的工具授权。启动立即返回 id，创建者随后查询、等待和停止，父成员结束时清理剩余子运行。它使运行时生成编排代码成为已有执行路径。</p>
+<p>Team 成员可以用编辑工具生成 Python 文件，再通过 <code>manage_workflow launch</code> 在自己的环境启动。成员需要 bash 权限、安装了 OpenCollab 的 Python，以及其子会话要用的工具授权。启动立即返回 id，创建者随后查询、等待和停止，父成员结束时清理剩余子运行。</p>
 <p>普通 SDK Workflow 的并发参数管理本次运行中的会话和集合任务。多主机队列、远端 worker 注册、全局状态和跨系统资源所有权需要应用组件连接。保存的 <code>workflow.json</code>、会话和轨迹可追溯执行，通用控制流继续执行所需的状态与副作用处理则由应用设计。Weave 的显式状态继续可作为现有、范围明确的实现参考。</p>
 <h2 id="验证一个方案是否成立">验证一个方案是否成立</h2>
-<p>先选最小真实输入，把控制流执行出来，记录实际发生的 Agent 调用与工具操作。然后确认文件、服务或返回值是否符合需求。<code>completed</code> 表达入口完成和执行状态，任务是否正确还需要真实入口、测试或应用验证器。依据这条可观察路径，就能区分一个想法已经由 Python 实现、需要接入某个 ctx 方法，还是需要应用服务补足。</p>
+<p>用一个小任务运行工作流，查看每次 Agent 调用和工具执行，再检查生成的文件、服务行为或返回值。<code>completed</code> 表示工作流入口已完成，任务结果由项目测试或应用验证器检查。根据检查结果，决定下一步需要调整流程代码、增加 ctx 调用，还是接入应用服务。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/sdk/client.py#L408">opencollab/sdk/client.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/session-isolation.md#L5">docs/session-isolation.md</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/examples/member-authored-workflow/README.md#L3">examples/member-authored-workflow/README.md</a>。</p>
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../workflow-programming-model/index.html">理解 Workflow 的编程模型与自由度</a>、<a href="../workflow-composition-hierarchy/index.html">理解 Agent、Team 与 Workflow 的调用层级</a>、<a href="../workflow-failure-recovery-lifecycle/index.html">处理 Workflow 的失败、重试与恢复</a>、<a href="../member-authored-workflow/index.html">让成员编写并管理自己的子 Workflow</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-capabilities-boundaries.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-capabilities-boundaries.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%BB%E6%84%8F%E6%83%B3%E6%B3%95%E6%80%8E%E6%A0%B7%E5%8F%98%E6%88%90%E7%A8%8B%E5%BA%8F">任意想法怎样变成程序</a><a href="#%E5%BD%93%E5%89%8D%E8%83%BD%E5%8A%9B%E7%9F%A9%E9%98%B5">当前能力矩阵</a><a href="#%E5%8A%A8%E6%80%81%E5%9B%BE%E4%B8%8E%E7%BB%84%E5%90%88%E6%B7%B1%E5%BA%A6">动态图与组合深度</a><a href="#%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%B7%A5%E5%85%B7%E5%88%86%E5%88%AB%E5%9C%A8%E5%93%AA%E9%87%8C%E6%89%A7%E8%A1%8C">代码与工具分别在哪里执行</a><a href="#%E8%BF%90%E8%A1%8C%E6%97%B6%E6%BA%90%E6%96%87%E4%BB%B6%E4%B8%8E%E4%B8%9A%E5%8A%A1%E6%9C%8D%E5%8A%A1">运行时源文件与业务服务</a><a href="#%E9%AA%8C%E8%AF%81%E4%B8%80%E4%B8%AA%E6%96%B9%E6%A1%88%E6%98%AF%E5%90%A6%E6%88%90%E7%AB%8B">验证一个方案是否成立</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>

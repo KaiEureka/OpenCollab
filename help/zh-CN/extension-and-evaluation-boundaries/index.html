@@ -34,7 +34,7 @@
 <p>OpenCollab 负责执行 Agent、Team 与 Workflow，组织会话、工具和交付。调用方提供任务目标、业务输入和验收方式。扩展时先判断需要增加一种操作、改变协作步骤，还是接入外部运行能力，再选择相应的公开入口。</p>
 <h2 id="业务目标与运行机制怎样分工">业务目标与运行机制怎样分工</h2>
 <p>“修复某个仓库问题”需要任务输入、项目工作区和明确的验证命令。OpenCollab 提供模型交互、工具执行、预算、取消与产物记录。修复是否满足项目要求，应由项目测试和实际变更判断。若任务是调用业务服务，也应使用该服务的查询与状态确认机制检查结果。</p>
-<p>这让调用方可以保留领域逻辑。例如一个工单处理服务可以通过自定义工具暴露查询能力，由 Workflow 规定何时提取工单、何时调用 Agent 和何时保存业务结果。模型能选择工具的范围由调用方显式给出。</p>
+<p>业务逻辑由调用方维护。例如一个工单处理服务可以通过自定义工具暴露查询能力，由 Workflow 规定何时提取工单、何时调用 Agent 和何时保存业务结果。模型能选择工具的范围由调用方显式给出。</p>
 <h2 id="选择合适的扩展入口">选择合适的扩展入口</h2>
 <table>
 <thead>
@@ -77,12 +77,12 @@
 </tr>
 </tbody>
 </table>
-<p>只需要一项工单查询时，实现一个工具并传给 <code>agent(tools=[tool])</code> 即可。需要严格规定“查询、实施、测试、交付”的次序时，用 Workflow 把这些步骤写成 Python。若已有工具与 SDK 可以表达任务，优先沿用它们，避免把业务流程扩散到框架内部。</p>
+<p>只需要一项工单查询时，实现一个工具并传给 <code>agent(tools=[tool])</code> 即可。需要严格规定“查询、实施、测试、交付”的次序时，用 Workflow 把这些步骤写成 Python。已有工具与 SDK 能表达任务时，直接在应用中组合即可。</p>
 <h2 id="为什么核心通过接口使用外部能力">为什么核心通过接口使用外部能力</h2>
-<p>代码依赖方向为 <code>bootstrap → adapters → application → domain</code>。domain 保存纯状态和值对象，application 编写运行用例并依赖端口，adapters 实现模型、工具、环境和存储，bootstrap 组合这些实现。已有架构检查维护这项依赖关系。</p>
-<p>扩展新的外部执行服务时，核心用例只需知道它能申请环境、读写文件和执行命令。具体连接、资源 ID 和清理行为留在适配实现。公开模块 <code>opencollab.tools</code>、<code>opencollab.environments</code> 和 <code>opencollab.workflows</code> 为集成保留较窄的依赖面，便于后续版本维护。</p>
+<p>代码依赖方向为 <code>bootstrap → adapters → application → domain</code>。domain 保存纯状态和值对象，application 编写运行用例并依赖端口，adapters 实现模型、工具、环境和存储，bootstrap 组合这些实现。</p>
+<p>扩展新的外部执行服务时，核心用例只需知道它能申请环境、读写文件和执行命令。具体连接、资源 ID 和清理行为留在适配实现。集成代码可以从公开模块 <code>opencollab.tools</code>、<code>opencollab.environments</code> 和 <code>opencollab.workflows</code> 导入所需能力，便于跟随包版本维护。</p>
 <h2 id="离线读取与分析从哪里接入">离线读取与分析从哪里接入</h2>
-<p>普通应用从包根导入 <code>OpenCollab</code>、<code>RunResult</code>、<code>RunError</code>、<code>workflow</code>、<code>RunControl</code>、<code>RunEvent</code>、<code>BudgetSnapshot</code> 和 <code>BudgetDecision</code>。按能力选择公开模块，可以让服务在升级时沿包版本继续维护集成。</p>
+<p>普通应用从包根导入 <code>OpenCollab</code>、<code>RunResult</code>、<code>RunError</code>、<code>workflow</code>、<code>RunControl</code>、<code>RunEvent</code>、<code>BudgetSnapshot</code> 和 <code>BudgetDecision</code>。按所需能力选择公开模块，升级时再核对对应版本的接口。</p>
 <table>
 <thead>
 <tr>
@@ -123,10 +123,10 @@
 <h2 id="oc-与-oce-怎样配合">OC 与 OCE 怎样配合</h2>
 <p>OpenCollab-Eval 维护 benchmark 数据、实验配置、运行与远端执行，调用 OpenCollab 的公开运行接口取得会话与交付记录。任务提示词、数据构造和正式评分需要按评测项目对应版本解释。OC 的 <code>completed</code> 表示运行完成，正式评测结果来自实际验证过程。</p>
 <p>研究结果的入口包括 <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/results.md">benchmark 结果说明</a>与 <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/adherence.md">Adherence 说明</a>。README 图表由 <code>docs/benchmark-results.json</code> 经 <code>scripts/generate_benchmark_assets.py</code> 生成，数据对应已记录实验。要分析自己的新运行，沿 <a href="https://github.com/RISE-X-Lab/OpenCollab-Eval/blob/main/src/opencollab_eval/experiment/README.md">OCE 实验工具</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab-Eval/blob/main/experiment/README.md">原始研究材料</a>选择适用的报告方式，保留任务、模型、角色、工具、预算、上下文与实际验证结果。</p>
-<p>当前上下文计划已接入角色、团队、技能、派发任务和项目概览。通用记忆或 RAG 来源需要真实内容生产者和保留需求。环境提供器可以扩展专用后端，VM 后端的状态见<a href="../vm-environment-extension/index.html">规划说明</a>。已有实现和扩展设想应分别按源码与实现记录判断。</p>
+<p>当前上下文来源包括角色、团队、技能、派发任务和项目概览。通用记忆或 RAG 来源需要自行接入，并确定内容来源与保留方式。环境提供器可以扩展专用后端，VM 后端的规划见<a href="../vm-environment-extension/index.html">相关说明</a>。</p>
 <p>扩展原则见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/AGENTS.md">仓库架构规则</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/README.md">包指南</a>，环境接入见 <a href="../custom-environment-providers/index.html">接入自己的执行环境</a>，业务服务集成见 <a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/extension-and-evaluation-boundaries.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/architecture/extension-and-evaluation-boundaries.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%B8%9A%E5%8A%A1%E7%9B%AE%E6%A0%87%E4%B8%8E%E8%BF%90%E8%A1%8C%E6%9C%BA%E5%88%B6%E6%80%8E%E6%A0%B7%E5%88%86%E5%B7%A5">业务目标与运行机制怎样分工</a><a href="#%E9%80%89%E6%8B%A9%E5%90%88%E9%80%82%E7%9A%84%E6%89%A9%E5%B1%95%E5%85%A5%E5%8F%A3">选择合适的扩展入口</a><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%A0%B8%E5%BF%83%E9%80%9A%E8%BF%87%E6%8E%A5%E5%8F%A3%E4%BD%BF%E7%94%A8%E5%A4%96%E9%83%A8%E8%83%BD%E5%8A%9B">为什么核心通过接口使用外部能力</a><a href="#%E7%A6%BB%E7%BA%BF%E8%AF%BB%E5%8F%96%E4%B8%8E%E5%88%86%E6%9E%90%E4%BB%8E%E5%93%AA%E9%87%8C%E6%8E%A5%E5%85%A5">离线读取与分析从哪里接入</a><a href="#oc-%E4%B8%8E-oce-%E6%80%8E%E6%A0%B7%E9%85%8D%E5%90%88">OC 与 OCE 怎样配合</a></aside>
 </div>

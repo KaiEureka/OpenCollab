@@ -31,7 +31,7 @@
 <main id="content" tabindex="-1">
 <p class="category">Workflow 与子 Workflow</p>
 <h1 id="理解-workflow-的编程模型与自由度">理解 Workflow 的编程模型与自由度</h1>
-<p>Workflow 的控制者是一个普通异步 Python 函数。函数按代码决定先做什么、根据什么继续、何时返回，Agent 处理被交给它的具体任务。<code>ctx</code> 提供建立会话和管理环境资源的方法，Python 本身提供变量、函数、条件、循环、异常处理和模块导入。先区分这两个来源，就能判断一个协作想法该写在哪里。</p>
+<p>Workflow 的控制者是一个普通异步 Python 函数。函数按代码决定先做什么、根据什么继续、何时返回，Agent 处理被交给它的具体任务。<code>ctx</code> 提供建立会话和管理环境资源的方法，Python 本身提供变量、函数、条件、循环、异常处理和模块导入。编写流程时，用 Python 表达控制逻辑，用 ctx 调用会话并取得结果。</p>
 <h2 id="从普通计算到-agent-调用">从普通计算到 Agent 调用</h2>
 <p>以下文件包含一个可直接传给 SDK 的异步函数。任务数由输入决定，后续解释是否执行由结果决定。</p>
 <pre><code class="language-python">async def explain_numbers(ctx, args):
@@ -51,7 +51,7 @@
         explanations.append(answer)
     return {'total': total, 'explanations': explanations}
 </code></pre>
-<p>列表转换、求和、<code>if</code>、<code>for</code>、<code>break</code> 和最终字典都是 Python 行为。<code>ctx.agent</code> 创建模型会话，<code>ctx.tokens_remaining</code> 和 <code>ctx.time_low</code> 读取运行资源。输入改变时，实际调用数随之改变，作者可以把同样方式扩展成探索、修复或收集任务。</p>
+<p>列表转换、求和、<code>if</code>、<code>for</code>、<code>break</code> 和最终字典都是 Python 行为。<code>ctx.agent</code> 创建模型会话，<code>ctx.tokens_remaining</code> 和 <code>ctx.time_low</code> 读取运行资源。输入改变时，实际调用数随之改变。同样的写法也适用于探索、修复和收集任务。</p>
 <h2 id="用结果形成反馈循环">用结果形成反馈循环</h2>
 <p><code>while</code> 可以根据检查结果继续推进。例如每轮让 Agent 修改文件，随后调用真实验证器，验证通过时返回，失败时把报告放入下一轮提示词。循环需要明确的结束条件，如轮数、剩余时间、额度和检查结果。固定次数的 <code>for</code> 循环适合重试或有限候选探索。</p>
 <p>结构化输出可把 Agent 的判断变成可访问的字典字段，之后的分支仍由 Python 执行。模型返回了 <code>needs_fix=true</code> 时，只有代码读取该字段并调用修复步骤，才会真的进入修复。模型在回答中承诺运行检查时，后续还需看到工具执行与检查回执。</p>
@@ -76,13 +76,13 @@ async def composite(ctx, args):
 <p>宿主直接运行的 Workflow，其 Python 编排位于调用方进程。配置 Docker 会话策略时，Agent 的文件和 shell 工具进入容器，普通 Python 文件操作仍在宿主解释器执行。Team 成员通过 <code>manage_workflow</code> 启动源文件时，该 Python 进程则位于成员执行环境。写文件或运行任意业务库前，应先确定代码所处的进程及路径含义。</p>
 <h2 id="声明与执行">声明与执行</h2>
 <p><code>@workflow</code> 附着名称、说明和描述性阶段，便于按名称发现。运行时真正执行的是 <code>await fn(ctx, args)</code>。<code>phases</code> 元数据描述流程，<code>ctx.phase</code> 产生阶段事件，二者都由作者安排。</p>
-<p>因此，从已有内置流程参数调整，到自定义顺序函数、动态循环和并行集合，控制方式按实际入口逐渐展开。先把想法写成可执行控制流，再为每次会话选择工具和环境，最后用实际检查确认交付，可以准确观察每一层已经做了什么。</p>
+<p>开发时，先把步骤写成可执行控制流，为每次会话选择工具和环境，再通过实际检查确认交付。需要更多控制时，可以逐步加入分支、循环和并行集合。</p>
 <h2 id="源码依据">源码依据</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow.py#L1">opencollab/application/workflow.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/application/workflow_registry.py#L18">opencollab/application/workflow_registry.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/_workflow_runtime_execution.py#L103">opencollab/bootstrap/_workflow_runtime_execution.py</a>、<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md#L251">docs/evaluation-runtime.md</a>。</p>
 <h2 id="相关章节">相关章节</h2>
 <p><a href="../author-custom-workflow/index.html">编写第一个自定义 Workflow</a>、<a href="../workflow-control-granularity/index.html">选择 Workflow 的入口与控制粒度</a>、<a href="../workflow-dataflow-structured-io/index.html">设计 Workflow 的输入输出与步骤间数据流</a>、<a href="../workflow-parallel-pipeline/index.html">在 Workflow 中并行处理多项任务</a>、<a href="../workflow-public-api-map/index.html">按开发任务查找 Workflow 公开 API</a>、<a href="../workflow-capabilities-boundaries/index.html">判断 Workflow 能实现的范围与运行边界</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-programming-model.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/workflow/workflow-programming-model.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E6%99%AE%E9%80%9A%E8%AE%A1%E7%AE%97%E5%88%B0-agent-%E8%B0%83%E7%94%A8">从普通计算到 Agent 调用</a><a href="#%E7%94%A8%E7%BB%93%E6%9E%9C%E5%BD%A2%E6%88%90%E5%8F%8D%E9%A6%88%E5%BE%AA%E7%8E%AF">用结果形成反馈循环</a><a href="#%E5%87%BD%E6%95%B0%E4%B8%8E%E4%B8%8A%E4%B8%8B%E6%96%87%E7%9A%84%E5%88%86%E5%B7%A5">函数与上下文的分工</a><a href="#%E5%BC%82%E6%AD%A5%E4%BB%A3%E7%A0%81%E5%AE%9E%E9%99%85%E5%9C%A8%E5%93%AA%E9%87%8C%E6%89%A7%E8%A1%8C">异步代码实际在哪里执行</a><a href="#%E5%A3%B0%E6%98%8E%E4%B8%8E%E6%89%A7%E8%A1%8C">声明与执行</a><a href="#%E6%BA%90%E7%A0%81%E4%BE%9D%E6%8D%AE">源码依据</a><a href="#%E7%9B%B8%E5%85%B3%E7%AB%A0%E8%8A%82">相关章节</a></aside>
 </div>

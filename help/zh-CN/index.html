@@ -31,7 +31,8 @@
 <main id="content" tabindex="-1">
 <p class="category">阅读导航</p>
 <h1 id="oc-中文帮助中心">OC 中文帮助中心</h1>
-<p>OpenCollab 中文帮助中心包含 69 篇指南，按使用目标组织安装、模型配置、团队协作、Workflow、执行环境与结果检查。文档依据 OC main 提交 <a href="https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41"><code>e7946a42</code></a>，说明该版本的公开接口及运行行为。</p>
+<p>从这里了解 OpenCollab 的安装配置、团队协作和 Workflow 开发，查找隔离、调试与运行记录的使用方法。可以按下面的任务入口开始，也可以直接搜索功能名或遇到的问题。</p>
+<p>适用版本为 <a href="https://github.com/RISE-X-Lab/OpenCollab/tree/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a>。</p>
 <p><a href="https://rise-x-lab.github.io/OpenCollab/">返回项目站主页</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab">GitHub 源码</a> · <a href="reading-paths/index.html">阅读路径</a> · <a href="questions/index.html">问题导航</a></p>
 <h2 id="从你的目标开始">从你的目标开始</h2>
 <table>
@@ -129,7 +130,7 @@
 </tr>
 <tr>
 <td><a href="configuration-reference/index.html">配置参数与环境变量速查</a></td>
-<td>按环境变量、SDK 字段和运行入口查找默认值与详细用法。</td>
+<td>按环境变量、SDK 字段和运行入口查找现有配置的默认值与详细用法。</td>
 </tr>
 <tr>
 <td><a href="provider-endpoint-credentials/index.html">接入模型端点与认证凭据</a></td>
@@ -337,7 +338,7 @@
 </tr>
 <tr>
 <td><a href="configuration-diagnostics/index.html">检查有效配置与定位常见启动故障</a></td>
-<td>用可核对的信息定位配置、模型能力、CLI 参数和端点连接中的常见问题。</td>
+<td>查看有效配置、模型能力和错误记录，定位 CLI 参数与端点连接中的常见问题。</td>
 </tr>
 </tbody>
 </table>
@@ -387,7 +388,7 @@
 <tbody>
 <tr>
 <td><a href="run-results/index.html">读取运行结果与判断任务是否完成</a></td>
-<td>正确处理 RunResult 和 RunError，把框架完成状态与实际任务验证分开理解。</td>
+<td>读取 RunResult、处理 RunError，并结合测试结果判断任务是否完成。</td>
 </tr>
 <tr>
 <td><a href="artifacts-and-history/index.html">找到运行记录、会话和交付文件</a></td>
@@ -438,7 +439,7 @@
 </tr>
 <tr>
 <td><a href="service-integration-lifecycle/index.html">从示例接入自己的服务</a></td>
-<td>把一次 SDK 演示接入业务服务，并明确运行身份、结果处理与资源清理责任。</td>
+<td>把 SDK 调用接入业务服务，关联运行记录，并处理结果与资源清理。</td>
 </tr>
 <tr>
 <td><a href="upgrade-existing-integration/index.html">升级已有安装、团队和 SDK 集成</a></td>
@@ -451,7 +452,7 @@
 </tbody>
 </table>
 
-<footer class="article-footer"><a href="../../help-src/zh-CN/index.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../help-src/zh-CN/index.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E4%BB%8E%E4%BD%A0%E7%9A%84%E7%9B%AE%E6%A0%87%E5%BC%80%E5%A7%8B">从你的目标开始</a><a href="#%E8%AE%A4%E8%AF%86-oc">认识 OC</a><a href="#%E5%AE%89%E8%A3%85%E4%B8%8E%E5%BC%80%E5%A7%8B%E4%BD%BF%E7%94%A8">安装与开始使用</a><a href="#%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E4%B8%8E%E9%85%8D%E7%BD%AE">模型接入与配置</a><a href="#%E6%89%A7%E8%A1%8C%E7%8E%AF%E5%A2%83%E4%B8%8E%E9%9A%94%E7%A6%BB">执行环境与隔离</a><a href="#team-%E4%B8%8E%E5%AD%90-agent">Team 与子 Agent</a><a href="#workflow-%E4%B8%8E%E5%AD%90-workflow">Workflow 与子 Workflow</a><a href="#%E9%A2%84%E7%AE%97%E4%B8%8A%E4%B8%8B%E6%96%87%E4%B8%8E%E8%BF%90%E8%A1%8C%E6%81%A2%E5%A4%8D">预算、上下文与运行恢复</a><a href="#%E5%B7%A5%E5%85%B7skill-%E4%B8%8E%E6%89%A9%E5%B1%95">工具、Skill 与扩展</a><a href="#%E7%BB%93%E6%9E%9C%E8%BD%A8%E8%BF%B9%E4%B8%8E%E8%AF%84%E6%B5%8B">结果、轨迹与评测</a><a href="#%E6%9E%B6%E6%9E%84%E9%9B%86%E6%88%90%E4%B8%8E%E7%BB%B4%E6%8A%A4">架构、集成与维护</a></aside>
 </div>

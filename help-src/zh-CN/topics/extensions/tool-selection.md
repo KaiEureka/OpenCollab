@@ -39,7 +39,7 @@
 | Team 协作 | `spawn_agent`、`message_agent`、`team_status`、`adopt_agent` | 派发、通信、状态与交付 |
 | 扩展与组合 | `use_skill`、`run_workflow`、`manage_workflow` | 载入指导或执行工作单元 |
 
-公开 `builtin_tools` 构造普通编码工具。协作工具由 Team 的运行环境接线，应在团队角色中声明。
+公开 `builtin_tools` 构造普通编码工具。协作工具由 Team 运行环境提供，在团队角色中声明后使用。
 
 ## 给 SDK 选择工具
 
@@ -60,7 +60,7 @@ async def main():
 asyncio.run(main())
 ```
 
-示例只授予读取与差异工具，模型没有原生写入或 Bash 工具。要观察实际选中的工具，可查看运行指标 `agent_tool_names`。`profile_tool_names("base")` 返回的是 profile 默认列表，显式传入工具后应以实际运行记录为准。
+示例授予读取与差异工具，适合查看项目文件并说明测试入口。要观察实际选中的工具，可查看运行指标 `agent_tool_names`。`profile_tool_names("base")` 返回的是 profile 默认列表，显式传入工具后应以实际运行记录为准。
 
 ## 工具存在还需要运行条件
 
@@ -100,9 +100,9 @@ print(profile_tool_limits('single2'))
 
 ## 常见配置错误
 
-工具名称重复会被拒绝。`limits` 中出现未选中的工具也会报错。把 `spawn_agent` 交给 `builtin_tools` 构造会失败，因为该 helper 支持的名称由普通工具集合定义。Team 中需要使用注册名，并确保通信拓扑允许相关操作。
+工具名称重复会被拒绝。`limits` 中出现未选中的工具也会报错。`builtin_tools` 接受普通编码工具名称，传入 `spawn_agent` 会报错。Team 中需要使用注册名，并确保通信拓扑允许相关操作。
 
-模型只输出文字时，先检查实际发出的工具 schema，再判断提示与工具选择设置。工具列表中有某项能力，只说明该调用可以请求它，是否真正使用应看工具回执。
+模型只输出文字时，先检查实际发出的工具 schema，再判断提示与工具选择设置。工具列表决定可请求的能力，工具回执记录实际执行的操作。
 
 ## 源码与进一步阅读
 

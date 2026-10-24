@@ -33,7 +33,7 @@
 <h1 id="统计-token缓存命中和费用">统计 token、缓存命中和费用</h1>
 <p>token 预算控制是否继续执行，用量记录描述已经发生的调用开销。统计费用时应从提供方返回的输入、输出和缓存字段出发，并保留估算与缺失标志。</p>
 <h2 id="这些计数怎样相加">这些计数怎样相加</h2>
-<p><code>total_tokens</code> 是输入加输出。缓存命中的输入已经包含在输入总量里，推理 token 通常作为输出细分保留。将缓存或推理再加一遍会高估总量。提供方可能只返回部分字段，缺失值需要保留其含义。</p>
+<p><code>total_tokens</code> 是输入加输出。缓存命中的输入已经包含在输入总量里，推理 token 通常作为输出细分保留。将缓存或推理再加一遍会高估总量。提供方可能只返回部分字段，统计时保留缺失值。</p>
 <p>缓存命中率可以用累计 <code>cached_input_tokens</code> 除以累计 <code>input_tokens</code>。对多个任务求平均开销时，还应写明分母包含哪些任务与尝试。</p>
 <h2 id="开启提供方用量账本">开启提供方用量账本</h2>
 <p>在启动进程前配置写入位置。</p>
@@ -62,16 +62,16 @@ print(&quot;missing_cost_records&quot;, sum(usage[&quot;cost_usd&quot;] is None 
 <p>检查每条记录的 <code>pricing</code> 后，再汇总具有完整价格和用量的费用。通用价格默认值为零，零费用需要结合实际配置解释。缓存读取或写入字段缺失时，费用可能为 <code>None</code>。保留缺失记录数，便于判断汇总覆盖了多少调用。</p>
 <h2 id="重试与摘要">重试与摘要</h2>
 <p>内部传输重试可能合并为外层调用的累计用量。上下文压力关注最终请求的输入大小，累计花费关注全部已返回尝试。摘要也会调用模型，因此需要计入真实开销。</p>
-<p>取消发生后，后台请求可能才返回最后用量。应结合 late 与清理完成记录确定最终累计值。未返回实际用量的调用，不能由“未看到数字”推导为免费。</p>
+<p>取消发生后，后台请求可能才返回最后用量。应结合 late 与清理完成记录确定最终累计值。实际用量缺失的调用，其费用仍为未知，需要结合服务账单核对。</p>
 <h2 id="配置自己的价格">配置自己的价格</h2>
 <p>账本费用估算使用 <code>OPENCOLLAB_INPUT_USD_PER_MTOK</code>、<code>OPENCOLLAB_CACHED_INPUT_USD_PER_MTOK</code>、<code>OPENCOLLAB_CACHE_CREATION_USD_PER_MTOK</code> 与 <code>OPENCOLLAB_OUTPUT_USD_PER_MTOK</code>。单价单位为每百万 token 美元，填写你实际使用服务的价格。特定模型分支可能有单独的价格配置，应看账本中的 <code>pricing</code>。</p>
 <p>如果服务将输入分为普通、缓存读取与缓存写入，分别乘以各自价格，再加输出费用。准确性取决于字段是否齐全与提供方的计费语义。估算值与实际账单要按相同时间范围核对。</p>
 <h2 id="查找异常增长">查找异常增长</h2>
-<p>先区分请求次数增加、单次输入变长和输出变长，再看缓存比例、重试和摘要次数。长密文的字符数属于传输表示，不能直接作为已计费 token。相关机制见上下文压缩与深度思考指南。</p>
+<p>先区分请求次数增加、单次输入变长和输出变长，再看缓存比例、重试和摘要次数。加密内容的字符数描述传输长度，计费 token 以提供方返回的用量为准。相关机制见上下文压缩与深度思考指南。</p>
 <h2 id="源码与进一步阅读">源码与进一步阅读</h2>
 <p><a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/configs/README.md">configs/README.md</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/llm/usage_ledger.py">opencollab/adapters/llm/usage_ledger.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/adapters/llm/types.py">opencollab/adapters/llm/types.py</a> · <a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/docs/evaluation-runtime.md">docs/evaluation-runtime.md</a></p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/token-cache-cost.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/observability/token-cache-cost.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E8%BF%99%E4%BA%9B%E8%AE%A1%E6%95%B0%E6%80%8E%E6%A0%B7%E7%9B%B8%E5%8A%A0">这些计数怎样相加</a><a href="#%E5%BC%80%E5%90%AF%E6%8F%90%E4%BE%9B%E6%96%B9%E7%94%A8%E9%87%8F%E8%B4%A6%E6%9C%AC">开启提供方用量账本</a><a href="#%E7%A6%BB%E7%BA%BF%E6%B1%87%E6%80%BB%E4%B8%80%E4%BB%BD%E8%B4%A6%E6%9C%AC">离线汇总一份账本</a><a href="#%E9%87%8D%E8%AF%95%E4%B8%8E%E6%91%98%E8%A6%81">重试与摘要</a><a href="#%E9%85%8D%E7%BD%AE%E8%87%AA%E5%B7%B1%E7%9A%84%E4%BB%B7%E6%A0%BC">配置自己的价格</a><a href="#%E6%9F%A5%E6%89%BE%E5%BC%82%E5%B8%B8%E5%A2%9E%E9%95%BF">查找异常增长</a><a href="#%E6%BA%90%E7%A0%81%E4%B8%8E%E8%BF%9B%E4%B8%80%E6%AD%A5%E9%98%85%E8%AF%BB">源码与进一步阅读</a></aside>
 </div>

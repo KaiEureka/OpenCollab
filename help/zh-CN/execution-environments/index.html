@@ -52,9 +52,9 @@ async def main():
 
 asyncio.run(main())
 </code></pre>
-<p><code>build_repo_map_via_env</code> 从目标环境获得有大小限制的路径概览，读取失败时返回空字符串。可以再用 <code>exec_cmd(&quot;pwd&quot;)</code> 和 <code>read_file(&quot;README.md&quot;)</code> 核对执行位置与目标文件，避免把空概览解读成空项目。</p>
+<p><code>build_repo_map_via_env</code> 从目标环境读取路径概览，并限制概览大小。返回空字符串可能是读取失败，可以用 <code>exec_cmd(&quot;pwd&quot;)</code> 和 <code>read_file(&quot;README.md&quot;)</code> 查看执行位置与文件内容。</p>
 <h2 id="新建容器和连接已有容器">新建容器和连接已有容器</h2>
-<p><code>docker_environment(image, backing_environment, options=...)</code> 创建由调用方管理的新容器环境。需要把宿主目录映射为容器工作区时，先准备来源，再明确传入 <code>await container.setup(mount_dir=prepared_path)</code>。该挂载承担项目写入，附加只读素材使用 DockerOptions 中的 DockerMount。为 backing_environment 建立的资源会随容器的拥有关系参与清理，安排清理顺序时应考虑这一点。</p>
+<p><code>docker_environment(image, backing_environment, options=...)</code> 创建由调用方管理的新容器环境。需要把宿主目录映射为容器工作区时，先准备来源，再传入 <code>await container.setup(mount_dir=prepared_path)</code>。项目通过该挂载读写，附加只读素材使用 DockerOptions 中的 DockerMount。容器清理会连同其拥有的 backing_environment 资源一起处理，调用方需据此安排清理顺序。</p>
 <p>连接服务已有的运行容器，可以使用下列公开入口。</p>
 <pre><code class="language-python">from opencollab.environments import attach_container
 
@@ -72,10 +72,10 @@ print(probe.returncode, probe.stdout)
 <p>连接后先读取项目中确实存在的小文件，再执行一次与任务相符的命令。文件读取能确认目标内容，命令结果能确认运行依赖与当前目录。如果服务需要在容器里运行子 Agent，后续 worktree 策略会沿用容器父环境。想让每个子会话获得另一个容器，则应使用 Docker 会话隔离提供器。</p>
 <h2 id="资源由谁结束">资源由谁结束</h2>
 <p>SDK 借用传入的 environment，运行完成后由调用方清理。连接已有容器的环境会管理本次发出的命令和临时资源，外部容器继续由创建它的服务管理。新建容器则由拥有方在导出交付后清理。</p>
-<p>调用方提供环境时，SDK 结果中的环境静止相关指标保留为 <code>None</code>，需要调用方完成清理和验证后才能判断。会话与持久化完成可另外查看 <code>session_quiesced</code>。具体说明见 <a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a>，策略选择见 <a href="../isolation-overview/index.html">隔离怎么选</a>。</p>
+<p>调用方提供环境时，SDK 结果中用于表示环境活动已结束的指标为 <code>None</code>，由调用方清理环境并确认操作已停止。会话执行与持久化是否完成，可查看 <code>session_quiesced</code>。具体说明见 <a href="../service-integration-lifecycle/index.html">从示例接入自己的服务</a>，策略选择见 <a href="../isolation-overview/index.html">隔离怎么选</a>。</p>
 <p>工厂签名见<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/environments.py">公开环境 API</a>和<a href="https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/programmatic.py">环境组合实现</a>。</p>
 
-<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/execution-environments.md">Markdown 源文档</a><span>依据源码 e7946a42</span><a href="../../../index.html">返回项目主页</a></footer>
+<footer class="article-footer"><a href="../../../help-src/zh-CN/topics/isolation/execution-environments.md">Markdown 源文档</a><a href="https://github.com/RISE-X-Lab/OpenCollab/commit/e7946a42be378e0bf6dc02e24f9ded9752ce2a41">OpenCollab 0.9.5</a><a href="../../../index.html">返回项目主页</a></footer>
 </main>
 <aside class="toc" aria-label="本页内容"><strong>本页内容</strong><a href="#%E6%9C%AC%E6%9C%BA%E7%9B%AE%E5%BD%95%E4%B8%8E%E7%8B%AC%E7%AB%8B%E5%B7%A5%E4%BD%9C%E6%A0%91">本机目录与独立工作树</a><a href="#%E6%96%B0%E5%BB%BA%E5%AE%B9%E5%99%A8%E5%92%8C%E8%BF%9E%E6%8E%A5%E5%B7%B2%E6%9C%89%E5%AE%B9%E5%99%A8">新建容器和连接已有容器</a><a href="#%E9%80%89%E6%8B%A9%E8%B7%AF%E5%BE%84%E6%97%B6%E4%BF%9D%E7%95%99%E7%9B%B8%E5%AF%B9%E5%85%B3%E7%B3%BB">选择路径时保留相对关系</a><a href="#%E8%B5%84%E6%BA%90%E7%94%B1%E8%B0%81%E7%BB%93%E6%9D%9F">资源由谁结束</a></aside>
 </div>

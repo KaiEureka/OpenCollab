@@ -83,7 +83,7 @@ async def run_example(workspace):
 | `agent_run(prompt, ...)` | `label`、`tools`、`isolation`、`budget`、`timeout`、`max_steps`、`system_prompt`、`run_control`、`cleanup_timeout` | `WorkflowAgentResult` |
 | `draft_findings(prompt, ...)` | `label`、`budget` | 证据草稿字典或 None |
 
-`agent` 的 `tools` 采用工具对象序列，运行实现也承接已配置的工具组选择。`agent_run` 支持工具组名称或对象序列。`isolation` 的运行实现接受布尔值、策略字符串或省略值，省略继承当前策略，`True` 选 worktree，`False` 选 shared。公开 Protocol 当前仍保留较窄的注解，开发时可结合实现与 SDK 用例核对。
+`agent` 的 `tools` 采用工具对象序列，运行实现也支持已配置的工具组。`agent_run` 支持工具组名称或对象序列。`isolation` 的运行实现接受布尔值、策略字符串或省略值，省略继承当前策略，`True` 选 worktree，`False` 选 shared。公开 Protocol 当前仍保留较窄的注解，开发时可结合实现与 SDK 用例核对。
 
 `schema` 应提供对象形状的 JSON Schema，捕获失败会作一次纠正尝试。`draft_findings` 用于探索前收集已有证据草稿，后续仍需实际探索和验证。自由文本路径的 `tool_choice` 和 `thinking` 按调用配置模型行为。
 
@@ -100,11 +100,11 @@ async def run_example(workspace):
 | `candidate_workflow(workflow_fn, args, ...)` | 异步函数、字典、必填 label、可选 budget | 整个子流程的 `CandidateRun` |
 | `adopt_candidate(candidate, preserve_paths=())` | 候选对象与保留路径 | 完成采用后返回 None |
 
-当前 `pipeline` 在 `workflow_collections.py` 实现，SDK 嵌套集合测试覆盖实际调用，公开 Protocol 尚漏列该方法。集合普通异常转为单元 None，预算耗尽、环境撤销和取消按对应层级继续传播。
+`pipeline` 的实际签名为 `pipeline(items, *stages, stop_on_none=True)`，由 `workflow_collections.py` 实现。当前公开 Protocol 的注解漏列此方法，编辑器可能提示属性缺失，SDK 嵌套集合用例可供核对。集合普通异常转为单元 None，预算耗尽、环境撤销和取消按对应层级继续传播。
 
-`CandidateRun` 保存 `label`、`output`、`diff`、`test_records`、`verified_targets`、`lifecycle_errors`、`source_revision`、`delivery_diff`、`delivery_paths`、`delivery_source_diff`，并提供 `effective_diff` 属性。候选执行、选择和采用是可分别观察的步骤。当前候选子流程自身未注入新的候选后端，继续复用普通子函数可保持资源关系清晰。
+`CandidateRun` 保存 `label`、`output`、`diff`、`test_records`、`verified_targets`、`lifecycle_errors`、`source_revision`、`delivery_diff`、`delivery_paths`、`delivery_source_diff`，并提供 `effective_diff` 属性。候选执行、选择和采用是可分别观察的步骤。当前候选子流程自身未注入新的候选后端，子流程可以通过普通子函数继续拆分逻辑。
 
-## 工作区、验证与观察
+## 工作区、验证与运行记录
 
 | 方法或属性 | 输入与返回 | 用途 |
 | --- | --- | --- |

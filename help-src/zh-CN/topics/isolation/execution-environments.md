@@ -59,11 +59,11 @@ async def main():
 asyncio.run(main())
 ```
 
-`build_repo_map_via_env` 从目标环境获得有大小限制的路径概览，读取失败时返回空字符串。可以再用 `exec_cmd("pwd")` 和 `read_file("README.md")` 核对执行位置与目标文件，避免把空概览解读成空项目。
+`build_repo_map_via_env` 从目标环境读取路径概览，并限制概览大小。返回空字符串可能是读取失败，可以用 `exec_cmd("pwd")` 和 `read_file("README.md")` 查看执行位置与文件内容。
 
 ## 新建容器和连接已有容器
 
-`docker_environment(image, backing_environment, options=...)` 创建由调用方管理的新容器环境。需要把宿主目录映射为容器工作区时，先准备来源，再明确传入 `await container.setup(mount_dir=prepared_path)`。该挂载承担项目写入，附加只读素材使用 DockerOptions 中的 DockerMount。为 backing_environment 建立的资源会随容器的拥有关系参与清理，安排清理顺序时应考虑这一点。
+`docker_environment(image, backing_environment, options=...)` 创建由调用方管理的新容器环境。需要把宿主目录映射为容器工作区时，先准备来源，再传入 `await container.setup(mount_dir=prepared_path)`。项目通过该挂载读写，附加只读素材使用 DockerOptions 中的 DockerMount。容器清理会连同其拥有的 backing_environment 资源一起处理，调用方需据此安排清理顺序。
 
 连接服务已有的运行容器，可以使用下列公开入口。
 
@@ -91,6 +91,6 @@ print(probe.returncode, probe.stdout)
 
 SDK 借用传入的 environment，运行完成后由调用方清理。连接已有容器的环境会管理本次发出的命令和临时资源，外部容器继续由创建它的服务管理。新建容器则由拥有方在导出交付后清理。
 
-调用方提供环境时，SDK 结果中的环境静止相关指标保留为 `None`，需要调用方完成清理和验证后才能判断。会话与持久化完成可另外查看 `session_quiesced`。具体说明见 [从示例接入自己的服务](../architecture/service-integration-lifecycle.md)，策略选择见 [隔离怎么选](isolation-overview.md)。
+调用方提供环境时，SDK 结果中用于表示环境活动已结束的指标为 `None`，由调用方清理环境并确认操作已停止。会话执行与持久化是否完成，可查看 `session_quiesced`。具体说明见 [从示例接入自己的服务](../architecture/service-integration-lifecycle.md)，策略选择见 [隔离怎么选](isolation-overview.md)。
 
 工厂签名见[公开环境 API](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/environments.py)和[环境组合实现](https://github.com/RISE-X-Lab/OpenCollab/blob/e7946a42be378e0bf6dc02e24f9ded9752ce2a41/opencollab/bootstrap/programmatic.py)。

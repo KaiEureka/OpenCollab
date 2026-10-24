@@ -32,7 +32,7 @@
 
 # 使用 Base 单 Agent 与 Single2 配置
 
-`OpenCollab.agent()` 可以直接运行一个 Agent。当前 Base 默认配置映射到 Single2，`agent2()` 则明确选择 Single2。选择 Base 适合跟随框架默认实现，指定 `profile="single2"` 适合需要在运行记录中固定实现名称的程序。这个映射自 OpenCollab 0.8 起采用，查看旧版本时应结合对应标签的文档。
+`OpenCollab.agent()` 可以直接运行一个 Agent。当前 Base 默认配置映射到 Single2，`agent2()` 则明确选择 Single2。使用 Base 可以跟随框架的默认实现，指定 `profile="single2"` 可以明确选择 Single2。这个映射自 OpenCollab 0.8 起采用，查看旧版本时应结合对应标签的文档。
 
 可以通过公开的 `opencollab.profiles` 在本地读取安装版本的映射，以下程序打印 `single2`、`single2` 和 `single2`。
 
@@ -70,13 +70,13 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-在已安装 OpenCollab 的 Python 环境运行脚本后，应看到完成状态、回答和实际 profile。`artifacts` 目录必须为新目录或空目录。第二次运行时换一个目录名，便于把结果和会话对应起来。`completed` 表示执行正常结束，任务要求的测试结果仍应从实际命令输出中判断。若任务以 `stopped` 结束，先结合 `reason` 查看是步数、token 还是期限触发，再决定后续额度。`failed` 则应查看错误和已有产物。
+在已安装 OpenCollab 的 Python 环境运行脚本，程序会打印状态、回答和实际 profile。`artifacts` 目录必须为新目录或空目录，每次运行使用新的目录保存记录。`completed` 表示执行正常结束，测试是否通过由实际命令输出判断。`stopped` 的原因记录在 `reason` 中，可据此调整步数、token 预算或期限。`failed` 时查看错误与已有产物。
 
 ## 需要修改和执行命令时
 
 默认 `tools="coding"` 提供按顺序排列的 `bash`、`file_read`、`file_write`、`apply_patch`、`git_diff` 和 `grep`。Single2 默认最多运行 200 步。Bash 每个输出流保留最多 10,000 字符，较大的工具结果在上下文视图中保留头尾，总字符限额为 16,000。
 
-默认 Bash 要求能够隔离操作系统进程的环境，例如 Docker。使用本地环境读写文件时，文件工具仍然可用。若任务确实需要直接在宿主项目中执行命令，可显式构造工具。下面的代码放在已有 `async` 函数中，`client` 沿用前面的客户端。
+默认 Bash 要求执行环境具备操作系统进程隔离能力，例如 Docker。本地环境可以使用文件读写工具。需要直接在宿主项目中执行命令时，通过以下方式构造工具。代码放在已有 `async` 函数中，`client` 沿用前面的客户端。
 
 ```python
 from opencollab.tools import builtin_tools, profile_tool_limits
@@ -94,7 +94,7 @@ result = await client.agent2(
 )
 ```
 
-`headless=False` 允许这些工具使用宿主 shell，应在预期承载命令执行的工作区中使用。进程隔离和 Git 工作树解决不同问题，环境选择见相关指南。
+`headless=False` 允许这些工具使用宿主 shell，命令会影响宿主环境。Git 工作树分开文件改动，进程隔离由执行环境提供，具体选择见相关指南。
 
 ## 调整提示与执行额度
 
