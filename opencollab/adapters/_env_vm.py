@@ -75,6 +75,7 @@ class VMEnvironment(Environment):
         self._uncertain: set[str] = set()
         self._edit_locks: set[str] = set()
         self._temporary_files: dict[str, list[int]] = {}
+        self._mutable_temporaries: set[str] = set()
 
     @property
     def revoked(self) -> bool:
@@ -304,6 +305,24 @@ class VMEnvironment(Environment):
         await self._operate("remove", {"path": target, "identity": self._temporary_files[target]})
         self._temporary_files.pop(target)
 
+    async def _remove_mutable_temporary(self, operation_id: str) -> None:
+        if operation_id in self._operations:
+            await self._cancel_operation(operation_id)
+        await self._operate("remove_mutable_temporary", {"operation_id": operation_id}, require_active=False)
+        self._mutable_temporaries.discard(operation_id)
+
+    @contextlib.asynccontextmanager
+    async def _mutable_temporary(self, content: str, *, prefix: str, suffix: str) -> AsyncIterator[str]:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", prefix) or not re.fullmatch(r"[A-Za-z0-9._-]+", suffix):
+            raise ValueError("temporary file prefix and suffix must be simple path components")
+        operation_id = uuid.uuid4().hex
+        self._mutable_temporaries.add(operation_id)
+        try:
+            path = await self._operate("mutable_temporary", {"content": content, "name": prefix + suffix}, operation_id)
+            yield path
+        finally:
+            await await_owned_operation(self._remove_mutable_temporary(operation_id), propagate_cancellation=True)
+
     @contextlib.asynccontextmanager
     async def file_write_lock(self, path: str) -> AsyncIterator[None]:
         self._ensure_active()
@@ -458,6 +477,8 @@ class VMEnvironment(Environment):
             except BaseException:
                 self._uncertain.add(operation_id)
                 raise
+        for operation_id in tuple(self._mutable_temporaries):
+            await self._remove_mutable_temporary(operation_id)
         for path in tuple(self._temporary_files):
             await self._operate("remove", {"path": path, "identity": self._temporary_files[path]},
                                 require_active=False)

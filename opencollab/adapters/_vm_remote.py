@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import struct
 import subprocess
 import sys
@@ -208,6 +209,54 @@ async def _perform(request: dict[str, Any], directory: Path) -> Any:
             return asdict(await env.read_text_range(**args))
         if action == "write":
             return await env.write_file_with_change(args["path"], args["content"])
+        if action == "mutable_temporary":
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", args["name"]):
+                raise ValueError("invalid mutable temporary name")
+            temporary = directory / "temporary"
+            temporary.mkdir(mode=0o700)
+            fd = open_directory_anchor(temporary)
+            try:
+                info = os.fstat(fd)
+                _write(directory, "temporary.json", [info.st_dev, info.st_ino])
+                create_regular_bytes_atomic_at(fd, temporary, args["name"], args["content"].encode(),
+                                              max_bytes=ENV_FILE_WRITE_LIMIT_BYTES)
+            finally:
+                os.close(fd)
+            return str(temporary / args["name"])
+        if action == "remove_mutable_temporary":
+            operation_id = args["operation_id"]
+            if not isinstance(operation_id, str) or not _ID.fullmatch(operation_id):
+                raise ValueError("invalid mutable temporary operation")
+            owner = directory.parent / operation_id
+            parent = open_directory_anchor(owner)
+            try:
+                try:
+                    expected = _read(owner, "temporary.json")
+                    fd = open_directory_anchor(owner / "temporary")
+                except FileNotFoundError:
+                    if os.path.lexists(owner / "temporary"):
+                        raise OSError("mutable temporary ownership is incomplete") from None
+                    return None
+                try:
+                    info = os.fstat(fd)
+                    if [info.st_dev, info.st_ino] != expected:
+                        raise OSError("mutable temporary directory was replaced")
+                    for name in os.listdir(fd):
+                        mode = os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode
+                        if stat.S_ISDIR(mode):
+                            shutil.rmtree(f"/proc/self/fd/{fd}/{name}")
+                        else:
+                            os.unlink(name, dir_fd=fd)
+                    current = os.stat("temporary", dir_fd=parent, follow_symlinks=False)
+                    if [current.st_dev, current.st_ino] != expected:
+                        raise OSError("mutable temporary directory changed during cleanup")
+                    os.rmdir("temporary", dir_fd=parent)
+                    os.fsync(parent)
+                finally:
+                    os.close(fd)
+            finally:
+                os.close(parent)
+            return None
         if action in {"temporary", "remove"}:
             fd = open_directory_anchor(env.workspace)
             try:

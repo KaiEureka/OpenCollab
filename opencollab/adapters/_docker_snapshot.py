@@ -74,7 +74,7 @@ async def _snapshot_contents(source: Any):
                 bundle = directory / "repository.bundle"
                 async with _patch_temporary(source, root, "", prefix=".docker-import-", suffix=".bundle") as remote:
                     _complete(await source.exec_cmd(
-                        f"git -C {shlex.quote(source_root)} bundle create {shlex.quote(remote)} --tags HEAD",
+                        f"git -C {shlex.quote(source_root)} bundle create - --tags HEAD > {shlex.quote(remote)}",
                         timeout=900,
                     ), "Docker source Git bundle")
                     await _copy_to_host(source, remote, bundle)

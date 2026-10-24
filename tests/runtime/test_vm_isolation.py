@@ -7,12 +7,14 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
 
-from opencollab.adapters import candidate_workspace, vm_isolation
-from opencollab.adapters._env_vm import VMEnvironment, VMOperationError
+from opencollab.adapters import candidate_workspace, vm_isolation, worktree_pool
+from opencollab.adapters._env_vm import VMEnvironment, VMOperationError, VMTransportError
 from opencollab.adapters._vm_leases import VMCapacityError, _VMLeases
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.session_environments import SessionEnvironmentPool
@@ -61,6 +63,13 @@ class _LocalVM(VMEnvironment):
     async def remove_file(self, path):
         await self.local.remove_file(path)
 
+    @asynccontextmanager
+    async def _mutable_temporary(self, content, *, prefix, suffix):
+        with tempfile.TemporaryDirectory(prefix="opencollab-vm-unit-") as directory:
+            path = Path(directory) / (prefix + suffix)
+            path.write_text(content)
+            yield str(path)
+
     async def copy_to_host(self, source, destination, *, directory=False):
         if self.copy_failure:
             raise OSError("transfer interrupted")
@@ -86,6 +95,7 @@ class _LocalVM(VMEnvironment):
 def local_vm(monkeypatch):
     monkeypatch.setattr(vm_isolation, "VMEnvironment", _LocalVM)
     monkeypatch.setattr(candidate_workspace, "VMEnvironment", _LocalVM)
+    monkeypatch.setattr(worktree_pool, "VMEnvironment", _LocalVM)
     monkeypatch.setattr(_LocalVM, "copy_failure", False)
 
 
@@ -293,6 +303,41 @@ async def test_unknown_execution_retains_the_vm_until_recovery(tmp_path, local_v
         await _VMLeases(database, [resource], 0).acquire("other")
     environment._delegate._uncertain.clear()
     await pool.release()
+
+
+async def test_lost_reset_reply_recovers_the_same_operation_without_repeating_reset(tmp_path, local_vm, monkeypatch):
+    source = tmp_path / "source"
+    _repository(source)
+    counter = tmp_path / "reset-count"
+    command = f"printf x >> '{counter}'"
+    resource = _resource(tmp_path / "guest", reset_command=command)
+    pool = VMIsolationPool(str(source), resources=[resource], lease_database=str(tmp_path / "leases.sqlite"))
+    await pool.acquire("worker")
+    original = _LocalVM.exec_operation
+    completed = {}
+
+    async def lose_reply(self, operation_id, cmd, timeout=120, *, input_bytes=None):
+        result = await original(self, operation_id, cmd, timeout, input_bytes=input_bytes)
+        if cmd == command:
+            completed[operation_id] = result
+            self._operations.add(operation_id)
+            self._uncertain.add(operation_id)
+            raise VMTransportError("reset response lost", operation_id=operation_id)
+        return result
+
+    async def recover(self, operation_id):
+        self._operations.remove(operation_id)
+        self._uncertain.remove(operation_id)
+        return completed[operation_id]
+
+    monkeypatch.setattr(_LocalVM, "exec_operation", lose_reply)
+    monkeypatch.setattr(_LocalVM, "recover_operation", recover)
+    with pytest.raises(OSError, match="retained"):
+        await pool.release()
+    assert counter.read_text() == "x"
+    await pool.release()
+    assert counter.read_text() == "x"
+    assert not pool.retained_resources
 
 
 def test_reusable_pool_requires_explicit_guest_reset(tmp_path):
