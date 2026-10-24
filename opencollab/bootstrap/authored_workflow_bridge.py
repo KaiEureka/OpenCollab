@@ -47,7 +47,7 @@ class AuthoredWorkflowBridge:
     def __init__(self, environment: Any, artifacts: str, pool: Any, llm: Any, runtime: Any,
                  *, allow_unisolated_shell: bool) -> None:
         relative = posixpath.relpath(artifacts, environment.workspace)
-        if relative.startswith("../") or posixpath.isabs(relative):
+        if relative == ".." or relative.startswith("../") or posixpath.isabs(relative):
             raise ValueError("child mailbox must be inside the member workspace")
         self._environment = environment
         self._directory = posixpath.join(artifacts, "bridge")
@@ -114,7 +114,9 @@ class AuthoredWorkflowBridge:
                 if value is not None:
                     error[name] = to_plain_data(value)
             reply = {"error": error}
-        await self._environment.write_file(posixpath.join(self._directory, f"{identity}.json"), json.dumps(reply))
+        await await_owned_operation(self._environment.write_file(
+            posixpath.join(self._directory, f"{identity}.json"), json.dumps(reply),
+        ))
 
     async def _dispatch(self, identity: str, request: dict[str, Any]) -> Any:
         action, arguments = request["action"], request.get("arguments", {})

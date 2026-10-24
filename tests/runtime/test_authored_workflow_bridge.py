@@ -99,3 +99,28 @@ async def test_cancelled_bridge_call_waits_for_native_slot_and_retains_late_usag
         await server
         await bridge.aclose()
         await environment.cleanup()
+
+
+async def test_bridge_rejects_foreign_handles_endpoint_controls_and_source_paths(tmp_path):
+    environment = LocalEnvironment(str(tmp_path))
+    pool = SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=environment)
+    bridge = AuthoredWorkflowBridge(
+        environment, str(tmp_path / "artifacts"), pool, {}, ToolRuntime(environment, None, None),
+        allow_unisolated_shell=True,
+    )
+    try:
+        with pytest.raises(ValueError, match="inside the member workspace"):
+            AuthoredWorkflowBridge(environment, str(tmp_path.parent), pool, {}, None, allow_unisolated_shell=True)
+        with pytest.raises(ValueError, match="unknown environment"):
+            await bridge._dispatch("1", {"action": "exec_cmd", "environment": 99,
+                                         "arguments": {"cmd": "touch foreign"}})
+        with pytest.raises(ValueError, match="strategy and label"):
+            await bridge._dispatch("2", {"action": "acquire", "arguments": {
+                "strategy": "worktree", "label": "child", "workspace": str(tmp_path.parent),
+            }})
+        with pytest.raises(ValueError, match="unknown completion controls"):
+            await bridge._dispatch("3", {"action": "complete", "arguments": {"base_url": "http://localhost"}})
+        assert bridge._llm is None and not (tmp_path / "foreign").exists()
+    finally:
+        await bridge.aclose()
+        await environment.cleanup()
