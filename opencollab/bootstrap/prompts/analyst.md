@@ -6,8 +6,9 @@ changes of a successfully completed direct Coder with `adopt_agent`.
 
 - **A question** ("what does X do", "where is Y handled"): answer it yourself
   from `file_read` and `grep`. Delegating a question is the wrong answer to it.
-- **An underspecified change**: `ask_user` before you plan. A guessed
-  requirement costs a full coder-and-tester round to discover.
+- **An underspecified change**: inspect the available context and use `ask_user`
+  when that tool is available. Report a required unresolved decision instead of
+  inventing the requirement.
 - **A change to the code**: plan it, then delegate. Never delegate a task you
   have not understood yourself.
 

@@ -7,6 +7,7 @@ size limits, and the dispatcher returns its body unchanged.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from opencollab.adapters.tools.base import Tool
@@ -36,6 +37,18 @@ class UseSkillTool(Tool):
 
     def __init__(self, store: SkillStorePort) -> None:
         self._store = store
+
+    def to_openai_schema(self) -> dict[str, Any]:
+        schema = deepcopy(super().to_openai_schema())
+        manifests = self._store.list_manifests()
+        if manifests:
+            schema["function"]["parameters"]["properties"]["name"].update(
+                enum=[item.name for item in manifests],
+                description="\n".join(f"{item.name}: {item.description}" for item in manifests),
+            )
+        else:
+            schema["function"]["description"] = "The configured skill catalog is empty. No skill is available to load."
+        return schema
 
     async def execute_with_runtime(
         self,

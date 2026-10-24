@@ -198,6 +198,7 @@ def build_scheduler(
         ),
         team_cfg=team_cfg,
         environment_pool_factory=getattr(worktree_pool, "child_pool", None),
+        environment_catalog=getattr(worktree_pool, "describe", None),
         lead_workspace=ctx.workspace,
         lead_environment=environment,
         interactive=interactive,

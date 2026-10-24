@@ -117,6 +117,7 @@ class ContextBuilder:
         *,
         skill_store: SkillStorePort | None = None,
         project_context: str | None = None,
+        prebuilt_team: bool = False,
     ):
         self._team = team_cfg
         self._cfg = cfg
@@ -124,6 +125,7 @@ class ContextBuilder:
         self._skill_store: SkillStorePort = skill_store or NullSkillStore()
         # Empty project content contributes no startup source.
         self._project_context = project_context or None
+        self._prebuilt_team = prebuilt_team
 
     def build_plan(
         self,
@@ -307,21 +309,27 @@ class ContextBuilder:
 
     def _team_section(self, role_name: str, role: RoleConfig) -> str:
         topo = self._team.topology
-        # The permissive default carries generic guidance in the base prompt;
-        # the dynamic section only adds value for an explicit topology graph.
-        if topo.allow_all:
+        tools = set(role.tools)
+        if not (tools & COORDINATION_TOOL_NAMES):
             return ""
-        targets = sorted(topo.edges.get(role_name, frozenset()))
-        if not targets or not (set(role.tools) & COORDINATION_TOOL_NAMES):
-            return ""
-        lines = ["## Your team", "", "Roles you may spawn or message:"]
-        lines += [f"- {t}" for t in targets]
-        if {"team_status", "message_agent"} & set(role.tools):
-            lines += [
-                "",
-                "Use `team_status` to list live agents (with their ids) and "
-                "`message_agent` to send an async message to one.",
-            ]
+        targets = sorted(set(self._team.roles) - {role_name} if topo.allow_all
+                         else topo.edges.get(role_name, frozenset()))
+        lines = ["## Your team", "", "Configured roles you may address:"]
+        for target in targets:
+            description = " ".join(self._team.role_for(target).prompt.split())[:240]
+            lines.append(f"- {target}: {description}")
+        if not targets:
+            lines.append("No other configured role is reachable from this role.")
+        if self._prebuilt_team:
+            lines.append("All configured agents are already seated. New agents cannot be spawned in this run.")
+        elif "spawn_agent" in tools:
+            lines.append("Use `spawn_agent` to delegate to a role; include the task and relevant context.")
+            if topo.allow_all:
+                lines.append("The open topology also permits custom role names, which use the generic role settings.")
+        if "message_agent" in tools:
+            lines.append("Use `message_agent` with to_role to contact an existing teammate asynchronously.")
+        if "team_status" in tools:
+            lines.append("Use `team_status` to inspect the live roster, agent ids and execution states.")
         return "\n".join(lines)
 
 

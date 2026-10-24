@@ -479,6 +479,7 @@ class DefaultSessionFactory:
         *,
         team_cfg: TeamConfig | None = None,
         environment_pool_factory: Callable[..., Any] | None = None,
+        environment_catalog: Callable[[str], dict[str, Any]] | None = None,
         lead_workspace: str | None = None,
         lead_environment: Environment | None = None,
         interactive: bool = False,
@@ -497,6 +498,7 @@ class DefaultSessionFactory:
         )
         self._team = team_cfg or default_team_config()
         self._environment_pool_factory = environment_pool_factory
+        self._environment_catalog = environment_catalog
         self._workflows = None
         if any("run_workflow" in role.tools for role in self._team.roles.values()):
             from opencollab.bootstrap.workflow_runtime import discover_workflows
@@ -615,6 +617,7 @@ class DefaultSessionFactory:
             self._cfg,
             skill_store=skill_store,
             project_context=project_context,
+            prebuilt_team=self._prebuilt_roster,
         )
 
     def build_spawn_session(
@@ -698,6 +701,9 @@ class DefaultSessionFactory:
         return AuthoredWorkflowTool(
             get_session, self._cfg, self._save_dir,
             environment_pool_factory=self._environment_pool_factory,
+            environment_catalog=(
+                lambda: self._environment_catalog(get_session().agent.name)
+            ) if self._environment_catalog is not None else None,
             allow_unisolated_shell=self._unisolated_shell_allowed(seated_at_start=seated_at_start),
         )
 

@@ -57,6 +57,10 @@ class SessionEnvironmentPool:
     def strategy_names(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(("shared", "worktree", *self._providers)))
 
+    def describe(self, role: str) -> dict[str, Any]:
+        return {"default_isolation": self._roles.get(role) or self._default,
+                "strategies": self.strategy_names}
+
     def child_pool(self, environment: EnvironmentPort, *, role: str) -> SessionEnvironmentPool:
         source_isolation = self._source_isolation if environment is self._source else None
         return SessionEnvironmentPool(
