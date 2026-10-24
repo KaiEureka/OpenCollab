@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+from opencollab import __version__
 from opencollab.adapters.env import ExecResult, VMEnvironment, VMOperationError, VMTransportError
 from opencollab.domain.vm import VMConnection
 
@@ -118,13 +119,26 @@ async def test_failed_cleanup_keeps_operation_and_revocation(monkeypatch):
 
 async def test_recover_file_operation_retains_temporary_identity(monkeypatch):
     env = _env()
+    identity = {"workspace": env.workspace, "device": 1, "inode": 2, "boot_id": "boot"}
+    setup_attempts = 0
 
     async def rpc(payload):
+        nonlocal setup_attempts
+        if payload["method"] == "setup":
+            setup_attempts += 1
+            if setup_attempts == 1:
+                raise VMTransportError("offline", operation_id="setup")
+            return {"identity": identity, "version": __version__}
         return {"status": "completed", "action": "temporary", "args": {"path": "owned.tmp"}, "value": [1, 2]}
 
     monkeypatch.setattr(env, "_rpc", rpc)
+    with pytest.raises(VMTransportError):
+        await env.recover_operation("temporary")
+    assert env.revoked
     assert await env.recover_operation("temporary") == [1, 2]
+    assert env._identity == identity
     assert env._temporary_files == {"owned.tmp": [1, 2]}
+    assert not env.revoked
 
 
 async def test_remote_result_uses_existing_execution_result():

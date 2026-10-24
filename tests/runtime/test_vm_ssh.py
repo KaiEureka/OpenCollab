@@ -163,6 +163,50 @@ async def test_ssh_reused_operation_id_rejects_changed_request(vm):
         await vm.recover_operation("absent")
 
 
+async def test_ssh_recovered_temporary_cleanup_initializes_workspace_identity(vm):
+    operation_id = uuid.uuid4().hex
+    await vm._operate("temporary", {"path": "recovered.tmp", "content": "owned"}, operation_id)
+    recovered = VMEnvironment(vm.connection, vm.workspace, state_directory=vm.state_directory, run_id=vm.run_id)
+    try:
+        await recovered.recover_operation(operation_id)
+    finally:
+        await recovered.cleanup()
+    assert (await vm.exec_cmd("test ! -e recovered.tmp")).returncode == 0
+
+
+async def test_ssh_cancelled_temporary_creation_keeps_cleanup_ownership(vm, monkeypatch):
+    other = VMEnvironment(vm.connection, vm.workspace, state_directory=vm.state_directory)
+    original_rpc = other._rpc
+    completed = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delay_completed_response(payload):
+        response = await original_rpc(payload)
+        if response.get("status") == "completed" and response.get("action") == "temporary":
+            completed.set()
+            await release.wait()
+        return response
+
+    monkeypatch.setattr(other, "_rpc", delay_completed_response)
+    task = asyncio.create_task(other.write_temp_file("owned", prefix="cancelled-"))
+    try:
+        await asyncio.wait_for(completed.wait(), 10)
+        task.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert len(other._temporary_files) == 1
+        temporary = next(iter(other._temporary_files))
+        assert (await vm.exec_cmd("test -f " + shlex.quote(temporary))).returncode == 0
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await other.cleanup()
+    assert (await vm.exec_cmd("test ! -e " + shlex.quote(temporary))).returncode == 0
+
+
 async def test_ssh_streaming_copy_preserves_tree_and_binary_files(vm, tmp_path):
     source = tmp_path / "source"
     source.mkdir()
@@ -184,7 +228,7 @@ async def test_ssh_streaming_copy_preserves_tree_and_binary_files(vm, tmp_path):
     await vm.copy_to_host(vm.workspace + "/empty-file", tmp_path / "empty-file")
     assert (tmp_path / "empty-file").read_bytes() == b""
     # A second archive location exercises state and workspace independence.
-    separate = VMEnvironment(vm.connection, vm.workspace, state_directory="/tmp/oc-vm-transfer-tests")
+    separate = VMEnvironment(vm.connection, vm.workspace, state_directory=vm.state_directory + "-separate")
     try:
         await separate.copy_from_host(source / name, vm.workspace + "/separate-binary")
         await separate.copy_to_host(vm.workspace + "/separate-binary", tmp_path / "binary")

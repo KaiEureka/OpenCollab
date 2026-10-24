@@ -104,13 +104,9 @@ def unpack(archive_path: Path, staging: Path, *, directory: bool) -> Path:
                                         raise EOFError("VM archive file was truncated")
                                     output.write(chunk)
                                     remaining -= len(chunk)
+                                os.fchmod(output.fileno(), member.mode)
                             write_regular_file_atomic_at(anchor, staging, member.name, write,
-                                                         max_bytes=member.size, mode=member.mode, create_only=True)
-                            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
-                            try:
-                                os.fchmod(fd, member.mode)
-                            finally:
-                                os.close(fd)
+                                                         max_bytes=member.size, create_only=True)
                     else:
                         raise ValueError("VM archive contains an unsupported file type")
                 finally:

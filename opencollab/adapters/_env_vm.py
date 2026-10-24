@@ -144,6 +144,10 @@ class VMEnvironment(Environment):
         self._ensure_active()
         if mount_dir is not None:
             raise ValueError("mount_dir is supported only by container environments")
+        await self._setup_identity()
+        return self.workspace
+
+    async def _setup_identity(self) -> None:
         async with self._setup_lock:
             if self._identity is None:
                 response = await self._rpc({"method": "setup", "workspace": self.workspace})
@@ -152,7 +156,6 @@ class VMEnvironment(Environment):
                 self._identity = response["identity"]
                 self.workspace = self._identity["workspace"]
                 self.source_workspace = self.workspace
-        return self.workspace
 
     async def _cancel_operation(self, operation_id: str) -> None:
         status = await self._rpc({"method": "cancel", "operation_id": operation_id})
@@ -250,6 +253,7 @@ class VMEnvironment(Environment):
         known = operation_id in self._operations
         self._operations.add(operation_id)
         try:
+            await self._setup_identity()
             status = await self._rpc({"method": "query", "operation_id": operation_id})
             value = await self._wait(operation_id, status)
         except FileNotFoundError:
@@ -287,9 +291,11 @@ class VMEnvironment(Environment):
         if not re.fullmatch(r"[A-Za-z0-9._-]+", prefix) or not re.fullmatch(r"[A-Za-z0-9._-]+", suffix):
             raise ValueError("temporary file prefix and suffix must be simple path components")
         path = f"{prefix}{uuid.uuid4().hex}{suffix}"
-        identity = await self._operate("temporary", {"path": path, "content": content})
-        self._temporary_files[path] = identity
-        return posixpath.join(self.workspace, path)
+        async def create() -> str:
+            identity = await self._operate("temporary", {"path": path, "content": content})
+            self._temporary_files[path] = identity
+            return posixpath.join(self.workspace, path)
+        return await await_owned_operation(create(), propagate_cancellation=True)
 
     async def remove_file(self, path: str) -> None:
         target = posixpath.relpath(path, self.workspace) if path.startswith("/") else posixpath.normpath(path)

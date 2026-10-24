@@ -79,6 +79,17 @@ def test_archive_strips_setuid_and_setgid_without_losing_group_write(tmp_path):
     assert stat.S_IMODE(payload.stat().st_mode) == 0o775
 
 
+@pytest.mark.parametrize("mode", [0o000, 0o200])
+def test_archive_preserves_files_without_owner_read_permission(tmp_path, mode):
+    archive = tmp_path / "archive.tar"
+    _archive(archive, [("payload", tarfile.REGTYPE, mode)])
+    payload = unpack(archive, tmp_path / "staging", directory=False)
+    assert stat.S_IMODE(payload.stat().st_mode) == mode
+    target = tmp_path / "target"
+    publish(payload, target, directory=False)
+    assert stat.S_IMODE(target.stat().st_mode) == mode
+
+
 def test_directory_publication_rejects_existing_content(tmp_path):
     source = tmp_path / "source"
     source.mkdir()
