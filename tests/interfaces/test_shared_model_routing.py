@@ -500,7 +500,8 @@ def test_team_entry_route_supplies_its_own_cli_credentials(tmp_path, monkeypatch
 
     install_sdk_transport(monkeypatch, "openai", respond)
     monkeypatch.setenv("OPENCOLLAB_MODEL_ROUTES", json.dumps({"writer": {
-        "model": "physical-writer", "api_key": "route-key", "base_url": "https://writer.example/v1",  # pragma: allowlist secret
+        "model": "physical-writer", "base_url": "https://writer.example/v1",
+        "api_key": "route-key",  # pragma: allowlist secret
     }}))
     team = tmp_path / "team.yaml"
     team.write_text("entry: reader\nroles:\n  reader:\n    prompt: Finish.\n    model: writer\n    tools: []\n")
