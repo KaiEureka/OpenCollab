@@ -16,10 +16,9 @@ import pytest_asyncio
 from opencollab.adapters._env_vm import VMEnvironment, VMTransportError
 from opencollab.adapters._git_patch_bytes import _patch_temporary
 from opencollab.adapters._vm_leases import VMCapacityError, _VMLeases
+from opencollab.adapters.vm_config import VMConnection, VMResource
 from opencollab.adapters.vm_isolation import VMIsolationPool
 from opencollab.adapters.worktree_pool import WorktreePool
-from opencollab.domain.vm import VMConnection
-from opencollab.domain.vm_resources import VMResource
 
 
 def _repository(path):

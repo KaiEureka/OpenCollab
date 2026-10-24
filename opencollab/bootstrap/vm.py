@@ -4,10 +4,9 @@ from collections.abc import Callable, Sequence
 from functools import partial
 
 from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters.vm_config import VMConnection, VMResource
 from opencollab.adapters.vm_isolation import VMIsolationPool
 from opencollab.application.ports import WorktreePoolPort
-from opencollab.domain.vm import VMConnection
-from opencollab.domain.vm_resources import VMResource
 
 
 def vm_isolation_provider(

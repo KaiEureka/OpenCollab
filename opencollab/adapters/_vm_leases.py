@@ -7,7 +7,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
 
-from opencollab.domain.vm_resources import VMResource
+from opencollab.adapters.vm_config import VMResource
 
 
 class VMCapacityError(RuntimeError):

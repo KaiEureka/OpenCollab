@@ -19,11 +19,11 @@ from opencollab.adapters._team_candidate_environment import _TeamCandidateEnviro
 from opencollab.adapters._vm_leases import VMCapacityError as VMCapacityError
 from opencollab.adapters._vm_leases import _VMLeases
 from opencollab.adapters.env import Environment
+from opencollab.adapters.vm_config import VMResource
 from opencollab.adapters.worktree_pool import WorktreePool
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.application.exception_notes import add_exception_note
 from opencollab.domain.identity import role_storage_slug, validate_role_identity
-from opencollab.domain.vm_resources import VMResource
 
 
 @dataclass

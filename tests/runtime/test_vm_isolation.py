@@ -18,10 +18,9 @@ from opencollab.adapters._env_vm import VMEnvironment, VMOperationError, VMTrans
 from opencollab.adapters._vm_leases import VMCapacityError, _VMLeases
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.session_environments import SessionEnvironmentPool
+from opencollab.adapters.vm_config import VMConnection, VMResource
 from opencollab.adapters.vm_isolation import VMIsolationPool
 from opencollab.bootstrap.vm import vm_isolation_provider
-from opencollab.domain.vm import VMConnection
-from opencollab.domain.vm_resources import VMResource
 
 
 def _repository(path: Path) -> None:
@@ -107,8 +106,7 @@ async def test_database_claim_is_exclusive_across_controller_processes_and_conne
     code = """
 import asyncio, sys
 from opencollab.adapters._vm_leases import _VMLeases, VMCapacityError
-from opencollab.domain.vm import VMConnection
-from opencollab.domain.vm_resources import VMResource
+from opencollab.adapters.vm_config import VMConnection, VMResource
 resource = VMResource('vm-one', VMConnection('different-alias', 'test'), sys.argv[2], reset_command='true')
 async def main():
     try:
