@@ -65,7 +65,8 @@ def test_open_topology_reveals_configured_specialists():
     }, topology=Topology(allow_all=True))
     agent = ContextBuilder(team, _config()).build_agent("lead", scheduler=object())
     assert "query_planner" in agent.system_prompt
-    assert "Analyze database query plans" in agent.system_prompt
+    assert "- lead" in agent.system_prompt
+    assert "Analyze database query plans" not in agent.system_prompt
 
 
 def test_message_only_role_context_describes_only_granted_tools():

@@ -312,12 +312,10 @@ class ContextBuilder:
         tools = set(role.tools)
         if not (tools & COORDINATION_TOOL_NAMES):
             return ""
-        targets = sorted(set(self._team.roles) - {role_name} if topo.allow_all
+        targets = sorted(self._team.roles if topo.allow_all
                          else topo.edges.get(role_name, frozenset()))
         lines = ["## Your team", "", "Configured roles you may address:"]
-        for target in targets:
-            description = " ".join(self._team.role_for(target).prompt.split())[:240]
-            lines.append(f"- {target}: {description}")
+        lines += [f"- {target}" for target in targets]
         if not targets:
             lines.append("No other configured role is reachable from this role.")
         if self._prebuilt_team:
