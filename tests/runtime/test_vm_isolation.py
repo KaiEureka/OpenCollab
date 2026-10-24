@@ -220,6 +220,59 @@ async def test_export_failure_retains_workspace_and_lease_until_retry(tmp_path, 
     assert not Path(environment.workspace).exists()
 
 
+@pytest.mark.parametrize("stage", ["capture", "cleanup"])
+async def test_lost_candidate_reply_recovers_before_export_or_cleanup_retry(tmp_path, local_vm, monkeypatch, stage):
+    source = tmp_path / "source"
+    _repository(source)
+    resource = _resource(tmp_path / "guest")
+    database = str(tmp_path / "leases.sqlite")
+    pool = VMIsolationPool(str(source), resources=[resource], lease_database=database, scope="session")
+    environment = await pool.acquire("worker")
+    await environment.exec_cmd("printf candidate > answer.txt")
+    control = environment._lease.base_environment
+    execute = control.exec_cmd
+    completed = {}
+    recovered = []
+    available = False
+
+    async def lose_reply(cmd, timeout=120, *, input_bytes=None):
+        result = await execute(cmd, timeout, input_bytes=input_bytes)
+        selected = environment._delegate.revoked if stage == "capture" else "worktree list --porcelain" in cmd
+        if selected and not completed:
+            completed["candidate-reply"] = result
+            control._operations.add("candidate-reply")
+            control._uncertain.add("candidate-reply")
+            raise VMTransportError("candidate reply lost", operation_id="candidate-reply")
+        return result
+
+    async def recover(operation_id):
+        if not available:
+            raise VMOperationError("operation status unknown", operation_id=operation_id, state="unknown")
+        recovered.append(operation_id)
+        control._operations.remove(operation_id)
+        control._uncertain.remove(operation_id)
+        return completed[operation_id]
+
+    monkeypatch.setattr(control, "exec_cmd", lose_reply)
+    monkeypatch.setattr(control, "recover_operation", recover)
+    destination = Path(environment.export_directory)
+    with pytest.raises(VMTransportError):
+        await pool.release_env(environment)
+    assert destination.exists() is (stage == "cleanup")
+    with pytest.raises(VMOperationError):
+        await pool.release_env(environment)
+    with pytest.raises(VMCapacityError):
+        await _VMLeases(database, [resource], 0).acquire("other")
+    assert Path(environment.workspace).exists()
+    available = True
+    await pool.release_env(environment)
+    assert recovered == ["candidate-reply"]
+    assert (destination / "answer.txt").read_text() == "candidate"
+    assert not pool.retained_resources
+    assert await _VMLeases(database, [resource], 0).acquire("next") == resource
+    await pool.release()
+
+
 async def test_reset_failure_retains_lease_and_restores_guest_before_next_claim(tmp_path, local_vm):
     source = tmp_path / "source"
     _repository(source)
