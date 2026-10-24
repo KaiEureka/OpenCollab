@@ -143,6 +143,9 @@ class _CandidateWorkflowSessionFactory:
             return owner
         acquire = getattr(self._factory, "acquire_environment", None)
         if callable(acquire):
+            release = getattr(self._factory, "release_isolated_envs", None)
+            if not callable(release) or not _accepts_environment(release):
+                raise TypeError("candidate isolation requires environment-aware acquisition and scoped release")
             isolated = await acquire(isolation=isolation, label=label, environment=owner)
             self._isolated_environments.append((owner, isolated))
             return isolated

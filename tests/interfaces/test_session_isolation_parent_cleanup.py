@@ -11,8 +11,27 @@ from opencollab.adapters import session_environments
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.worktree_pool import WorktreePool
+from opencollab.application.workflow_candidates import _CandidateWorkflowSessionFactory
 from opencollab.bootstrap import build_runtime_context, build_scheduler, container
 from opencollab.bootstrap.isolation import prepare_scheduler
+
+
+async def test_candidate_custom_strategy_checks_scoped_cleanup_before_allocating():
+    class LegacyCleanupFactory:
+        allocated = False
+
+        async def acquire_environment(self, **kwargs):
+            self.allocated = True
+            return object()
+
+        async def release_isolated_envs(self):
+            raise AssertionError("another owner's allocations must stay untouched")
+
+    factory = LegacyCleanupFactory()
+    candidate = _CandidateWorkflowSessionFactory(factory, object())
+    with pytest.raises(TypeError, match="scoped release"):
+        await candidate.acquire_environment(isolation="custom")
+    assert not factory.allocated
 
 
 def _repository(path: Path) -> None:
