@@ -119,6 +119,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
     body = MD.renderer.render(page.tokens, MD.options, {})
     canonical = SITE_URL + page.destination.relative_to(ROOT).as_posix()
     description = page.metadata.get("summary", "OpenCollab 中文使用与开发指南")
+    entry = ' data-help-entry="true"' if page.destination == ROOT / "help" / "index.html" else ""
     return f'''<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -130,7 +131,7 @@ def render_page(page: Page, pages: list[Page], config: dict) -> str:
 <link rel="stylesheet" href="{css}">
 <script type="module" src="{script}"></script>
 </head>
-<body data-search-index="{search_index}">
+<body data-search-index="{search_index}"{entry}>
 <a class="skip" href="#content">跳到正文</a>
 <header class="topbar">
 <a class="brand" href="{home}">OpenCollab <span>帮助中心</span></a>

@@ -1,7 +1,9 @@
 # Help center
 
 The project site links to the help center at `help/`, which opens the Chinese
-guides. Every help page offers a Chinese and English language switch. The English
+guides on first visit. A global Chinese and English switch selects the help center
+edition. The browser remembers the selected edition when entering through `help/`
+again. Explicit article URLs open their specified edition. The English
 page at `help/en/` uses the same reader layout and displays "Coming soon."
 Chinese article URLs remain under `help/zh-CN/`. The 68 guides are
 maintained in `zh-CN/topics/`. Navigation pages and the explicitly planned VM

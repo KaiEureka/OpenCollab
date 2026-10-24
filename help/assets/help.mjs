@@ -102,8 +102,25 @@ async function initializeSearch() {
   });
 }
 
+function restoreHelpLanguage() {
+  try {
+    const key = "opencollab.help.language";
+    if (document.body.dataset.helpEntry) {
+      if (localStorage.getItem(key) === "en") {
+        window.location.replace(document.querySelector('.language-switch a[hreflang="en"]').href);
+        return true;
+      }
+    } else {
+      localStorage.setItem(key, document.documentElement.lang);
+    }
+  } catch {
+    // Explicit language links still work when browser storage is unavailable.
+  }
+  return false;
+}
+
 if (typeof document !== "undefined") {
-  initializeSearch();
+  if (!restoreHelpLanguage()) initializeSearch();
   document.querySelector("#menu-toggle")?.addEventListener("click", event => {
     const open = document.body.classList.toggle("menu-open");
     event.currentTarget.setAttribute("aria-expanded", String(open));
