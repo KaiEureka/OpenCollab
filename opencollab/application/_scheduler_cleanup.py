@@ -6,9 +6,9 @@ import asyncio
 import inspect
 import logging
 import math
+from enum import Enum
 from typing import Any
 
-from opencollab.application._scheduler_constants import DEFAULT_SCHEDULER_CLEANUP_TIMEOUT
 from opencollab.application.async_timeout import (
     await_owned_operation,
     cancel_tasks_and_wait,
@@ -18,6 +18,10 @@ from opencollab.application.session_lifecycle import close_session_resources
 from opencollab.domain.pending import PendingRowError, RowStatus
 
 logger = logging.getLogger(__name__)
+
+
+class _CleanupTimeout(Enum):
+    INHERIT = "inherit"
 
 def _unique_task_owners(*groups: Any) -> list[tuple[int, asyncio.Task[Any]]]:
     owners: list[tuple[int, asyncio.Task[Any]]] = []
@@ -33,10 +37,12 @@ class SchedulerCleanupMixin:
     async def cleanup(
         self,
         *,
-        cleanup_timeout: float = DEFAULT_SCHEDULER_CLEANUP_TIMEOUT,
+        cleanup_timeout: float | _CleanupTimeout = _CleanupTimeout.INHERIT,
     ) -> None:
         """Stop scheduler-owned work and persist one terminal snapshot."""
-        timeout = self._validate_cleanup_timeout(cleanup_timeout)
+        timeout = self._validate_cleanup_timeout(
+            self._cleanup_timeout if cleanup_timeout is _CleanupTimeout.INHERIT else cleanup_timeout
+        )
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_impl(timeout=timeout))
         task = self._cleanup_task

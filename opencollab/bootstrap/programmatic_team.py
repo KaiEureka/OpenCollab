@@ -85,6 +85,7 @@ async def run_team(
             context, builder=_programmatic.build_scheduler, isolation=isolation,
             environment_providers=environment_providers,
             workflow_cleanup_timeout=workflow_cleanup_timeout,
+            cleanup_timeout=cleanup_timeout,
             use_worktrees=use_worktrees,
             # Programmatic runs cannot answer ``ask_user``. The caller separately
             # chooses whether to allow an unsandboxed shell.

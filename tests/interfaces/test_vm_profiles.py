@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -9,6 +10,7 @@ import pytest
 
 from opencollab import OpenCollab
 from opencollab.adapters.session_environments import SessionEnvironmentPool
+from opencollab.application.scheduler import Scheduler
 from opencollab.bootstrap import _workflow_runtime_execution as workflow_execution
 from opencollab.bootstrap import programmatic
 from opencollab.bootstrap.config import build_config
@@ -164,7 +166,42 @@ async def test_team_cleanup_defaults_preserve_child_grace_and_accept_explicit_ov
     )
     assert result.ok
     assert captured["parent_grace"] == parent_grace
+    assert captured["cleanup_timeout"] == parent_grace
     assert captured["workflow_cleanup_timeout"] == child_grace
+
+
+@pytest.mark.parametrize("with_vm, explicit, expected", [(False, None, 10), (True, None, 60), (True, 7, 7)])
+async def test_cancelled_public_team_uses_resolved_grace_on_its_first_internal_cleanup(
+    tmp_path, monkeypatch, with_vm, explicit, expected,
+):
+    entered = asyncio.Event()
+    observed = []
+    cleanup = Scheduler._cleanup_impl
+
+    async def block_turn(scheduler, aid, prompt):
+        entered.set()
+        await asyncio.Event().wait()
+
+    async def remember(scheduler, *, timeout):
+        observed.append(timeout)
+        return await cleanup(scheduler, timeout=timeout)
+
+    monkeypatch.setattr(Scheduler, "_run_turn_exclusive", block_turn)
+    monkeypatch.setattr(Scheduler, "_cleanup_impl", remember)
+    team = tmp_path / "team.yaml"
+    team.write_text("entry: author\nroles:\n  author:\n    prompt: Author\n    tools: []\n")
+    task = asyncio.create_task(OpenCollab(
+        tmp_path, api_key="offline-test",  # pragma: allowlist secret
+        config={"vm": _profile(tmp_path)} if with_vm else {},
+    ).team(
+        "run", config=team, use_worktrees=False, trace=False,
+        **({"cleanup_timeout": explicit} if explicit is not None else {}),
+    ))
+    await asyncio.wait_for(entered.wait(), 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 5)
+    assert observed == [expected]
 
 
 @pytest.mark.parametrize("with_vm, explicit, expected", [(False, None, 2), (True, None, 60), (True, 7, 7)])

@@ -102,6 +102,7 @@ def build_scheduler(
     run_id: str | None = None,
     worktree_pool=None,
     workflow_cleanup_timeout: float | None = None,
+    cleanup_timeout: float | None = None,
 ) -> Scheduler:
     """Compose a team and initialize agent 0 with the selected configuration.
 
@@ -247,6 +248,7 @@ def build_scheduler(
 
         scheduler = Scheduler(
             session_factory=session_factory,
+            cleanup_timeout=environment_cleanup_timeout(cfg, cleanup_timeout, default=10.0),
             worktree_pool=worktree_pool,
             event_sink=event_bus,
             tracer=ctx.tracer,
