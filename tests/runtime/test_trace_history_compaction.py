@@ -7,6 +7,7 @@ import json
 from opencollab.adapters.trace import Tracer
 from opencollab.bootstrap.container import build_session_runtime
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_loop_test_support import FakeTracer
 
 RECORD_TYPE = "session.history_compaction"
@@ -29,10 +30,10 @@ def _agent() -> Agent:
 def _records(tracer: FakeTracer) -> list[dict]:
     return [step["payload"] for step in tracer.steps if step["step_type"] == RECORD_TYPE]
 
-def test_history_compaction_record_names_the_thresholds_in_force():
+def test_history_compaction_record_names_the_thresholds_in_force(local_environment_factory):
     tracer = FakeTracer()
 
-    build_session_runtime(agent=_agent(), tracer=tracer, llm=_Llm(1_015_576), aid=3)
+    build_session_runtime(env=local_environment_factory(), agent=_agent(), tracer=tracer, llm=_Llm(1_015_576), aid=3)
 
     records = _records(tracer)
     assert len(records) == 1
@@ -46,10 +47,10 @@ def test_history_compaction_record_names_the_thresholds_in_force():
         "history_thresholds_from": "context_window",
     }
 
-def test_history_compaction_record_says_when_the_fixed_defaults_were_used():
+def test_history_compaction_record_says_when_the_fixed_defaults_were_used(local_environment_factory):
     tracer = FakeTracer()
 
-    build_session_runtime(agent=_agent(), tracer=tracer, llm=_Llm(None), aid=0)
+    build_session_runtime(env=local_environment_factory(), agent=_agent(), tracer=tracer, llm=_Llm(None), aid=0)
 
     records = _records(tracer)
     assert len(records) == 1
@@ -58,7 +59,7 @@ def test_history_compaction_record_says_when_the_fixed_defaults_were_used():
     assert records[0]["history_trigger_tokens"] == 120_000
     assert records[0]["history_target_tokens"] == 90_000
 
-def test_history_compaction_record_declares_an_injected_shaper():
+def test_history_compaction_record_declares_an_injected_shaper(local_environment_factory):
     """An injected shaper bypasses threshold derivation."""
     tracer = FakeTracer()
 
@@ -67,6 +68,7 @@ def test_history_compaction_record_declares_an_injected_shaper():
             return messages
 
     build_session_runtime(
+        env=local_environment_factory(),
         agent=_agent(), tracer=tracer, llm=_Llm(200_000), aid=1, shaper=_Shaper()
     )
 
@@ -76,12 +78,12 @@ def test_history_compaction_record_declares_an_injected_shaper():
     assert records[0]["history_trigger_tokens"] is None
     assert records[0]["history_target_tokens"] is None
 
-def test_history_compaction_record_reaches_the_trajectory_file(tmp_path):
+def test_history_compaction_record_reaches_the_trajectory_file(tmp_path, local_environment_factory):
     """Drive the real tracer: a field that never reaches disk fails here."""
     tracer = Tracer(run_id="history-compaction", output_dir=str(tmp_path))
     path = tracer.path
     try:
-        build_session_runtime(agent=_agent(), tracer=tracer, llm=_Llm(200_000), aid=2)
+        build_session_runtime(env=local_environment_factory(), agent=_agent(), tracer=tracer, llm=_Llm(200_000), aid=2)
         tracer.flush()
     finally:
         tracer.close()
@@ -93,7 +95,7 @@ def test_history_compaction_record_reaches_the_trajectory_file(tmp_path):
     assert payloads[0]["history_trigger_tokens"] == 167_000
     assert payloads[0]["history_target_tokens"] == 125_250
 
-def test_session_builds_without_a_tracer():
+def test_session_builds_without_a_tracer(local_environment_factory):
     """Observation only: no tracer, no record, no failure."""
-    runtime = build_session_runtime(agent=_agent(), tracer=None, llm=_Llm(200_000))
+    runtime = build_session_runtime(env=local_environment_factory(), agent=_agent(), tracer=None, llm=_Llm(200_000))
     assert runtime is not None

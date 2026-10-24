@@ -112,7 +112,10 @@ def _run_one_child(
         asyncio.run(scenario())
         tracer.flush()
     finally:
-        tracer.close()
+        try:
+            asyncio.run(scheduler.cleanup())
+        finally:
+            tracer.close()
 
     return _payloads(trace_path, "worktree_changes"), lead.state.pending_events.rows["tc-1"]
 

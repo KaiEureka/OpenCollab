@@ -668,10 +668,10 @@ async def test_candidate_workflow_source_drift_preserves_current_source_and_cand
             await context.candidate_workflow(workflow, {}, label="candidate")
         assert (repo / "draft.txt").read_text() == "concurrent draft\n"
         assert (repo / "source.py").read_text() == "value = 1\n"
-        assert await leases[0].environment.read_file("source.py") == "value = 2\n"
+        candidate_repo = Path(leases[0].candidate_workspace)
+        assert (candidate_repo / "source.py").read_text() == "value = 2\n"
         assert leases[0].base_revision in str(captured.value)
         assert _git(repo, "show", f"{leases[0].base_revision}:draft.txt") == "initial draft\n"
-        candidate_repo = Path(leases[0].candidate_workspace)
         assert _git(candidate_repo, "show", "refs/worktree/opencollab-source:draft.txt") == "initial draft\n"
         assert not (repo / ".git" / "refs" / "worktree" / "opencollab-source").exists()
     finally:

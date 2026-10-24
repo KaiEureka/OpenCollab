@@ -18,6 +18,7 @@ from opencollab.domain.token_estimation import estimate_request_tokens
 from tests.runtime.test_async_compaction import history
 from tests.runtime.test_compaction_accounting import AccountingModel
 from tests.runtime.test_llm_chat_streaming_http import fake_chat_server
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 class Model:
@@ -348,10 +349,11 @@ async def test_policy_can_hold_soft_cap_and_stop_after_retaining_prior_usage(tmp
     assert len(model.calls) == 1
     assert snapshots[-1].used_tokens == 100 and snapshots[-1].reason == "precheck"
 
-async def test_completed_summary_at_precheck_can_extend_before_local_stop():
+async def test_completed_summary_at_precheck_can_extend_before_local_stop(local_environment_factory):
     events, snapshots = [], []
     model = AccountingModel(summary_tokens=20_000)
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="summary-precheck", system_prompt="sys"), llm=model, max_budget_tokens=40_000,
         run_control=RunControl(initial_soft_budget_tokens=20_000, on_event=events.append,
                                decide_budget=lambda snapshot: snapshots.append(snapshot) or BudgetDecision(
@@ -634,7 +636,7 @@ async def test_usage_events_preserve_cache_reasoning_and_estimation_without_addi
 
 @pytest.mark.parametrize("stage", ["precheck", "request"])
 @pytest.mark.parametrize("proposed", [600, 1_500])
-async def test_event_cancellation_during_budget_await_stops_before_provider(stage, proposed):
+async def test_event_cancellation_during_budget_await_stops_before_provider(local_environment_factory, stage, proposed):
     entered, release, cancel_event = asyncio.Event(), asyncio.Event(), asyncio.Event()
     events = []
     model = Model()
@@ -647,6 +649,7 @@ async def test_event_cancellation_during_budget_await_stops_before_provider(stag
         return BudgetDecision(snapshot.soft_budget_tokens)
 
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="cancel-budget", system_prompt="sys"), llm=model, max_budget_tokens=1_000,
         run_control=RunControl(initial_soft_budget_tokens=500, decide_budget=policy, on_event=events.append),
     )

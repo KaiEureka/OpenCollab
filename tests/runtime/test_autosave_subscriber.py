@@ -16,6 +16,7 @@ from opencollab.application.event_bus import EventBus
 from opencollab.bootstrap import build_session as Session
 from opencollab.bootstrap import load_session
 from opencollab.domain.events import SessionRuntimeEvent as SessionEvent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import FakeAgent, FakeLLMClient, llm_response
 
 
@@ -69,7 +70,7 @@ def test_autosave_wraps_worker_base_exceptions_without_escaping(fatal):
     assert sub.last_error.__cause__ is fatal
     assert sub.failure_count == 1
 
-def test_session_surfaces_autosave_persistence_error():
+def test_session_surfaces_autosave_persistence_error(local_environment_factory):
     error = OSError("snapshot write failed")
 
     class FailingStore:
@@ -83,6 +84,7 @@ def test_session_surfaces_autosave_persistence_error():
             raise AssertionError("manifest save is not used")
 
     session = Session(
+        env=local_environment_factory(),
         agent=FakeAgent(),
         llm=FakeLLMClient(),
         auto_save_path="unused.json",
@@ -193,6 +195,7 @@ class _CompletingLLM:
 
 @pytest.mark.parametrize("trigger", sorted(SAVE_TRIGGERS))
 def test_autosave_journal_recovers_every_trigger_with_linear_write_growth(
+    local_environment_factory,
     tmp_path,
     trigger,
 ):
@@ -200,6 +203,7 @@ def test_autosave_journal_recovers_every_trigger_with_linear_write_growth(
         path = tmp_path / name
         store = _CountingSessionStore()
         session = Session(
+            env=local_environment_factory(),
             agent=FakeAgent(),
             llm=FakeLLMClient(),
             auto_save_path=str(path),
@@ -227,7 +231,7 @@ def test_autosave_journal_recovers_every_trigger_with_linear_write_growth(
 
         asyncio.run(scenario())
         restored = load_session(
-            str(path),
+            str(path), env=local_environment_factory(),
             agent=FakeAgent(),
             llm=FakeLLMClient(),
         )
@@ -334,9 +338,10 @@ def test_event_bus_external_cancellation_still_propagates():
 
     assert seen == []
 
-def test_session_with_auto_save_path_writes_on_user_message(tmp_path):
+def test_session_with_auto_save_path_writes_on_user_message(local_environment_factory, tmp_path):
     path = tmp_path / "auto.jsonl"
     session = Session(
+        env=local_environment_factory(),
         agent=FakeAgent(),
         llm=FakeLLMClient(),
         auto_save_path=str(path),
@@ -346,10 +351,11 @@ def test_session_with_auto_save_path_writes_on_user_message(tmp_path):
     contents = path.read_text()
     assert "hello" in contents
 
-def test_autosave_retries_journal_record_after_fsync_error(tmp_path, monkeypatch):
+def test_autosave_retries_journal_record_after_fsync_error(local_environment_factory, tmp_path, monkeypatch):
     path = tmp_path / "fsync-retry.json"
     store = SessionStore()
     session = Session(
+        env=local_environment_factory(),
         agent=FakeAgent(),
         llm=FakeLLMClient(),
         auto_save_path=str(path),
@@ -408,7 +414,7 @@ def test_autosave_retries_journal_record_after_fsync_error(tmp_path, monkeypatch
     ]
 
     restored = load_session(
-        str(path),
+        str(path), env=local_environment_factory(),
         agent=FakeAgent(),
         llm=FakeLLMClient(),
     )
@@ -425,6 +431,7 @@ def test_autosave_retries_journal_record_after_fsync_error(tmp_path, monkeypatch
     [("done", "done"), ("stopped", "stopped"), ("error", "error")],
 )
 def test_terminal_phase_is_committed_by_final_autosave(
+    local_environment_factory,
     tmp_path, mode, expected_phase
 ):
     class TerminalLLM:
@@ -440,6 +447,7 @@ def test_terminal_phase_is_committed_by_final_autosave(
         else llm_response(content="done")
     )
     session = Session(
+        env=local_environment_factory(),
         agent=FakeAgent(),
         llm=TerminalLLM(),
         auto_save_path=str(path),
@@ -458,7 +466,7 @@ def test_terminal_phase_is_committed_by_final_autosave(
     snapshot = json.loads(path.read_text(encoding="utf-8"))
     assert snapshot["session_state"]["phase"] == expected_phase
 
-def test_terminal_checkpoint_failure_does_not_mask_provider_error(tmp_path):
+def test_terminal_checkpoint_failure_does_not_mask_provider_error(local_environment_factory, tmp_path):
     provider_error = RuntimeError("provider failed")
     checkpoint_error = OSError("checkpoint failed")
 
@@ -469,6 +477,7 @@ def test_terminal_checkpoint_failure_does_not_mask_provider_error(tmp_path):
     async def scenario():
         store = _SwitchableCheckpointStore(checkpoint_error)
         session = Session(
+            env=local_environment_factory(),
             agent=FakeAgent(),
             llm=FailingLLM(),
             auto_save_path=str(tmp_path / "provider-error.json"),
@@ -491,13 +500,14 @@ def test_terminal_checkpoint_failure_does_not_mask_provider_error(tmp_path):
 
     asyncio.run(scenario())
 
-def test_terminal_checkpoint_failure_does_not_mask_cancellation(tmp_path):
+def test_terminal_checkpoint_failure_does_not_mask_cancellation(local_environment_factory, tmp_path):
     cancellation = asyncio.CancelledError("caller cancelled")
     checkpoint_error = OSError("checkpoint failed")
 
     async def scenario():
         store = _SwitchableCheckpointStore(checkpoint_error)
         session = Session(
+            env=local_environment_factory(),
             agent=FakeAgent(),
             llm=FakeLLMClient(),
             auto_save_path=str(tmp_path / "cancelled.json"),
@@ -525,12 +535,13 @@ def test_terminal_checkpoint_failure_does_not_mask_cancellation(tmp_path):
 
     asyncio.run(scenario())
 
-def test_terminal_checkpoint_failure_surfaces_without_primary_error(tmp_path):
+def test_terminal_checkpoint_failure_surfaces_without_primary_error(local_environment_factory, tmp_path):
     checkpoint_error = OSError("checkpoint failed")
 
     async def scenario():
         store = _SwitchableCheckpointStore(checkpoint_error)
         session = Session(
+            env=local_environment_factory(),
             agent=FakeAgent(),
             llm=_CompletingLLM(),
             auto_save_path=str(tmp_path / "completed.json"),
@@ -549,7 +560,7 @@ def test_terminal_checkpoint_failure_surfaces_without_primary_error(tmp_path):
 
     asyncio.run(scenario())
 
-def test_cancelling_terminal_checkpoint_waits_for_owned_write(tmp_path):
+def test_cancelling_terminal_checkpoint_waits_for_owned_write(local_environment_factory, tmp_path):
     class BlockingCheckpointStore(SessionStore):
         def __init__(self):
             self.block_checkpoint = False
@@ -567,6 +578,7 @@ def test_cancelling_terminal_checkpoint_waits_for_owned_write(tmp_path):
         store = BlockingCheckpointStore()
         path = tmp_path / "cancel-during-checkpoint.json"
         session = Session(
+            env=local_environment_factory(),
             agent=FakeAgent(),
             llm=_CompletingLLM(),
             auto_save_path=str(path),
@@ -593,7 +605,7 @@ def test_cancelling_terminal_checkpoint_waits_for_owned_write(tmp_path):
 
     asyncio.run(scenario())
 
-def test_session_external_sink_and_autosave_coexist(tmp_path):
+def test_session_external_sink_and_autosave_coexist(local_environment_factory, tmp_path):
     path = tmp_path / "auto.jsonl"
     received: list[str] = []
 
@@ -602,6 +614,7 @@ def test_session_external_sink_and_autosave_coexist(tmp_path):
             received.append(event.type)
 
     session = Session(
+        env=local_environment_factory(),
         agent=FakeAgent(),
         llm=FakeLLMClient(),
         auto_save_path=str(path),

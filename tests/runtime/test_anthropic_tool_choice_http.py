@@ -11,6 +11,7 @@ from opencollab.adapters.llm.client import LLMClient
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, http_response, install_sdk_transport
 from tests.support.session_characterization_test_support import FakeTool
 
@@ -42,7 +43,9 @@ def isolate_usage_log(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOLLAB_API_USAGE_LOG", str(tmp_path / "usage.jsonl"))
 
 @pytest.mark.parametrize("tool_choice", [_NAMED_CHOICE, "required"], ids=["named", "required"])
-async def test_documented_rejection_retries_named_and_required_choices_once(monkeypatch, tmp_path, tool_choice):
+async def test_documented_rejection_retries_named_and_required_choices_once(
+    local_environment_factory, monkeypatch, tmp_path, tool_choice,
+):
     requests = []
 
     def handler(request):
@@ -54,7 +57,9 @@ async def test_documented_rejection_retries_named_and_required_choices_once(monk
 
     install_sdk_transport(monkeypatch, "anthropic", handler)
     async with _client() as client:
-        session = build_session(agent=_agent(tool_choice=tool_choice), llm=client, max_budget_tokens=50_000)
+        session = build_session(
+            env=local_environment_factory(),
+            agent=_agent(tool_choice=tool_choice), llm=client, max_budget_tokens=50_000)
         await session.add_user_message("Finish the task.")
 
         assert await session.run_loop() == "ok"
@@ -71,6 +76,7 @@ async def test_documented_rejection_retries_named_and_required_choices_once(monk
 
 @pytest.mark.parametrize("fallback_fails", [False, True], ids=["recovered", "second-error"])
 async def test_budget_wind_down_recovers_documented_rejection_and_preserves_second_error(
+    local_environment_factory,
     monkeypatch, tmp_path, fallback_fails,
 ):
     requests = []
@@ -93,7 +99,7 @@ async def test_budget_wind_down_recovers_documented_rejection_and_preserves_seco
 
     install_sdk_transport(monkeypatch, "anthropic", handler)
     async with _client() as client:
-        session = build_session(agent=_agent(), llm=client, max_budget_tokens=50_000)
+        session = build_session(env=local_environment_factory(), agent=_agent(), llm=client, max_budget_tokens=50_000)
         session.runner.configure_enforcement(enforcement_strength="needs-enforcement")
         await session.add_user_message("Read and finish the task.")
 
@@ -123,7 +129,7 @@ async def test_budget_wind_down_recovers_documented_rejection_and_preserves_seco
     assert sum(row["usage"]["total_tokens"] for row in ledger) == session.used_tokens
 
 @pytest.mark.parametrize("param", ["temperature", "tools", "messages"])
-async def test_explicit_unrelated_parameter_prevents_tool_choice_retry(monkeypatch, param):
+async def test_explicit_unrelated_parameter_prevents_tool_choice_retry(local_environment_factory, monkeypatch, param):
     requests = []
 
     def handler(request):
@@ -132,7 +138,7 @@ async def test_explicit_unrelated_parameter_prevents_tool_choice_retry(monkeypat
 
     install_sdk_transport(monkeypatch, "anthropic", handler)
     async with _client() as client:
-        session = build_session(agent=_agent(tool_choice="required"), llm=client)
+        session = build_session(env=local_environment_factory(), agent=_agent(tool_choice="required"), llm=client)
         await session.add_user_message("Finish the task.")
 
         with pytest.raises(anthropic.BadRequestError) as captured:
@@ -148,7 +154,9 @@ async def test_explicit_unrelated_parameter_prevents_tool_choice_retry(monkeypat
     'tool_choice: type "tool" and "any" were requested; invalid temperature',
     'Invalid tools schema; request included tool_choice type "tool" and "any"',
 ])
-async def test_unrelated_validation_message_with_choice_echo_does_not_retry(monkeypatch, message):
+async def test_unrelated_validation_message_with_choice_echo_does_not_retry(
+    local_environment_factory, monkeypatch, message,
+):
     requests = []
 
     def handler(request):
@@ -157,7 +165,7 @@ async def test_unrelated_validation_message_with_choice_echo_does_not_retry(monk
 
     install_sdk_transport(monkeypatch, "anthropic", handler)
     async with _client() as client:
-        session = build_session(agent=_agent(tool_choice="required"), llm=client)
+        session = build_session(env=local_environment_factory(), agent=_agent(tool_choice="required"), llm=client)
         await session.add_user_message("Finish the task.")
         with pytest.raises(anthropic.BadRequestError):
             await session.run_loop()

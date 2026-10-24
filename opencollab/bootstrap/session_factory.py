@@ -25,6 +25,8 @@ from opencollab.adapters.safe_files import ensure_directory_no_symlinks
 from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
+from opencollab.application.compaction_summary import run_coro_blocking
+from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.ports import (
     AskUserPort,
     EventPublisherPort,
@@ -311,62 +313,68 @@ def snapshot_session(
         (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
         label="agent",
     )
-    environment = _fork_snapshot_environment(session.env)
-    new = build_session(
-        agent=agent,
-        env=environment,
-        max_budget_tokens=session.max_budget_tokens,
-        max_steps=session.max_steps,
-        event_sink=event_sink,
-        permission_policy=_clone_snapshot_component(
-            session.permission_policy,
-            label="permission policy",
-        ),
-        ask_policy=_clone_snapshot_component(
-            session.tool_execution.ask_policy,
-            label="ask policy",
-        ),
-        safety_policy=_clone_snapshot_component(
-            session.tool_execution.safety_policy,
-            label="safety policy",
-        ),
-        llm=session._llm,
-        llm_timeout=session.runner._per_call_timeout,
-        aid=session.state.aid,
-        run_id=session.run_id,
-    )
+    permission_policy = _clone_snapshot_component(session.permission_policy, label="permission policy")
+    ask_policy = _clone_snapshot_component(session.tool_execution.ask_policy, label="ask policy")
+    safety_policy = _clone_snapshot_component(session.tool_execution.safety_policy, label="safety policy")
     state = _clone_snapshot_component(session.state, label="session state")
-    if state.phase not in {
-        SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
-    } or new._open_tool_call_ids(state):
-        new._normalize_forked_state(state, session._fork_runtime_metadata())
-        new.runner.reset_for_restore()
-    # Keep the current turn's restrictions through normalization, then retain
-    # the original capabilities for the next user turn.
-    new.runner._initial_agent_tools = initial_tools
-    new.runner._initial_agent_tool_choice = initial_tool_choice
-    new.state = state
-    new.runner.state = state
-    new.tool_execution.state = state
-    # Clone the effective pipeline, including injected shapers and live caches.
-    # Session-owned collaborators resolve to this branch's existing owners.
-    memo = {
-        id(session): new,
-        id(session.state): state,
-        id(session.runner): new.runner,
-        id(session.tool_execution): new.tool_execution,
-        id(session.event_bus): new.event_bus,
-        id(session.agent): new.agent,
-        id(session.env): new.env,
-        id(session._llm): session._llm,
-    }
-    if session._context_summarizer is not None:
-        memo[id(session._context_summarizer)] = new._context_summarizer
-    shaper = _clone_snapshot_component(session.runner.shaper, label="context shaper", memo=memo)
-    if shaper is not None and shaper is session.runner.shaper:
-        raise SnapshotSessionError("cannot clone context shaper for an independent snapshot")
-    new.runner.shaper = shaper
-    return new
+    environment = _fork_snapshot_environment(session.env)
+    try:
+        new = build_session(
+            agent=agent,
+            env=environment,
+            max_budget_tokens=session.max_budget_tokens,
+            max_steps=session.max_steps,
+            event_sink=event_sink,
+            permission_policy=permission_policy,
+            ask_policy=ask_policy,
+            safety_policy=safety_policy,
+            llm=session._llm,
+            llm_timeout=session.runner._per_call_timeout,
+            aid=session.state.aid,
+            run_id=session.run_id,
+        )
+        if state.phase not in {
+            SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
+        } or new._open_tool_call_ids(state):
+            new._normalize_forked_state(state, session._fork_runtime_metadata())
+            new.runner.reset_for_restore()
+        # Keep the current turn's restrictions through normalization, then retain
+        # the original capabilities for the next user turn.
+        new.runner._initial_agent_tools = initial_tools
+        new.runner._initial_agent_tool_choice = initial_tool_choice
+        new.state = state
+        new.runner.state = state
+        new.tool_execution.state = state
+        # Clone the effective pipeline, including injected shapers and live caches.
+        # Session-owned collaborators resolve to this branch's existing owners.
+        memo = {
+            id(session): new,
+            id(session.state): state,
+            id(session.runner): new.runner,
+            id(session.tool_execution): new.tool_execution,
+            id(session.event_bus): new.event_bus,
+            id(session.agent): new.agent,
+            id(session.env): new.env,
+            id(session._llm): session._llm,
+        }
+        if session._context_summarizer is not None:
+            memo[id(session._context_summarizer)] = new._context_summarizer
+        shaper = _clone_snapshot_component(session.runner.shaper, label="context shaper", memo=memo)
+        if shaper is not None and shaper is session.runner.shaper:
+            raise SnapshotSessionError("cannot clone context shaper for an independent snapshot")
+        new.runner.shaper = shaper
+        return new
+    except BaseException as error:
+        try:
+            # Finish rollback before the synchronous caller loses the new owner.
+            run_coro_blocking(environment.cleanup)
+        except BaseException as cleanup_error:
+            add_exception_note(
+                error,
+                f"snapshot environment cleanup failed for {environment.workspace!r} "
+                f"with {type(cleanup_error).__name__} ({cleanup_error})",
+            )
+        raise
 
 def _clone_snapshot_component(value: Any, *, label: str, memo: dict[int, Any] | None = None) -> Any:
     try:
@@ -499,6 +507,7 @@ class DefaultSessionFactory:
         self._validate_responses_tool_support()
         self._lead_workspace = lead_workspace
         self._lead_environment = lead_environment
+        self._owns_lead_environment = lead_environment is None
         self._prebuilt_roster = bool(prebuilt_roster)
         self._allow_unisolated_child_shell = bool(allow_unisolated_child_shell)
         self._allow_unisolated_shell = (
@@ -686,6 +695,18 @@ class DefaultSessionFactory:
         profile = self._team.role_for(role_name).profile
         return resolve_agent_profile(profile) if profile is not None else None
 
+    @property
+    def lead_environment(self) -> Environment:
+        """Share the lead workspace with bootstrap's environment owner and probes."""
+        if self._lead_environment is None:
+            self._lead_environment = LocalEnvironment(self._lead_workspace)
+        return self._lead_environment
+
+    def _discard_unstarted_lead_environment(self) -> None:
+        if self._owns_lead_environment and self._lead_environment is not None:
+            self._lead_environment._close_workspace()
+            self._lead_environment = None
+
     def create_lead_session(
         self,
         *,
@@ -701,40 +722,44 @@ class DefaultSessionFactory:
         """
         cfg = self._cfg
         # Agent 0 shares the supplied environment or the lead host workspace.
-        env = self._lead_environment or LocalEnvironment(self._lead_workspace)
-        context_builder = self._fresh_context_builder()
-        plan = context_builder.build_plan(self._team.entry)
-        agent = context_builder.build_agent(
-            self._team.entry,
-            scheduler=scheduler,
-            workflow_tool=self._workflow_tool(lambda: session),
-            ask_user_available=self._interactive,
-            allow_unisolated_shell=self._unisolated_shell_allowed(
-                seated_at_start=True
-            ),
-            plan=plan,
-        )
-        session = build_session(
-            agent=agent,
-            env=env,
-            tracer=cfg.tracer,
-            max_budget_tokens=budget,
-            max_steps=self._max_steps,
-            event_sink=cfg.event_bus,
-            permission_policy=cfg.permission_policy,
-            ask_policy=cfg.ask_policy,
-            safety_policy=build_workspace_safety_policy(env),
-            auto_save_path=launch.auto_save_path,
-            llm_timeout=cfg.llm_timeout,
-            provider_retry_budget=self._provider_retry_budget,
-            aid=aid,
-            seed_system_messages=plan.startup_system_messages(),
-            team_budget_exhausted=_team_budget_guard(scheduler),
-            context_policy=self._team.context,
-            agent_profile=self._role_profile(self._team.entry),
-            run_id=self._run_id,
-        )
-        return session
+        env = self.lead_environment
+        try:
+            context_builder = self._fresh_context_builder()
+            plan = context_builder.build_plan(self._team.entry)
+            agent = context_builder.build_agent(
+                self._team.entry,
+                scheduler=scheduler,
+                workflow_tool=self._workflow_tool(lambda: session),
+                ask_user_available=self._interactive,
+                allow_unisolated_shell=self._unisolated_shell_allowed(
+                    seated_at_start=True
+                ),
+                plan=plan,
+            )
+            session = build_session(
+                agent=agent,
+                env=env,
+                tracer=cfg.tracer,
+                max_budget_tokens=budget,
+                max_steps=self._max_steps,
+                event_sink=cfg.event_bus,
+                permission_policy=cfg.permission_policy,
+                ask_policy=cfg.ask_policy,
+                safety_policy=build_workspace_safety_policy(env),
+                auto_save_path=launch.auto_save_path,
+                llm_timeout=cfg.llm_timeout,
+                provider_retry_budget=self._provider_retry_budget,
+                aid=aid,
+                seed_system_messages=plan.startup_system_messages(),
+                team_budget_exhausted=_team_budget_guard(scheduler),
+                context_policy=self._team.context,
+                agent_profile=self._role_profile(self._team.entry),
+                run_id=self._run_id,
+            )
+            return session
+        except BaseException:
+            self._discard_unstarted_lead_environment()
+            raise
 
 
 __all__ = [

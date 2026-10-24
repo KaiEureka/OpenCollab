@@ -7,12 +7,12 @@ import json
 import pytest
 
 from opencollab import OpenCollab
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.bootstrap import container
 from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, install_sdk_transport
 
 
@@ -61,7 +61,7 @@ async def test_public_agent_sends_default_and_explicit_output_limits(
     assert result.tokens == 2 + requests[0][field]
 
 async def test_finite_budget_reduces_the_default_limit_after_reserving_input(
-    monkeypatch, tmp_path, sdk_configuration,
+    monkeypatch, tmp_path, sdk_configuration, local_environment_factory,
 ):
     configuration, field = sdk_configuration
     requests = []
@@ -79,7 +79,7 @@ async def test_finite_budget_reduces_the_default_limit_after_reserving_input(
         budget = client.estimate_request_tokens(messages) + 3000
         session = build_session(
             agent=Agent(name="budgeted", system_prompt="system", **configuration),
-            llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=budget,
+            llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=budget,
         )
         session.messages = messages
         assert await session.run_loop() == "ok"
@@ -89,7 +89,7 @@ async def test_finite_budget_reduces_the_default_limit_after_reserving_input(
 
 @pytest.mark.parametrize("injected", [False, True])
 async def test_summary_sends_the_default_limit_through_the_provider_sdk(
-    monkeypatch, tmp_path, sdk_configuration, injected,
+    monkeypatch, tmp_path, sdk_configuration, injected, local_environment_factory,
 ):
     configuration, field = sdk_configuration
     requests = []
@@ -108,7 +108,9 @@ async def test_summary_sends_the_default_limit_through_the_provider_sdk(
             api_key="controlled-test",  # pragma: allowlist secret
             base_url="https://controlled.invalid/v1",
         )
-        session = build_session(agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=None)
+        session = build_session(
+            agent=agent, llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=None,
+        )
         summarizer = container._build_summarizer(
             agent, client if injected else None, client, 600.0, None,
             completion_handler=session.runner._invoke_summary,
@@ -124,7 +126,7 @@ async def test_summary_sends_the_default_limit_through_the_provider_sdk(
 @pytest.mark.parametrize("configured_limit", [8192, 7000])
 @pytest.mark.parametrize("client_signature", ["legacy", "explicit", "kwargs"])
 async def test_injected_client_keeps_legacy_defaults_and_receives_supported_limits(
-    tmp_path, configured_limit, client_signature,
+    tmp_path, configured_limit, client_signature, local_environment_factory,
 ):
     calls = []
 
@@ -146,7 +148,7 @@ async def test_injected_client_keeps_legacy_defaults_and_receives_supported_limi
     client = {"legacy": LegacyClient, "explicit": ExplicitClient, "kwargs": KeywordClient}[client_signature]()
     session = build_session(
         agent=Agent(name="injected", system_prompt="system", max_tokens_per_step=configured_limit),
-        llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=None,
+        llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=None,
     )
     session.messages = [{"role": "user", "content": "Return ok"}]
     if client_signature == "legacy" and configured_limit != 8192:
@@ -158,14 +160,16 @@ async def test_injected_client_keeps_legacy_defaults_and_receives_supported_limi
         assert len(calls) == 1
         assert calls[0].get("max_output_tokens") == (None if client_signature == "legacy" else configured_limit)
 
-async def test_legacy_injected_client_summary_retains_the_original_signature(tmp_path):
+async def test_legacy_injected_client_summary_retains_the_original_signature(tmp_path, local_environment_factory):
     class LegacyClient:
         async def complete(self, messages, tools=None, temperature=0.0):
             return LLMResponse(content="<summary>Preserved context.</summary>", finish_reason="stop", usage=Usage())
 
     client = LegacyClient()
     agent = Agent(name="legacy", system_prompt="system")
-    session = build_session(agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=None)
+    session = build_session(
+        agent=agent, llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=None,
+    )
     summarizer = container._build_summarizer(
         agent, client, client, 600.0, None, completion_handler=session.runner._invoke_summary,
     )

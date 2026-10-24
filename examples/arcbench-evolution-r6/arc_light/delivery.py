@@ -481,6 +481,7 @@ def preflight(workspace: Path, *, timeout=600, cancel_event=None) -> dict:
             )
         check_cancelled(cancel_event)
         report["ok"] = all(c["ok"] for c in report["checks"])
+        report["fatal"] = any(not c["ok"] and c.get("repairable") is False for c in report["checks"])
         return report
     except Exception as exc:
         if cancel_event is not None and cancel_event.is_set():

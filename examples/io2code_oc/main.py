@@ -91,7 +91,7 @@ def is_finished(record: dict[str, Any]) -> bool:
 
 def _failed_without_output(record: dict[str, Any]) -> bool:
     """Recognise failed agent calls while preserving successful zero-usage runs."""
-    if record.get("status") != "completed" or record.get("tokens") != 0 or record.get("candidate"):
+    if record.get("status") != "completed" or record.get("candidate"):
         return False
     workflow = record.get("workflow")
     if not isinstance(workflow, dict) or workflow.get("candidate_exists") is not False:
@@ -105,7 +105,8 @@ def _failed_without_output(record: dict[str, Any]) -> bool:
     # Older records omitted agent_failures. Retry the original empty initial-proposal
     # failure, whose workflow never reached a candidate or an accepted example.
     return (
-        record.get("mode") == "paper-active"
+        record.get("tokens") == 0
+        and record.get("mode") == "paper-active"
         and record.get("solved") is False
         and record.get("queries") == 0
         and workflow.get("stop_reason") == "proposer_failed"

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.skills.file_skill_store import FileSkillStore
 from opencollab.adapters.tools.use_skill import UseSkillTool
 from opencollab.application.event_bus import EventBus
@@ -14,6 +13,7 @@ from opencollab.bootstrap.context_builder import ContextBuilder, SpawnConfig
 from opencollab.bootstrap.session_factory import DefaultSessionFactory
 from opencollab.bootstrap.team_config import RoleConfig, TeamConfig
 from opencollab.domain.team import Topology
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def run(coro):
@@ -86,7 +86,7 @@ def test_no_skills_dir_is_unchanged_behavior(tmp_path):
     assert "Specialist base prompt." in agent.system_prompt
     assert "## Skills" not in agent.system_prompt
 
-def test_session_factory_refreshes_skill_catalog_for_each_new_session(tmp_path):
+def test_session_factory_refreshes_skill_catalog_for_each_new_session(local_environment_factory, tmp_path):
     factory = DefaultSessionFactory(
         _cfg(),
         team_cfg=_team(),
@@ -94,7 +94,7 @@ def test_session_factory_refreshes_skill_catalog_for_each_new_session(tmp_path):
     )
     first = factory.build_spawn_session(
         role="specialist",
-        env=LocalEnvironment(str(tmp_path)),
+        env=local_environment_factory(str(tmp_path)),
         budget=10_000,
         aid=1,
     )
@@ -107,7 +107,7 @@ def test_session_factory_refreshes_skill_catalog_for_each_new_session(tmp_path):
     )
     second = factory.build_spawn_session(
         role="specialist",
-        env=LocalEnvironment(str(tmp_path)),
+        env=local_environment_factory(str(tmp_path)),
         budget=10_000,
         aid=2,
     )

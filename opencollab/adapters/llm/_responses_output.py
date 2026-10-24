@@ -24,6 +24,12 @@ def _output_text(item: dict[str, Any]) -> str:
 def _reasoning_text(item: dict[str, Any]) -> str:
     if item.get("type") != "reasoning":
         return ""
+    content = "\n".join(
+        part["text"] for part in item.get("content") or ()
+        if isinstance(part, dict) and isinstance(part.get("text"), str)
+    )
+    if content:
+        return content
     parts: list[str] = []
     for summary in item.get("summary") or ():
         if isinstance(summary, dict) and isinstance(summary.get("text"), str):
@@ -64,12 +70,18 @@ def _semantic_output_item(item: dict[str, Any]) -> tuple[Any, ...]:
                 raise ResponsesProtocolError("message output contains an unsupported content part")
         return item_type, role, tuple(parts)
     if item_type == "reasoning":
+        content: list[str] = []
+        for raw_part in item.get("content") or ():
+            if (not isinstance(raw_part, dict) or raw_part.get("type") != "reasoning_text"
+                    or not isinstance(raw_part.get("text"), str)):
+                raise ResponsesProtocolError("reasoning output contains an invalid content part")
+            content.append(raw_part["text"])
         summaries: list[tuple[str | None, str]] = []
         for raw_summary in item.get("summary") or ():
             if not isinstance(raw_summary, dict) or not isinstance(raw_summary.get("text"), str):
                 raise ResponsesProtocolError("reasoning output contains an invalid summary part")
             summaries.append((raw_summary.get("type"), raw_summary["text"]))
-        return item_type, tuple(summaries)
+        return item_type, tuple(summaries), tuple(content)
     raise ResponsesProtocolError("response output contains an unsupported item")
 
 def _output_items_agree(streamed: dict[str, Any], terminal: dict[str, Any]) -> bool:

@@ -5,11 +5,17 @@ import os
 import sys
 import threading
 import time
+from dataclasses import asdict
 from pathlib import Path
 from threading import Event
 
 import pytest
 from arc_light import delivery
+from arcbench_r6.settings import Settings
+from arcbench_r6.workflow import weave
+
+from opencollab import OpenCollab
+from opencollab.adapters.llm.types import LLMResponse, Usage
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="Controlled POSIX executable fixtures")
 
@@ -22,6 +28,9 @@ from pathlib import Path
 name = Path(__file__).name
 args = __import__('sys').argv[1:]
 phase = 'install' if name == 'npm' and args[:1] == ['install'] else 'health' if name == 'npm' else 'browser'
+if phase == 'browser' and os.environ.get('ARC_PREFLIGHT_TEST_BROWSER_FAILURE'):
+    print('Chromium executable unavailable')
+    raise SystemExit(1)
 if phase == os.environ['ARC_PREFLIGHT_TEST_PHASE']:
     Path(os.environ['ARC_PREFLIGHT_TEST_HEARTBEAT']).write_text('tick\\n')
     ready = Path(os.environ['ARC_PREFLIGHT_TEST_READY'])
@@ -110,3 +119,35 @@ def test_default_preflight_keeps_repairable_startup_failure(tmp_path, monkeypatc
     assert next(check for check in report["checks"] if check["step"] == "browser_launch")["ok"]
     assert not next(check for check in report["checks"] if check["step"] == "backend_health")["ok"]
     assert not ready.exists()
+
+@pytest.mark.asyncio
+async def test_unavailable_browser_stops_workflow_before_generation(tmp_path, monkeypatch):
+    workspace, _, _ = controlled_preflight(tmp_path, monkeypatch, "none")
+    monkeypatch.setenv("ARC_PREFLIGHT_TEST_BROWSER_FAILURE", "1")
+    task = tmp_path / "task.yaml"
+    task.write_text(
+        "requirements:\n  - id: REQ-A\n    name: Manage Active Browser Sessions\n"
+        "    scenarios:\n      - steps: []\n",
+        encoding="utf-8",
+    )
+
+    class LocalModel:
+        calls = 0
+
+        async def complete(self, *args, **kwargs):
+            self.calls += 1
+            return LLMResponse(content="Unfinished: none", usage=Usage(1, 1), finish_reason="stop")
+
+    model = LocalModel()
+    result = await OpenCollab(workspace, model="test-model", config={"max_output_tokens": 128}).workflow(
+        weave,
+        {"requirements": str(task), "settings": asdict(Settings()), "fresh": True},
+        llm=model, budget=16_000_000, max_steps=200, limit_mode="explicit", trace=False,
+    )
+    report = json.loads((workspace / ".arc/checks/preflight.json").read_text())
+    browser = next(check for check in report["checks"] if check["step"] == "browser_launch")
+    assert not browser["ok"] and not browser["repairable"]
+    assert "Chromium executable unavailable" in browser["detail"]
+    assert report["fatal"] and not report["ok"]
+    assert model.calls == 0
+    assert result.output["status"] == "failed" and not result.output["delivery_ok"]

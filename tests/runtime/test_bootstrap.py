@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 
@@ -10,6 +11,7 @@ from opencollab.bootstrap import (
 )
 from opencollab.bootstrap.team_config import ANALYST_TOOL_NAMES, DEFAULT_ANALYST_PROMPT
 from opencollab.domain.identity import role_storage_slug
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def _cfg(**overrides):
@@ -37,18 +39,21 @@ def test_build_scheduler_lead_has_spawn_tools(tmp_path, monkeypatch):
 
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=True)
-    lead = scheduler.lead_session
+    try:
+        lead = scheduler.lead_session
 
-    assert lead.tracer is ctx.tracer
-    system_message = lead.messages[0]
-    assert system_message["role"] == "system"
+        assert lead.tracer is ctx.tracer
+        system_message = lead.messages[0]
+        assert system_message["role"] == "system"
 
-    # Agent 0 is the Self-Collaboration Analyst (interactive ⇒ ask_user kept).
-    # It plans and delegates, so it carries spawn_agent but nothing that writes.
-    tool_names = {t.name for t in lead.agent.tools}
-    assert tool_names == set(ANALYST_TOOL_NAMES)
-    assert "spawn_agent" in tool_names
-    assert not {"apply_patch", "file_write"} & tool_names
+        # Agent 0 is the Self-Collaboration Analyst (interactive ⇒ ask_user kept).
+        # It plans and delegates, so it carries spawn_agent but nothing that writes.
+        tool_names = {t.name for t in lead.agent.tools}
+        assert tool_names == set(ANALYST_TOOL_NAMES)
+        assert "spawn_agent" in tool_names
+        assert not {"apply_patch", "file_write"} & tool_names
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_lead_omits_ask_user_when_headless(tmp_path, monkeypatch):
     workspace = tmp_path / "ws"
@@ -57,10 +62,12 @@ def test_build_scheduler_lead_omits_ask_user_when_headless(tmp_path, monkeypatch
 
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=False)
-
-    tool_names = {t.name for t in scheduler.lead_session.agent.tools}
-    assert "ask_user" not in tool_names
-    assert "spawn_agent" in tool_names
+    try:
+        tool_names = {t.name for t in scheduler.lead_session.agent.tools}
+        assert "ask_user" not in tool_names
+        assert "spawn_agent" in tool_names
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_rejects_missing_explicit_session(tmp_path):
     workspace = tmp_path / "ws"
@@ -92,8 +99,10 @@ def test_build_scheduler_preserves_explicit_empty_thinking_params(tmp_path):
         interactive=False,
         auto_save=False,
     )
-
-    assert scheduler.lead_session.agent.thinking_params == {}
+    try:
+        assert scheduler.lead_session.agent.thinking_params == {}
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_wires_lead_safety_policy_from_bootstrap(tmp_path):
     workspace = tmp_path / "ws"
@@ -101,13 +110,15 @@ def test_build_scheduler_wires_lead_safety_policy_from_bootstrap(tmp_path):
 
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=False)
-
-    policy = scheduler.lead_session.tool_execution.safety_policy
-    assert isinstance(policy, SandboxInterceptor)
-    assert policy.root == str(workspace.resolve())
-    assert policy.check_path("inside.txt").startswith(str(workspace.resolve()))
-    with pytest.raises(PermissionError):
-        policy.check_path("/etc/passwd")
+    try:
+        policy = scheduler.lead_session.tool_execution.safety_policy
+        assert isinstance(policy, SandboxInterceptor)
+        assert policy.root == str(workspace.resolve())
+        assert policy.check_path("inside.txt").startswith(str(workspace.resolve()))
+        with pytest.raises(PermissionError):
+            policy.check_path("/etc/passwd")
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_lead_auto_save_path_lands_under_workspace(tmp_path):
     workspace = tmp_path / "ws"
@@ -115,13 +126,16 @@ def test_build_scheduler_lead_auto_save_path_lands_under_workspace(tmp_path):
 
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=False)
-    lead = scheduler.lead_session
+    try:
+        lead = scheduler.lead_session
 
-    assert lead.auto_save_path is not None
-    assert lead.auto_save_path.startswith(
-        os.path.join(str(workspace.resolve()), ".opencollab", "sessions")
-    )
-    assert os.path.exists(lead.auto_save_path)
+        assert lead.auto_save_path is not None
+        assert lead.auto_save_path.startswith(
+            os.path.join(str(workspace.resolve()), ".opencollab", "sessions")
+        )
+        assert os.path.exists(lead.auto_save_path)
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_writes_structured_lead_file_and_manifest(tmp_path):
     workspace = tmp_path / "ws"
@@ -129,26 +143,29 @@ def test_build_scheduler_writes_structured_lead_file_and_manifest(tmp_path):
 
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=False)
-    lead_path = scheduler.lead_session.auto_save_path
+    try:
+        lead_path = scheduler.lead_session.auto_save_path
 
-    assert os.path.basename(lead_path) == (
-        f"agent_0_{role_storage_slug('analyst')}.json"
-    )
-    with open(lead_path) as f:
-        saved = json.load(f)
-    assert saved["aid"] == 0
-    assert saved["role"] == "analyst"
-    assert saved["messages"] and all("timestamp" in m for m in saved["messages"])
+        assert os.path.basename(lead_path) == (
+            f"agent_0_{role_storage_slug('analyst')}.json"
+        )
+        with open(lead_path) as f:
+            saved = json.load(f)
+        assert saved["aid"] == 0
+        assert saved["role"] == "analyst"
+        assert saved["messages"] and all("timestamp" in m for m in saved["messages"])
 
-    run_dir = os.path.dirname(lead_path)
-    manifest_path = os.path.join(run_dir, "team.json")
-    assert os.path.exists(manifest_path)
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-    agents = {a["aid"]: a for a in manifest["agents"]}
-    assert agents[0]["role"] == "analyst"
-    assert agents[0]["parent_aid"] is None
-    assert "started_at" in manifest and "run_id" in manifest
+        run_dir = os.path.dirname(lead_path)
+        manifest_path = os.path.join(run_dir, "team.json")
+        assert os.path.exists(manifest_path)
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        agents = {a["aid"]: a for a in manifest["agents"]}
+        assert agents[0]["role"] == "analyst"
+        assert agents[0]["parent_aid"] is None
+        assert "started_at" in manifest and "run_id" in manifest
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_accepts_explicit_team_file_and_run_directory(tmp_path):
     workspace = tmp_path / "ws"
@@ -175,12 +192,14 @@ topology: {}
         team_config_path=team_file,
         save_dir=run_dir,
     )
-
-    assert scheduler.lead_session.agent.name == "captain"
-    assert os.path.dirname(scheduler.lead_session.auto_save_path) == str(run_dir)
-    with open(run_dir / "team.json") as handle:
-        manifest = json.load(handle)
-    assert manifest["team_file"] == str(team_file.resolve())
+    try:
+        assert scheduler.lead_session.agent.name == "captain"
+        assert os.path.dirname(scheduler.lead_session.auto_save_path) == str(run_dir)
+        with open(run_dir / "team.json") as handle:
+            manifest = json.load(handle)
+        assert manifest["team_file"] == str(team_file.resolve())
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_rejects_removed_test_only_shell_permission(tmp_path):
     workspace = tmp_path / "ws"
@@ -223,15 +242,16 @@ def test_build_scheduler_shell_follows_interactive_when_unstated(tmp_path, inter
         team_config_path=_shell_team_file(tmp_path),
         prebuild_team=True,
     )
-    factory = scheduler._session_factory
+    try:
+        factory = scheduler._session_factory
 
-    assert factory._unisolated_shell_allowed(seated_at_start=True) is interactive
-    assert factory._unisolated_shell_allowed(seated_at_start=False) is False
+        assert factory._unisolated_shell_allowed(seated_at_start=True) is interactive
+        assert factory._unisolated_shell_allowed(seated_at_start=False) is False
+    finally:
+        asyncio.run(scheduler.cleanup())
 
-def test_build_scheduler_can_seat_a_shell_with_no_human_to_ask(tmp_path):
+def test_build_scheduler_can_seat_a_shell_with_no_human_to_ask(tmp_path, local_environment_factory):
     # An unattended run can enable shell access while keeping ask_user unavailable.
-    from opencollab.adapters._env_local import LocalEnvironment
-
     workspace = tmp_path / "ws"
     workspace.mkdir()
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
@@ -244,18 +264,20 @@ def test_build_scheduler_can_seat_a_shell_with_no_human_to_ask(tmp_path):
         prebuild_team=True,
         allow_unisolated_shell=True,
     )
+    try:
+        lead = scheduler.lead_session
+        assert lead.agent.find_tool("ask_user") is None
 
-    lead = scheduler.lead_session
-    assert lead.agent.find_tool("ask_user") is None
-
-    teammate = scheduler._session_factory.build_spawn_session(
-        role="coder",
-        env=LocalEnvironment(str(workspace)),
-        budget=1_000,
-        scheduler=scheduler,
-    )
-    assert teammate.agent.find_tool("bash").require_process_isolation is False
-    assert teammate.agent.find_tool("ask_user") is None
+        teammate = scheduler._session_factory.build_spawn_session(
+            role="coder",
+            env=local_environment_factory(str(workspace)),
+            budget=1_000,
+            scheduler=scheduler,
+        )
+        assert teammate.agent.find_tool("bash").require_process_isolation is False
+        assert teammate.agent.find_tool("ask_user") is None
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_scheduler_can_withhold_the_shell_from_an_attended_run(tmp_path):
     workspace = tmp_path / "ws"
@@ -270,12 +292,14 @@ def test_build_scheduler_can_withhold_the_shell_from_an_attended_run(tmp_path):
         prebuild_team=True,
         allow_unisolated_shell=False,
     )
-
-    assert scheduler.lead_session.agent.find_tool("ask_user") is not None
-    assert (
-        scheduler._session_factory._unisolated_shell_allowed(seated_at_start=True)
-        is False
-    )
+    try:
+        assert scheduler.lead_session.agent.find_tool("ask_user") is not None
+        assert (
+            scheduler._session_factory._unisolated_shell_allowed(seated_at_start=True)
+            is False
+        )
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_build_runtime_context_resolves_workspace_and_tracer(tmp_path, monkeypatch):
     workspace = tmp_path / "ws"
@@ -306,14 +330,17 @@ def test_scheduler_can_leave_every_seat_without_a_step_ceiling(tmp_path):
     scheduler = build_scheduler(
         ctx, use_worktrees=False, interactive=False, auto_save=False, max_steps=None
     )
-    assert scheduler.lead_session.max_steps is None
-    assert scheduler.lead_session.runner.max_steps is None
-    assert scheduler._session_factory._max_steps is None
+    try:
+        assert scheduler.lead_session.max_steps is None
+        assert scheduler.lead_session.runner.max_steps is None
+        assert scheduler._session_factory._max_steps is None
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 @pytest.mark.asyncio
-async def test_build_scheduler_restores_zero_step_journal_only_session(tmp_path, monkeypatch):
-    import asyncio
-
+async def test_build_scheduler_restores_zero_step_journal_only_session(
+    tmp_path, monkeypatch, local_environment_factory,
+):
     from opencollab.adapters.storage import SessionStore
     from opencollab.bootstrap import build_session
     from tests.support.session_characterization_test_support import FakeAgent, FakeLLMClient
@@ -325,7 +352,9 @@ async def test_build_scheduler_restores_zero_step_journal_only_session(tmp_path,
 
     with monkeypatch.context() as fault:
         fault.setattr(SessionStore, "checkpoint_snapshot", interrupted_checkpoint)
-        original = build_session(agent=FakeAgent(), llm=FakeLLMClient(), auto_save_path=str(path))
+        original = build_session(
+            agent=FakeAgent(), llm=FakeLLMClient(), env=local_environment_factory(), auto_save_path=str(path),
+        )
         await original.add_user_message("recover my initial request")
         await asyncio.gather(*original.pending_cleanup_tasks)
     assert original.step_count == 0
@@ -336,8 +365,10 @@ async def test_build_scheduler_restores_zero_step_journal_only_session(tmp_path,
     workspace.mkdir()
     ctx = build_runtime_context(str(workspace), _cfg(), trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=False, auto_save=False, session_file=str(path))
-    lead = scheduler.lead_session
-    assert lead.step_count == 0
-    assert lead.messages[-1]["content"] == "recover my initial request"
-    assert lead.state.pending_external_user_turn is not None
-    await scheduler.cleanup()
+    try:
+        lead = scheduler.lead_session
+        assert lead.step_count == 0
+        assert lead.messages[-1]["content"] == "recover my initial request"
+        assert lead.state.pending_external_user_turn is not None
+    finally:
+        await scheduler.cleanup()

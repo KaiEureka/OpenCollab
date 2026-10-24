@@ -7,7 +7,6 @@ import json
 import pytest
 
 from opencollab import OpenCollab
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.tools.fs import FileReadTool
@@ -17,6 +16,7 @@ from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
 from opencollab.domain.token_estimation import estimate_request_tokens
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, http_response, install_sdk_transport
 
 _THINKING = {"thinking": {"type": "enabled", "budget_tokens": 1024}}
@@ -94,7 +94,9 @@ async def test_public_agent_preserves_tool_results_when_thinking_budget_runs_out
             assert requests[1]["max_tokens"] < 1024
 
 @pytest.mark.parametrize("output_budget,expected_calls", [(1024, 0), (1025, 1)])
-async def test_manual_thinking_output_budget_boundary(monkeypatch, tmp_path, output_budget, expected_calls):
+async def test_manual_thinking_output_budget_boundary(
+    local_environment_factory, monkeypatch, tmp_path, output_budget, expected_calls,
+):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     requests = []
@@ -114,7 +116,7 @@ async def test_manual_thinking_output_budget_boundary(monkeypatch, tmp_path, out
         session = build_session(
             agent=Agent(name="boundary", system_prompt="system", model=_MODEL, provider="anthropic",
                         thinking=True, thinking_params=_THINKING, max_tokens_per_step=2048),
-            llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=budget,
+            llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=budget,
         )
         session.messages = messages
         answer = await session.run_loop()
@@ -158,7 +160,9 @@ async def test_initial_invalid_thinking_configuration_remains_failed(
     assert result.tokens == 0
     assert requests == []
 
-async def test_summary_uses_ordinary_output_budget_for_manual_thinking_agent(monkeypatch, tmp_path):
+async def test_summary_uses_ordinary_output_budget_for_manual_thinking_agent(
+    local_environment_factory, monkeypatch, tmp_path,
+):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     requests = []
@@ -175,7 +179,8 @@ async def test_summary_uses_ordinary_output_budget_for_manual_thinking_agent(mon
     ) as client:
         agent = Agent(name="summary", system_prompt="system", model=_MODEL, provider="anthropic",
                       thinking=True, thinking_params=_THINKING, max_tokens_per_step=2048)
-        session = build_session(agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=None)
+        session = build_session(agent=agent, llm=client,
+            env=local_environment_factory(str(tmp_path)), max_budget_tokens=None)
         summarizer = container._build_summarizer(
             agent, client, client, 600.0, None, completion_handler=session.runner._invoke_summary,
         )
@@ -188,7 +193,9 @@ async def test_summary_uses_ordinary_output_budget_for_manual_thinking_agent(mon
     assert requests[0]["max_tokens"] == 128
     assert "thinking" not in requests[0]
 
-async def test_custom_client_without_output_requirement_keeps_thinking_kwargs(monkeypatch, tmp_path):
+async def test_custom_client_without_output_requirement_keeps_thinking_kwargs(
+    local_environment_factory, monkeypatch, tmp_path,
+):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     calls = []
@@ -201,7 +208,7 @@ async def test_custom_client_without_output_requirement_keeps_thinking_kwargs(mo
     messages = [{"role": "user", "content": "Return ok"}]
     session = build_session(
         agent=Agent(name="custom", system_prompt="system", thinking=True, thinking_params={"custom": True}),
-        llm=CustomClient(), env=LocalEnvironment(str(tmp_path)),
+        llm=CustomClient(), env=local_environment_factory(str(tmp_path)),
         max_budget_tokens=estimate_request_tokens(messages) + 128,
     )
     session.messages = messages
@@ -211,7 +218,9 @@ async def test_custom_client_without_output_requirement_keeps_thinking_kwargs(mo
     assert calls[0]["thinking_params"] == {"custom": True}
 
 @pytest.mark.parametrize("output_budget", [127, 128])
-async def test_custom_client_can_supply_its_output_requirement(monkeypatch, tmp_path, output_budget):
+async def test_custom_client_can_supply_its_output_requirement(
+    local_environment_factory, monkeypatch, tmp_path, output_budget,
+):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
     monkeypatch.setenv("OPENCOLLAB_WRITE_NUDGE_MODE", "off")
     requirements = []
@@ -229,7 +238,7 @@ async def test_custom_client_can_supply_its_output_requirement(monkeypatch, tmp_
     messages = [{"role": "user", "content": "Return ok"}]
     session = build_session(
         agent=Agent(name="custom", system_prompt="system", thinking=True, thinking_params={"custom": True}),
-        llm=CustomClient(), env=LocalEnvironment(str(tmp_path)),
+        llm=CustomClient(), env=local_environment_factory(str(tmp_path)),
         max_budget_tokens=estimate_request_tokens(messages) + output_budget,
     )
     session.messages = messages

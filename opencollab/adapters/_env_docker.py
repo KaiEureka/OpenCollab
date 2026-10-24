@@ -10,8 +10,10 @@ import os
 import posixpath
 import re
 import shlex
+import threading
 import uuid
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass, field
 from typing import NoReturn
 
 from opencollab.adapters._env_base import (
@@ -40,8 +42,14 @@ DOCKER_WRITE_TIMEOUT_SECONDS = 120.0
 _IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@:+-]{0,511}$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 _FULL_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
-_WRITE_LOCKS: dict[str, asyncio.Lock] = {}
+@dataclass
+class _WriteLockEntry:
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    users: int = 0
+
+_WRITE_LOCKS: dict[str, _WriteLockEntry] = {}
 _WRITE_LOCK_OWNERS: dict[str, asyncio.Task] = {}
+_WRITE_LOCKS_GUARD = threading.Lock()
 
 # Git commits need an author in benchmark images. Pass an anonymous identity
 # per exec so handoff commits succeed without changing the repository config
@@ -587,17 +595,37 @@ class DockerEnvironment(Environment):
         assert task is not None
         # Native tools already hold this lock when they call write_file. Only
         # the actual owning task can reenter; a spawned task must still wait.
-        if _WRITE_LOCK_OWNERS.get(key) is task:
+        with _WRITE_LOCKS_GUARD:
+            reentrant = _WRITE_LOCK_OWNERS.get(key) is task
+            if not reentrant:
+                entry = _WRITE_LOCKS.setdefault(key, _WriteLockEntry())
+                entry.users += 1
+        if reentrant:
             yield target
             return
-        lock = _WRITE_LOCKS.setdefault(key, asyncio.Lock())
-        async with lock:
+        acquired = False
+        try:
+            # Attached containers survive individual event loops, and callers
+            # can edit them from different threads. Poll a process-wide lock
+            # without blocking either loop or binding it to the first waiter.
+            while not entry.lock.acquire(blocking=False):
+                await asyncio.sleep(0.02)
+            acquired = True
             self._ensure_active()
-            _WRITE_LOCK_OWNERS[key] = task
+            with _WRITE_LOCKS_GUARD:
+                _WRITE_LOCK_OWNERS[key] = task
             try:
                 yield target
             finally:
-                _WRITE_LOCK_OWNERS.pop(key, None)
+                with _WRITE_LOCKS_GUARD:
+                    _WRITE_LOCK_OWNERS.pop(key, None)
+        finally:
+            if acquired:
+                entry.lock.release()
+            with _WRITE_LOCKS_GUARD:
+                entry.users -= 1
+                if entry.users == 0:
+                    del _WRITE_LOCKS[key]
 
     async def _write_file(self, path: str, content: str, *, observe_change: bool) -> bool | None:
         payload = content.encode("utf-8")

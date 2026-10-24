@@ -16,6 +16,7 @@ from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
 from opencollab.domain.token_estimation import estimate_request_tokens
 from tests.runtime.test_async_compaction import history
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 class AccountingModel:
@@ -48,10 +49,12 @@ def disable_steering(monkeypatch):
 
 @pytest.mark.parametrize("budget", [30_000, None])
 @pytest.mark.parametrize("content", ["<summary>Preserved context.</summary>", "empty parsed summary"])
-def test_summary_usage_and_native_trace_fields_are_recorded(tmp_path, budget, content):
+def test_summary_usage_and_native_trace_fields_are_recorded(local_environment_factory, tmp_path, budget, content):
     model = AccountingModel(content)
     tracer = Tracer(run_id="summary-usage", output_dir=str(tmp_path))
-    session = build_session(agent=Agent(name="accounting", system_prompt="system"), llm=model,
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="accounting", system_prompt="system"), llm=model,
                             tracer=tracer, max_budget_tokens=budget)
     session.messages = history()
     try:
@@ -81,9 +84,11 @@ def test_summary_usage_and_native_trace_fields_are_recorded(tmp_path, budget, co
 
 @pytest.mark.parametrize("long", [False, True])
 @pytest.mark.parametrize("already_spent", [4_900, 5_000])
-def test_remaining_budget_stops_before_any_model_request(long, already_spent):
+def test_remaining_budget_stops_before_any_model_request(local_environment_factory, long, already_spent):
     model = AccountingModel()
-    session = build_session(agent=Agent(name="low-budget", system_prompt="system"), llm=model,
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="low-budget", system_prompt="system"), llm=model,
                             max_budget_tokens=5_000)
     session.messages = history(long)
     session.used_tokens = already_spent
@@ -93,9 +98,11 @@ def test_remaining_budget_stops_before_any_model_request(long, already_spent):
     assert session.phase is SessionPhase.STOPPED
     assert "budget" in session.state.terminal_reason
 
-def test_summary_reserves_input_and_limits_output():
+def test_summary_reserves_input_and_limits_output(local_environment_factory):
     model = AccountingModel(summary_tokens=20)
-    session = build_session(agent=Agent(name="bounded", system_prompt="system", max_tokens_per_step=50_000),
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="bounded", system_prompt="system", max_tokens_per_step=50_000),
                             llm=model, max_budget_tokens=20_000)
     session.messages = history()
     asyncio.run(session.run_loop())
@@ -104,9 +111,11 @@ def test_summary_reserves_input_and_limits_output():
     assert summary["kwargs"]["max_output_tokens"] == 20_000 - estimate_request_tokens(summary["messages"])
     assert answer["kwargs"]["max_output_tokens"] == 19_980 - estimate_request_tokens(answer["messages"])
 
-def test_successful_summary_cache_reuse_charges_once():
+def test_successful_summary_cache_reuse_charges_once(local_environment_factory):
     model = AccountingModel()
-    session = build_session(agent=Agent(name="cached", system_prompt="system"), llm=model)
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="cached", system_prompt="system"), llm=model)
     session.messages = history()
 
     async def scenario():
@@ -120,9 +129,11 @@ def test_successful_summary_cache_reuse_charges_once():
     assert [call["summary"] for call in model.calls] == [True, False]
     assert session.used_tokens == 7_610
 
-def test_summary_overspend_stops_before_an_answer_request():
+def test_summary_overspend_stops_before_an_answer_request(local_environment_factory):
     model = AccountingModel(summary_tokens=40_000)
-    session = build_session(agent=Agent(name="overspend", system_prompt="system"), llm=model,
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="overspend", system_prompt="system"), llm=model,
                             max_budget_tokens=30_000)
     session.messages = history()
     asyncio.run(session.run_loop())
@@ -130,9 +141,11 @@ def test_summary_overspend_stops_before_an_answer_request():
     assert session.used_tokens == 40_000
     assert session.phase is SessionPhase.STOPPED
 
-def test_disabled_history_compaction_has_only_answer_usage():
+def test_disabled_history_compaction_has_only_answer_usage(local_environment_factory):
     model = AccountingModel()
-    session = build_session(agent=Agent(name="disabled", system_prompt="system"), llm=model,
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="disabled", system_prompt="system"), llm=model,
                             context_policy=ContextPolicy(name="no_history_compaction"))
     session.messages = history()
     asyncio.run(session.run_loop())
@@ -140,7 +153,7 @@ def test_disabled_history_compaction_has_only_answer_usage():
     assert session.used_tokens == 10
 
 @pytest.mark.parametrize("deadline", [None, 0.01])
-def test_late_summary_response_is_owned_and_charged_once(deadline):
+def test_late_summary_response_is_owned_and_charged_once(local_environment_factory, deadline):
     from opencollab.application.session_run import GenerationTimeoutError
 
     class LateModel(AccountingModel):
@@ -152,7 +165,9 @@ def test_late_summary_response_is_owned_and_charged_once(deadline):
             return await super().complete(messages, tools, **kwargs)
 
     model = LateModel()
-    session = build_session(agent=Agent(name="late", system_prompt="system"), llm=model, llm_timeout=deadline)
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="late", system_prompt="system"), llm=model, llm_timeout=deadline)
     session.messages = history()
 
     async def scenario():
@@ -174,7 +189,7 @@ def test_late_summary_response_is_owned_and_charged_once(deadline):
     assert session.runner.late_provider_usage == (7_600,)
     assert session.pending_cleanup_tasks == ()
 
-def test_summary_reservation_uses_the_provider_estimator_with_actual_thinking_controls():
+def test_summary_reservation_uses_the_provider_estimator_with_actual_thinking_controls(local_environment_factory):
     class EstimatingModel(AccountingModel):
         def __init__(self):
             super().__init__(summary_tokens=20)
@@ -187,6 +202,7 @@ def test_summary_reservation_uses_the_provider_estimator_with_actual_thinking_co
 
     model = EstimatingModel()
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="estimation", system_prompt="system", thinking=True,
                     thinking_params={"fixture": True}, max_tokens_per_step=50_000),
         llm=model, max_budget_tokens=1_000,
@@ -202,7 +218,7 @@ def test_summary_reservation_uses_the_provider_estimator_with_actual_thinking_co
         {"summary": False, "kwargs": {"thinking": True, "thinking_params": {"fixture": True}}},
     ]
 
-def test_forced_overflow_summary_uses_the_same_usage_accounting():
+def test_forced_overflow_summary_uses_the_same_usage_accounting(local_environment_factory):
     class OverflowModel(AccountingModel):
         async def complete(self, messages, tools=None, **kwargs):
             if not self.calls:
@@ -211,7 +227,9 @@ def test_forced_overflow_summary_uses_the_same_usage_accounting():
             return await super().complete(messages, tools, **kwargs)
 
     model = OverflowModel()
-    session = build_session(agent=Agent(name="forced-usage", system_prompt="system"), llm=model)
+    session = build_session(
+        env=local_environment_factory(),
+        agent=Agent(name="forced-usage", system_prompt="system"), llm=model)
     session.messages = history(False)
     session.runner._is_context_overflow = lambda error: isinstance(error, ValueError)
     assert asyncio.run(session.run_loop()) == "answer"
@@ -221,6 +239,7 @@ def test_forced_overflow_summary_uses_the_same_usage_accounting():
 @pytest.mark.parametrize("sibling_spends_during_summary", [False, True])
 @pytest.mark.parametrize("team_allowance", ["exhausted", "available", None])
 def test_answer_rechecks_shared_team_allowance_after_summary(
+    local_environment_factory,
     sibling_spends_during_summary, team_allowance,
 ):
     cap = (30 if sibling_spends_during_summary else 20) if team_allowance == "exhausted" else 1_000
@@ -230,6 +249,7 @@ def test_answer_rechecks_shared_team_allowance_after_summary(
 
     guard = None if team_allowance is None else team_exhausted
     sibling = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="sibling", system_prompt="system"),
         llm=AccountingModel(summary_tokens=20), team_budget_exhausted=guard,
     )
@@ -243,6 +263,7 @@ def test_answer_rechecks_shared_team_allowance_after_summary(
 
     model = SharedAccountingModel(summary_tokens=20)
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="team-summary", system_prompt="system"), llm=model,
         max_budget_tokens=30_000, team_budget_exhausted=guard,
     )

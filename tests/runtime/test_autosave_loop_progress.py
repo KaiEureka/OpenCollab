@@ -11,6 +11,7 @@ import pytest
 from opencollab.adapters.storage import SessionStore
 from opencollab.bootstrap import build_session, load_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import FakeLLM
 
 
@@ -33,11 +34,13 @@ class SlowCheckpointStore(SessionStore):
 
 @pytest.mark.parametrize("manual_failure", [False, True])
 async def test_manual_checkpoint_io_keeps_the_loop_runnable_and_latest_snapshot_recoverable(
+    local_environment_factory,
     tmp_path, manual_failure,
 ):
     path = str(tmp_path / "session.json")
     store = SlowCheckpointStore()
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="loop-progress", system_prompt="system"),
         llm=FakeLLM(), store=store, auto_save_path=path,
     )
@@ -84,14 +87,14 @@ async def test_manual_checkpoint_io_keeps_the_loop_runnable_and_latest_snapshot_
         else:
             await save
         await owner
-        restored = load_session(path, agent=session.agent, llm=FakeLLM(), store=store)
+        restored = load_session(path, env=local_environment_factory(), agent=session.agent, llm=FakeLLM(), store=store)
         assert restored.messages == session.messages
         assert restored.used_tokens == 29
         assert restored.state.turn.seen_result_hashes == {"latest-result"}
         assert session.persistence_errors == ()
         session.messages.append({"role": "assistant", "content": "after slow save"})
         await session.enqueue_auto_save()
-        restored = load_session(path, agent=session.agent, llm=FakeLLM(), store=store)
+        restored = load_session(path, env=local_environment_factory(), agent=session.agent, llm=FakeLLM(), store=store)
         assert restored.messages == session.messages
     finally:
         store.release.set()
@@ -100,10 +103,13 @@ async def test_manual_checkpoint_io_keeps_the_loop_runnable_and_latest_snapshot_
             timer.cancel()
         await asyncio.gather(save, *session.pending_cleanup_tasks, return_exceptions=True)
 
-async def test_slow_autosave_compaction_keeps_message_replacement_and_timers_runnable(tmp_path):
+async def test_slow_autosave_compaction_keeps_message_replacement_and_timers_runnable(
+    local_environment_factory, tmp_path,
+):
     path = str(tmp_path / "session.json")
     store = SlowCheckpointStore()
     session = build_session(
+        env=local_environment_factory(),
         agent=Agent(name="compaction-progress", system_prompt="system"),
         llm=FakeLLM(), store=store, auto_save_path=path,
     )

@@ -16,6 +16,7 @@ from opencollab.bootstrap import load_session
 from opencollab.domain.pending import PendingRow, PendingRowError, RowKind, RowStatus
 from opencollab.domain.scheduler import SessionControlBlock
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -25,16 +26,16 @@ from tests.support.session_characterization_test_support import (
 )
 
 
-def test_save_and_load_round_trip_restores_stopped_phase_and_reason(tmp_path):
+def test_save_and_load_round_trip_restores_stopped_phase_and_reason(local_environment_factory, tmp_path):
     # The stop reason survives the terminal-state round trip.
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.state.set_phase(SessionPhase.STOPPED)
     session.state.terminal_reason = "budget exceeded: 10 tokens used"
     path = tmp_path / "terminal.json"
 
     session.save(str(path))
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     assert loaded.state.phase is SessionPhase.STOPPED
     assert loaded.state.terminal_reason == "budget exceeded: 10 tokens used"
@@ -43,10 +44,10 @@ def test_save_and_load_round_trip_restores_stopped_phase_and_reason(tmp_path):
     "legacy_phase",
     ["cancelled", "budget_exceeded", "step_limit_exceeded", "context_overflow"],
 )
-def test_restore_migrates_legacy_terminal_phase_string_to_stopped(tmp_path, legacy_phase):
+def test_restore_migrates_legacy_terminal_phase_string_to_stopped(local_environment_factory, tmp_path, legacy_phase):
     # Legacy terminal phases migrate to STOPPED while preserving terminal_reason.
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.state.set_phase(SessionPhase.STOPPED)
     session.state.terminal_reason = "legacy detail"
     path = tmp_path / "legacy-terminal.json"
@@ -56,15 +57,17 @@ def test_restore_migrates_legacy_terminal_phase_string_to_stopped(tmp_path, lega
     snapshot["session_state"]["phase"] = legacy_phase
     path.write_text(json.dumps(snapshot))
 
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     assert loaded.state.phase is SessionPhase.STOPPED
     assert loaded.state.terminal_reason == "legacy detail"
 
 @pytest.mark.parametrize("phase_string", ["a_phase_that_no_longer_exists", "scheduled"])
-def test_restore_of_unknown_or_retired_phase_string_falls_back_to_idle(tmp_path, phase_string):
+def test_restore_of_unknown_or_retired_phase_string_falls_back_to_idle(
+    local_environment_factory, tmp_path, phase_string,
+):
     # Unknown and retired transitional phases restore to the runnable IDLE state.
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.state.set_phase(SessionPhase.STOPPED)
     session.state.terminal_reason = "budget exceeded: 10 tokens used"
     path = tmp_path / "legacy.json"
@@ -74,16 +77,16 @@ def test_restore_of_unknown_or_retired_phase_string_falls_back_to_idle(tmp_path,
     snapshot["session_state"]["phase"] = phase_string
     path.write_text(json.dumps(snapshot))
 
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     assert loaded.state.phase is SessionPhase.IDLE
     assert loaded.state.terminal_reason is None
 
 @pytest.mark.parametrize("phase_string", ["idle", "calling_llm"])
-def test_restore_clears_terminal_reason_from_nonterminal_phase(
+def test_restore_clears_terminal_reason_from_nonterminal_phase(local_environment_factory,
     tmp_path, phase_string
 ):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.state.set_phase(SessionPhase.STOPPED)
     session.state.terminal_reason = "stale terminal detail"
     path = tmp_path / "nonterminal.json"
@@ -93,18 +96,18 @@ def test_restore_clears_terminal_reason_from_nonterminal_phase(
     snapshot["session_state"]["phase"] = phase_string
     path.write_text(json.dumps(snapshot))
 
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     assert loaded.state.phase is SessionPhase.IDLE
     assert loaded.state.terminal_reason is None
 
-def test_restore_rebinds_default_session_event_factories_to_snapshot_aid(
+def test_restore_rebinds_default_session_event_factories_to_snapshot_aid(local_environment_factory,
     tmp_path,
 ):
     path = tmp_path / "aid-seven.json"
-    source = Session(agent=FakeAgent(), llm=FakeLLMClient(), aid=7)
+    source = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient(), aid=7)
     source.save(str(path))
-    restored = Session(agent=FakeAgent(), llm=FakeLLMClient(), aid=-1)
+    restored = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient(), aid=-1)
 
     restored.restore(str(path))
 
@@ -117,10 +120,10 @@ def test_restore_rebinds_default_session_event_factories_to_snapshot_aid(
     assert [event.data["aid"] for event in events] == [7, 7, 7]
 
 @pytest.mark.parametrize("operation", ["restore", "save"])
-def test_apply_launch_can_retry_after_persistence_failure(
+def test_apply_launch_can_retry_after_persistence_failure(local_environment_factory,
     tmp_path, monkeypatch, operation
 ):
-    session = Session(agent=FakeAgent(), llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient())
     path = tmp_path / "session.json"
     path.write_text("{}", encoding="utf-8")
     calls = 0
@@ -147,8 +150,8 @@ def test_apply_launch_can_retry_after_persistence_failure(
 
     assert calls == 2
 
-def test_apply_launch_rejects_conflicting_spec_after_success(tmp_path, monkeypatch):
-    session = Session(agent=FakeAgent(), llm=FakeLLMClient())
+def test_apply_launch_rejects_conflicting_spec_after_success(local_environment_factory, tmp_path, monkeypatch):
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient())
     monkeypatch.setattr(session, "save", lambda _path: None)
     session.apply_launch(LaunchSpec(auto_save_path=str(tmp_path / "first.json")))
 
@@ -157,11 +160,11 @@ def test_apply_launch_rejects_conflicting_spec_after_success(tmp_path, monkeypat
             LaunchSpec(auto_save_path=str(tmp_path / "second.json"))
         )
 
-def test_restore_duplicate_pending_row_is_fully_transactional_and_retryable(
+def test_restore_duplicate_pending_row_is_fully_transactional_and_retryable(local_environment_factory,
     tmp_path,
 ):
     path = tmp_path / "duplicate-pending-row.json"
-    source = Session(agent=FakeAgent(), llm=FakeLLMClient(), aid=9)
+    source = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient(), aid=9)
     source.state.append_message(
         {
             "role": "assistant",
@@ -193,7 +196,7 @@ def test_restore_duplicate_pending_row_is_fully_transactional_and_retryable(
     rows.append(copy.deepcopy(rows[0]))
     path.write_text(json.dumps(document), encoding="utf-8")
 
-    target = Session(agent=FakeAgent(), llm=FakeLLMClient(), aid=3)
+    target = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient(), aid=3)
     target.state.append_message({"role": "user", "content": "pristine"})
     target.state.set_used_tokens(5)
     target.state.set_context_tokens(2)
@@ -226,9 +229,9 @@ def test_restore_duplicate_pending_row_is_fully_transactional_and_retryable(
     assert target.state.step_count == 4
     assert set(target.state.pending_events.rows) == {"duplicate-row"}
 
-def test_restore_pairs_reused_tool_call_ids_in_transcript_order(tmp_path):
+def test_restore_pairs_reused_tool_call_ids_in_transcript_order(local_environment_factory, tmp_path):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     def reused_call():
         return {
@@ -250,7 +253,7 @@ def test_restore_pairs_reused_tool_call_ids_in_transcript_order(tmp_path):
     path = tmp_path / "reused-tool-id.json"
     session.save(str(path))
 
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     matching_results = [
         message
@@ -263,9 +266,9 @@ def test_restore_pairs_reused_tool_call_ids_in_transcript_order(tmp_path):
     assert loaded.messages[-1] == matching_results[-1]
     assert loaded._open_tool_call_ids() == []
 
-def test_restore_converts_orphaned_deferred_child_to_failed_tool_result(tmp_path):
+def test_restore_converts_orphaned_deferred_child_to_failed_tool_result(local_environment_factory, tmp_path):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.phase = SessionPhase.AWAITING_EVENTS
     session.state.pending_step_latency = 0.125
     session.state.pending_events.add(
@@ -280,7 +283,7 @@ def test_restore_converts_orphaned_deferred_child_to_failed_tool_result(tmp_path
     path = tmp_path / "pending.json"
     session.save(str(path))
 
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     row = loaded.state.pending_events.rows["child-1"]
     assert loaded.phase is SessionPhase.AWAITING_EVENTS
@@ -289,10 +292,10 @@ def test_restore_converts_orphaned_deferred_child_to_failed_tool_result(tmp_path
     assert "interrupted by session restore" in (row.result or "")
     assert loaded.state.pending_events.is_complete()
 
-def test_restore_awaiting_turn_never_returns_previous_turn_answer(tmp_path):
+def test_restore_awaiting_turn_never_returns_previous_turn_answer(local_environment_factory, tmp_path):
     """A restored suspended turn must not scan back before its own boundary."""
     agent = FakeAgent()
-    original = Session(agent=agent, llm=FakeLLMClient(), max_steps=1)
+    original = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient(), max_steps=1)
     original.state.replace_messages([
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "old question"},
@@ -326,18 +329,18 @@ def test_restore_awaiting_turn_never_returns_previous_turn_answer(tmp_path):
     assert snapshot["session_state"]["active_turn_start_message_index"] == 4
 
     restored = load_session(
-        str(path), agent=agent, llm=FakeLLMClient(), max_steps=1
+        str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient(), max_steps=1
     )
 
     assert restored.state.phase is SessionPhase.AWAITING_EVENTS
     assert restored.state.active_turn_start_message_index == 4
     assert run(restored.run_loop()) == ""
 
-def test_scheduler_init_preserves_and_drains_restored_awaiting_phase(tmp_path):
+def test_scheduler_init_preserves_and_drains_restored_awaiting_phase(local_environment_factory, tmp_path):
     from opencollab.application.scheduler import LaunchSpec, Scheduler
 
     agent = FakeAgent()
-    original = Session(agent=agent, llm=FakeLLMClient())
+    original = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     original.state.append_message(
         {
             "role": "assistant",
@@ -386,7 +389,7 @@ def test_scheduler_init_preserves_and_drains_restored_awaiting_phase(tmp_path):
             llm_response(content="new turn handled"),
         ]
     )
-    resumed = Session(agent=agent, llm=llm)
+    resumed = Session(env=local_environment_factory(), agent=agent, llm=llm)
 
     class ResumeFactory:
         def create_lead_session(self, **kwargs):
@@ -398,7 +401,7 @@ def test_scheduler_init_preserves_and_drains_restored_awaiting_phase(tmp_path):
         event_sink=EventBus(),
     )
     scheduler.create_init_process(LaunchSpec(session_file=str(path)))
-    sender = Session(agent=FakeAgent(), llm=FakeLLMClient())
+    sender = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient())
     sender.state.aid = 1
     sender.state.mark_done()
     scheduler.table.add(
@@ -425,12 +428,12 @@ def test_scheduler_init_preserves_and_drains_restored_awaiting_phase(tmp_path):
     assert llm.calls[1]["messages"][-1]["content"].startswith(queued_xml)
     assert llm.calls[2]["messages"][-1]["content"].startswith("new question")
 
-def test_scheduler_restores_queued_external_turn_before_accepting_new_turn(tmp_path):
+def test_scheduler_restores_queued_external_turn_before_accepting_new_turn(local_environment_factory, tmp_path):
     """A crash after autosave but before a driver starts must not merge turns."""
     from opencollab.application.scheduler import LaunchSpec, Scheduler
 
     agent = FakeAgent()
-    original = Session(agent=agent, llm=FakeLLMClient())
+    original = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     run(original.add_user_message("old question"))
     path = tmp_path / "queued-external-turn.json"
     original.save(str(path))
@@ -446,7 +449,7 @@ def test_scheduler_restores_queued_external_turn_before_accepting_new_turn(tmp_p
         llm_response(content="old answer"),
         llm_response(content="new answer"),
     ])
-    resumed = Session(agent=agent, llm=llm)
+    resumed = Session(env=local_environment_factory(), agent=agent, llm=llm)
 
     class ResumeFactory:
         def create_lead_session(self, **kwargs):
@@ -465,7 +468,7 @@ def test_scheduler_restores_queued_external_turn_before_accepting_new_turn(tmp_p
         "new question",
     ]
 
-def test_restore_keeps_pending_messages_from_legacy_structured_snapshot(tmp_path):
+def test_restore_keeps_pending_messages_from_legacy_structured_snapshot(local_environment_factory, tmp_path):
     path = tmp_path / "legacy-structured.json"
     path.write_text(
         '{"messages":[{"role":"system","content":"sys"}],'
@@ -473,15 +476,15 @@ def test_restore_keeps_pending_messages_from_legacy_structured_snapshot(tmp_path
         encoding="utf-8",
     )
 
-    loaded = load_session(str(path), agent=FakeAgent(), llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient())
 
     assert loaded.state.pending_user_messages == [
         {"role": "user", "content": "queued"}
     ]
 
-def test_restore_closes_tool_call_from_interrupted_execution_phase(tmp_path):
+def test_restore_closes_tool_call_from_interrupted_execution_phase(local_environment_factory, tmp_path):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.state.append_message(
         {
             "role": "assistant",
@@ -499,7 +502,7 @@ def test_restore_closes_tool_call_from_interrupted_execution_phase(tmp_path):
     path = tmp_path / "interrupted.json"
     session.save(str(path))
 
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     assert loaded.phase is SessionPhase.IDLE
     assert loaded.messages[-1] == {
@@ -508,11 +511,11 @@ def test_restore_closes_tool_call_from_interrupted_execution_phase(tmp_path):
         "content": "Tool execution interrupted by session restore.",
     }
 
-def test_scheduler_run_clears_stale_pending_rows_from_interrupted_phase(tmp_path):
+def test_scheduler_run_clears_stale_pending_rows_from_interrupted_phase(local_environment_factory, tmp_path):
     from opencollab.application.scheduler import LaunchSpec, Scheduler
 
     agent = FakeAgent()
-    original = Session(agent=agent, llm=FakeLLMClient())
+    original = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     original.state.append_message(
         {
             "role": "assistant",
@@ -540,7 +543,7 @@ def test_scheduler_run_clears_stale_pending_rows_from_interrupted_phase(tmp_path
     original.save(str(path))
 
     resumed = Session(
-        agent=agent,
+        env=local_environment_factory(), agent=agent,
         llm=FakeLLMClient([llm_response(content="fresh answer")]),
     )
 
@@ -561,7 +564,7 @@ def test_scheduler_run_clears_stale_pending_rows_from_interrupted_phase(tmp_path
     assert run(scenario()) == "fresh answer"
     assert resumed.state.pending_events.is_empty()
 
-def test_session_accepts_explicit_store():
+def test_session_accepts_explicit_store(local_environment_factory):
     class FakeStore:
         def __init__(self):
             self.save_calls = []
@@ -577,12 +580,12 @@ def test_session_accepts_explicit_store():
 
     fake_store = FakeStore()
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient(), store=fake_store)
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient(), store=fake_store)
     session.messages.append({"role": "user", "content": "hello"})
 
     session.save("fake-session.jsonl")
     loaded = load_session(
-        "fake-session.jsonl", agent=agent, llm=FakeLLMClient(), store=fake_store
+        "fake-session.jsonl", env=local_environment_factory(), agent=agent, llm=FakeLLMClient(), store=fake_store
     )
 
     assert session.store is fake_store
@@ -595,7 +598,7 @@ def test_session_accepts_explicit_store():
     assert fake_store.load_calls == [("fake-session.jsonl", agent.system_prompt)]
     assert loaded.messages == fake_store.loaded_messages
 
-def test_legacy_restore_resets_runtime_state_on_an_existing_session():
+def test_legacy_restore_resets_runtime_state_on_an_existing_session(local_environment_factory):
     class LegacyStore:
         def load_messages(self, _path, _system_prompt):
             return [{"role": "system", "content": "restored system"}]
@@ -606,7 +609,7 @@ def test_legacy_restore_resets_runtime_state_on_an_existing_session():
         def save_manifest(self, *_args, **_kwargs):
             return None
 
-    session = Session(agent=FakeAgent(), llm=FakeLLMClient(), store=LegacyStore())
+    session = Session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient(), store=LegacyStore())
     session.used_tokens = 123
     session.step_count = 7
     session.state.set_context_tokens(45)
@@ -656,11 +659,11 @@ def test_session_store_preserves_messages_only_jsonl_semantics(tmp_path):
     assert store.load_messages(str(path), "fallback") == messages
 
 @pytest.mark.asyncio
-async def test_manual_save_after_default_restore_supersedes_old_journal(tmp_path):
+async def test_manual_save_after_default_restore_supersedes_old_journal(local_environment_factory, tmp_path):
     path = tmp_path / "manual-save.json"
     agent = FakeAgent()
     original = Session(
-        agent=agent, llm=FakeLLMClient([llm_response("first answer")]),
+        env=local_environment_factory(), agent=agent, llm=FakeLLMClient([llm_response("first answer")]),
         auto_save_path=str(path),
     )
     await original.add_user_message("first request")
@@ -678,11 +681,12 @@ async def test_manual_save_after_default_restore_supersedes_old_journal(tmp_path
     assert records[0]["sequence"] > base["_autosave_sequence"]
     assert records[0]["messages"][-1]["content"].startswith("queued request")
     assert base["messages"][-1]["content"] == "first answer"
-    resumed = load_session(str(path), agent=agent, llm=FakeLLMClient([llm_response("second answer")]))
+    resumed = load_session(str(path), env=local_environment_factory(),
+    agent=agent, llm=FakeLLMClient([llm_response("second answer")]))
     assert resumed.messages[-1]["content"].startswith("queued request")
     assert await resumed.run_loop() == "second answer"
     resumed.save(str(path))
     assert journal.read_bytes() == b""
-    restored = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    restored = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     assert restored.messages == resumed.messages
     assert restored.messages[-1]["content"] == "second answer"

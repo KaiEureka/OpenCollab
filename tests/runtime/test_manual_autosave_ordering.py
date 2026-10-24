@@ -10,6 +10,7 @@ import pytest
 from opencollab.adapters.storage import SessionStore
 from opencollab.bootstrap import build_session, load_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import FakeLLM
 
 
@@ -33,21 +34,21 @@ class PausedAppendStore(SessionStore):
             raise OSError("manual checkpoint failed")
         return super().checkpoint_snapshot(*args, **kwargs)
 
-def new_session(path, store):
+def new_session(path, store, environment):
     return build_session(
         agent=Agent(name="save-order", system_prompt="system"),
-        llm=FakeLLM(), store=store, auto_save_path=str(path),
+        llm=FakeLLM(), store=store, auto_save_path=str(path), env=environment,
     )
 
 @pytest.mark.parametrize("initial_saves", [0, 1, 2])
 @pytest.mark.parametrize("replace_messages", [False, True])
 @pytest.mark.parametrize("cancel_owner", [False, True])
 async def test_manual_checkpoint_survives_older_autosave_and_next_delta(
-    tmp_path, monkeypatch, initial_saves, replace_messages, cancel_owner,
+    tmp_path, monkeypatch, initial_saves, replace_messages, cancel_owner, local_environment_factory,
 ):
     path = tmp_path / "session.json"
     store = PausedAppendStore()
-    session = new_session(path, store)
+    session = new_session(path, store, local_environment_factory())
     session.messages = [
         {"role": "system", "content": "system"},
         {"role": "user", "content": "old"},
@@ -81,7 +82,9 @@ async def test_manual_checkpoint_survives_older_autosave_and_next_delta(
                 await owner
         else:
             await owner
-        restored = load_session(str(path), agent=session.agent, llm=FakeLLM(), store=store)
+        restored = load_session(
+            str(path), agent=session.agent, llm=FakeLLM(), store=store, env=local_environment_factory(),
+        )
         assert restored.messages == session.messages
         assert restored.used_tokens == 17
         assert restored.state.turn.seen_result_hashes == {"manual-result"}
@@ -90,7 +93,9 @@ async def test_manual_checkpoint_survives_older_autosave_and_next_delta(
         session.messages.append({"role": "assistant", "content": "after manual"})
         session.state.turn.seen_result_hashes.add("next-result")
         await session.enqueue_auto_save()
-        restored = load_session(str(path), agent=session.agent, llm=FakeLLM(), store=store)
+        restored = load_session(
+            str(path), agent=session.agent, llm=FakeLLM(), store=store, env=local_environment_factory(),
+        )
         assert restored.messages == session.messages
         assert restored.state.turn.seen_result_hashes == {"manual-result", "next-result"}
         assert session.persistence_errors == ()
@@ -98,10 +103,10 @@ async def test_manual_checkpoint_survives_older_autosave_and_next_delta(
         store.release.set()
         await asyncio.gather(*session.pending_cleanup_tasks, return_exceptions=True)
 
-async def test_failed_manual_checkpoint_retains_the_older_durable_autosave(tmp_path):
+async def test_failed_manual_checkpoint_retains_the_older_durable_autosave(tmp_path, local_environment_factory):
     path = tmp_path / "session.json"
     store = PausedAppendStore()
-    session = new_session(path, store)
+    session = new_session(path, store, local_environment_factory())
     session.messages = [{"role": "user", "content": "old"}]
     store.pause_next = True
     owner = session.enqueue_auto_save()

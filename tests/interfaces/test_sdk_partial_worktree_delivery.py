@@ -18,7 +18,8 @@ from opencollab.application._scheduler_constants import MAX_TEAMMATE_MESSAGE_BYT
 from opencollab.bootstrap import programmatic
 from opencollab.domain.pending import PendingEventTable, RowStatus
 from opencollab.domain.session import SessionPhase
-from opencollab.environments import attach_container, local_environment
+from opencollab.environments import attach_container
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import http_response, install_sdk_transport
 from tests.support.worktree_delivery_support import CONTAINER_ID, apply_and_execute, git, make_repo
 from tests.support.worktree_delivery_support import worktree_transport as worktree_transport
@@ -30,7 +31,7 @@ def _tool_call(step: int, name: str, arguments: dict) -> dict:
         "function": {"name": name, "arguments": json.dumps(arguments)},
     }
 
-async def _run_team(
+async def _run_team(local_environment_factory,
     tmp_path, monkeypatch, *, backend, ending, trace, capture_failure=None,
     prebuilt=False, payload=None,
 ):
@@ -149,7 +150,7 @@ async def _run_team(
     if backend == "container":
         environment = attach_container(container_id=CONTAINER_ID, workspace=str(repo))
     else:
-        environment = local_environment(repo)
+        environment = local_environment_factory(repo)
     result = await OpenCollab(
         repo, model="offline",
         api_key="local-fixture",  # pragma: allowlist secret
@@ -166,10 +167,12 @@ async def _run_team(
 @pytest.mark.parametrize("backend", ["local", "container"])
 @pytest.mark.parametrize("ending", ["normal", "api", "stopped"])
 @pytest.mark.parametrize("trace", [False, True])
-async def test_sdk_delivers_partial_changes_and_preserves_failure(
+async def test_sdk_delivers_partial_changes_and_preserves_failure(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend, ending, trace,
 ):
-    observed = await _run_team(tmp_path, monkeypatch, backend=backend, ending=ending, trace=trace)
+    observed = await _run_team(
+        local_environment_factory, tmp_path, monkeypatch, backend=backend, ending=ending, trace=trace,
+    )
     result = observed["result"]
     scheduler = observed["scheduler"]
     child = scheduler.table.get(1)
@@ -207,10 +210,10 @@ async def test_sdk_delivers_partial_changes_and_preserves_failure(
 @pytest.mark.parametrize("ending", ["normal", "api", "stopped"])
 @pytest.mark.parametrize("trace", [False, True])
 @pytest.mark.parametrize("recovery", ["get_diff", "revoked_git"])
-async def test_sdk_capture_failure_survives_shutdown_and_git_recovery(
+async def test_sdk_capture_failure_survives_shutdown_and_git_recovery(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend, ending, trace, recovery,
 ):
-    observed = await _run_team(
+    observed = await _run_team(local_environment_factory,
         tmp_path, monkeypatch, backend=backend, ending=ending, trace=trace, capture_failure="transient",
     )
     result = observed["result"]
@@ -248,16 +251,20 @@ async def test_sdk_capture_failure_survives_shutdown_and_git_recovery(
             await observed["pool"].release()
             assert not workspace.exists()
     finally:
-        if workspace.exists():
-            git(observed["repo"], "worktree", "remove", "--force", str(workspace))
-            git(observed["repo"], "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        try:
+            if workspace.exists():
+                git(observed["repo"], "worktree", "remove", "--force", str(workspace))
+                git(observed["repo"], "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        finally:
+            if backend == "local" and env._local_env is not None:
+                await env._local_env.cleanup()
 
 @pytest.mark.parametrize("backend", ["local", "container"])
 @pytest.mark.parametrize("trace", [False, True])
-async def test_sdk_ignored_cache_capture_failure_retains_the_real_files(
+async def test_sdk_ignored_cache_capture_failure_retains_the_real_files(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend, trace,
 ):
-    observed = await _run_team(
+    observed = await _run_team(local_environment_factory,
         tmp_path, monkeypatch, backend=backend, ending="normal", trace=trace, capture_failure="ignored",
     )
     env = observed["env"]
@@ -268,17 +275,21 @@ async def test_sdk_ignored_cache_capture_failure_retains_the_real_files(
         assert (workspace / "solution.py").read_text() == "print(42)\n"
         assert (workspace / "__pycache__" / "solution.pyc").read_bytes() == b"cache"
     finally:
-        shutil.rmtree(workspace / "__pycache__")
-        git(observed["repo"], "worktree", "remove", "--force", str(workspace))
-        git(observed["repo"], "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        try:
+            shutil.rmtree(workspace / "__pycache__")
+            git(observed["repo"], "worktree", "remove", "--force", str(workspace))
+            git(observed["repo"], "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        finally:
+            if backend == "local" and env._local_env is not None:
+                await env._local_env.cleanup()
 
 @pytest.mark.parametrize("backend", ["local", "container"])
 @pytest.mark.parametrize("ending", ["api", "stopped"])
 @pytest.mark.parametrize("trace", [False, True])
-async def test_prebuilt_sender_receives_small_failed_patch(
+async def test_prebuilt_sender_receives_small_failed_patch(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend, ending, trace,
 ):
-    observed = await _run_team(
+    observed = await _run_team(local_environment_factory,
         tmp_path, monkeypatch, backend=backend, ending=ending, trace=trace, prebuilt=True,
     )
     scheduler = observed["scheduler"]
@@ -303,11 +314,11 @@ async def test_prebuilt_sender_receives_small_failed_patch(
 @pytest.mark.parametrize("ending", ["api", "stopped"])
 @pytest.mark.parametrize("trace", [False, True])
 @pytest.mark.parametrize("prebuilt", [False, True])
-async def test_truncated_failed_patch_retains_complete_files_after_sdk_shutdown(
+async def test_truncated_failed_patch_retains_complete_files_after_sdk_shutdown(local_environment_factory,
     worktree_transport, tmp_path, monkeypatch, backend, ending, trace, prebuilt,
 ):
     payload = "".join(f"line {index} \u4e2d\u6587 & <tag> value\n" for index in range(1800))
-    observed = await _run_team(
+    observed = await _run_team(local_environment_factory,
         tmp_path, monkeypatch, backend=backend, ending=ending, trace=trace,
         prebuilt=prebuilt, payload=payload,
     )
@@ -342,6 +353,10 @@ async def test_truncated_failed_patch_retains_complete_files_after_sdk_shutdown(
         await observed["pool"].release()
         assert not workspace.exists()
     finally:
-        if workspace.exists():
-            git(observed["repo"], "worktree", "remove", "--force", str(workspace))
-            git(observed["repo"], "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        try:
+            if workspace.exists():
+                git(observed["repo"], "worktree", "remove", "--force", str(workspace))
+                git(observed["repo"], "update-ref", "-d", f"refs/heads/{env._branch}", env._base_commit)
+        finally:
+            if backend == "local" and env._local_env is not None:
+                await env._local_env.cleanup()

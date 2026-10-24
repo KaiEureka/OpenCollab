@@ -66,6 +66,7 @@ async def _snapshot(tmp_path, client, *, with_native_view=False):
         return path, copy.deepcopy(session.messages)
     finally:
         await session.aclose()
+        await session.env.cleanup()
 
 @pytest.mark.parametrize("with_native_view", [False, True], ids=["legacy", "saved-after-old-failure"])
 async def test_rejected_old_history_recovers_once_and_stays_recovered(monkeypatch, tmp_path, with_native_view):
@@ -104,6 +105,7 @@ async def test_rejected_old_history_recovers_once_and_stays_recovered(monkeypatc
             session.save(str(path))
         finally:
             await session.aclose()
+            await session.env.cleanup()
         session = load_session(str(path), agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)),
                                max_budget_tokens=100_000)
         try:
@@ -113,6 +115,7 @@ async def test_rejected_old_history_recovers_once_and_stays_recovered(monkeypatc
             assert len(peer.requests) == 6
         finally:
             await session.aclose()
+            await session.env.cleanup()
     recoveries = [step for step in tracer.steps if step["step_type"] == "thinking_prefix_recovery"]
     assert len(recoveries) == 1
     assert recoveries[0]["payload"]["removed_blocks"] == 6
@@ -141,6 +144,7 @@ async def test_valid_legacy_snapshot_keeps_all_native_thinking(monkeypatch, tmp_
             assert peer.retired == set()
         finally:
             await session.aclose()
+            await session.env.cleanup()
     assert not any(step["step_type"] == "thinking_prefix_recovery" for step in tracer.steps)
 
 @pytest.mark.parametrize("status,kind,message", [
@@ -169,6 +173,7 @@ async def test_other_provider_errors_keep_their_original_failure(monkeypatch, tm
             assert session.messages[:len(original)] == original
         finally:
             await session.aclose()
+            await session.env.cleanup()
 
 async def test_recovery_failure_propagates_after_the_single_retry(monkeypatch, tmp_path):
     peer = _RejectingProvider()
@@ -188,6 +193,7 @@ async def test_recovery_failure_propagates_after_the_single_retry(monkeypatch, t
             assert session.messages[:len(original)] == original
         finally:
             await session.aclose()
+            await session.env.cleanup()
 
 async def test_prefix_error_without_replayed_thinking_keeps_the_original_failure(monkeypatch, tmp_path):
     peer = _RejectingProvider()
@@ -204,6 +210,7 @@ async def test_prefix_error_without_replayed_thinking_keeps_the_original_failure
             assert len(peer.requests) == 1
         finally:
             await session.aclose()
+            await session.env.cleanup()
     assert not any(step["step_type"] == "thinking_prefix_recovery" for step in tracer.steps)
 
 @pytest.mark.parametrize("model,provider,wire_protocol", [
@@ -240,3 +247,4 @@ async def test_other_protocols_do_not_attempt_prefix_recovery(monkeypatch, tmp_p
             assert session.state.anthropic_history is None
         finally:
             await session.aclose()
+            await session.env.cleanup()

@@ -22,6 +22,7 @@ from opencollab.adapters.env import (
     WorktreeEnvironment,
 )
 from opencollab.adapters.worktree_pool import WorktreePool
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def _git(repo, *args, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -186,6 +187,7 @@ async def test_concurrent_setup_reuses_one_worktree(tmp_path, monkeypatch) -> No
 
     assert copy_count == 1
     assert outcomes == [env.workspace, env.workspace]
+    await env.cleanup()
 
 async def test_non_git_copy_does_not_block_event_loop(tmp_path, monkeypatch) -> None:
     source = tmp_path / "plain"
@@ -925,10 +927,10 @@ async def test_pool_isolates_inside_the_container_the_run_was_given(tmp_path) ->
     # Outside the repository root, so it never lands in the harness's archive.
     assert not env.workspace.startswith("/testbed/")
 
-async def test_pool_isolates_inside_a_supplied_host_workspace(tmp_path) -> None:
+async def test_pool_isolates_inside_a_supplied_host_workspace(local_environment_factory, tmp_path) -> None:
     """A supplied host environment is still where its agents' worktrees come from."""
     elsewhere = _repo(tmp_path / "elsewhere")
-    base = LocalEnvironment(str(elsewhere))
+    base = local_environment_factory(str(elsewhere))
     pool = WorktreePool(str(tmp_path), use_worktrees=True, base_environment=base)
 
     env = pool._build_worktree("opencollab-coder-5678ef01", base)
@@ -937,10 +939,11 @@ async def test_pool_isolates_inside_a_supplied_host_workspace(tmp_path) -> None:
     assert env.source_workspace == os.path.realpath(str(elsewhere))
 
 async def test_pool_without_worktrees_hands_back_the_supplied_environment(
+    local_environment_factory,
     tmp_path,
 ) -> None:
     """The shared environment is borrowed, so releasing the pool must preserve its lifetime."""
-    base = LocalEnvironment(str(tmp_path))
+    base = local_environment_factory(str(tmp_path))
     pool = WorktreePool(str(tmp_path), use_worktrees=False, base_environment=base)
 
     first = await pool.acquire("coder")
@@ -959,8 +962,11 @@ async def test_pool_refuses_to_isolate_an_environment_it_cannot_split(tmp_path) 
     base = Opaque(str(tmp_path))
     pool = WorktreePool(str(tmp_path), use_worktrees=True, base_environment=base)
 
-    with pytest.raises(TypeError, match="worktree isolation is not available"):
-        await pool.acquire("coder")
+    try:
+        with pytest.raises(TypeError, match="worktree isolation is not available"):
+            await pool.acquire("coder")
+    finally:
+        await base.cleanup()
 
 @pytest.mark.parametrize("workspace", ["/app", "/tmp"])
 async def test_container_worktree_can_start_as_an_unprivileged_image_user(monkeypatch, workspace):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import inspect
 from dataclasses import fields
@@ -205,24 +206,30 @@ def test_environment_factories_preserve_caller_owned_lifecycle(tmp_path: Path) -
     local = local_environment(tmp_path)
     worktree = worktree_environment(tmp_path)
     container = docker_environment("python:3.11-slim", worktree)
-
-    assert local.workspace == str(tmp_path.resolve())
-    assert worktree.source_workspace == str(tmp_path.resolve())
-    assert container.source_workspace == str(tmp_path.resolve())
-    assert container.process_isolated is True
-    assert not local.revoked
-    assert not worktree.revoked
-    assert not container.revoked
+    try:
+        assert local.workspace == str(tmp_path.resolve())
+        assert worktree.source_workspace == str(tmp_path.resolve())
+        assert container.source_workspace == str(tmp_path.resolve())
+        assert container.process_isolated is True
+        assert not local.revoked
+        assert not worktree.revoked
+        assert not container.revoked
+    finally:
+        asyncio.run(local.cleanup())
+        asyncio.run(worktree.cleanup())
 
 async def test_public_environment_setup_has_one_shared_contract(tmp_path: Path) -> None:
     local = local_environment(tmp_path)
     worktree = worktree_environment(tmp_path)
-
-    assert await local.setup() == str(tmp_path.resolve())
-    with pytest.raises(ValueError, match="mount_dir"):
-        await local.setup(str(tmp_path))
-    with pytest.raises(ValueError, match="mount_dir"):
-        await worktree.setup(str(tmp_path))
+    try:
+        assert await local.setup() == str(tmp_path.resolve())
+        with pytest.raises(ValueError, match="mount_dir"):
+            await local.setup(str(tmp_path))
+        with pytest.raises(ValueError, match="mount_dir"):
+            await worktree.setup(str(tmp_path))
+    finally:
+        await local.cleanup()
+        await worktree.cleanup()
 
 def test_attach_container_validates_non_owning_workspace() -> None:
     environment = attach_container(

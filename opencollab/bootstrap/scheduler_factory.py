@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from opencollab.adapters.env import Environment, LocalEnvironment
+from opencollab.adapters.env import Environment
 from opencollab.adapters.hooks import ShellHookRunner
 from opencollab.adapters.safe_files import write_regular_bytes_atomic
 from opencollab.adapters.storage import SessionStore
@@ -201,108 +201,115 @@ def build_scheduler(
         max_steps=max_steps,
         run_id=manifest_run_id,
     )
-    worktree_pool = WorktreePool(
-        ctx.workspace,
-        use_worktrees=use_worktrees,
-        base_environment=environment,
-        owned_save_dir=run_dir,
-        enable_adoption=any("adopt_agent" in role.tools for role in team_cfg.roles.values()),
-        owned_output_paths=getattr(ctx.tracer, "owned_paths", ()),
-    )
-
-    # The graded tree is where agent 0 works: the environment when the run was
-    # given one (a container the repository lives in), the host workspace
-    # otherwise. Same choice ``_workflow_runtime_session`` makes for the probe
-    # it hands a workflow, so both regimes measure the same directory.
-    delivery_tree_probe = (
-        EnvWorkingTreeProbe(
-            environment if environment is not None else LocalEnvironment(ctx.workspace),
-            from_initial_head=True,
-        )
-        if record_delivery_tree
-        else None
-    )
-
-    recovery_dir = run_dir
-
-    async def write_candidate_diff(aid: int, role: str, patch: str) -> str:
-        nonlocal recovery_dir
-        if recovery_dir is None:
-            recovery_dir = await asyncio.to_thread(tempfile.mkdtemp, prefix="opencollab-team-recovery-")
-        path = str(Path(agent_save_path(recovery_dir, aid, role)).with_suffix(".patch"))
-        await asyncio.to_thread(write_regular_bytes_atomic, path, patch.encode("utf-8"))
-        return path
-
-    scheduler = Scheduler(
-        session_factory=session_factory,
-        worktree_pool=worktree_pool,
-        event_sink=event_bus,
-        tracer=ctx.tracer,
-        # Declared per-role allowances are independent, so the team total is
-        # their sum; otherwise one shared pool of the configured budget.
-        max_budget_tokens=(
-            sum(team_cfg.role_budgets.values()) if team_cfg.role_budgets else cfg["budget"]
-        ),
-        permission_policy=ctx.permission_policy,
-        topology=team_cfg.topology,
-        roles=tuple(team_cfg.roles),
-        role_budgets=team_cfg.role_budgets,
-        entry_role=team_cfg.entry,
-        prebuild_team=prebuild_team,
-        serialize_turns=serialize_turns,
-        delivery_tree_probe=delivery_tree_probe,
-        candidate_diff_writer=write_candidate_diff,
-    )
-
-    # Attach hooks after the scheduler exists so the runner can hold its handle
-    # (the coordination-ready seam for a future ``agent`` executor). Subscribing
-    # appends to the same bus, leaving the TUI sink at target[0] untouched.
-    if enable_hooks and team_cfg.hooks:
-        runner = ShellHookRunner(
-            team_cfg.hooks,
-            scheduler=scheduler,
-            workspace=ctx.workspace,
-        )
-        scheduler.register_lifecycle_resource(runner, description="hook processes")
-        event_bus.subscribe(HookEventSubscriber(runner))
-
-    # Persist a team.json manifest from the live roster on every roster change.
-    # Wired before create_init_process so agent 0 is captured on registration.
-    if run_dir is not None:
-        store = SessionStore()
-        manifest_path = os.path.join(run_dir, "team.json")
-        team_file = (
-            Path(os.path.abspath(os.fspath(team_config_path)))
-            if team_config_path is not None
-            else resolve_team_file(ctx.workspace)
-        )
-        started_at = datetime.now(timezone.utc).isoformat()
-
-        def _manifest_payload() -> dict:
-            return {
-                "run_id": manifest_run_id,
-                "started_at": started_at,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "team_file": str(team_file) if team_file else None,
-                "agents": scheduler.team_snapshot(),
-            }
-
-        def _write_manifest() -> None:
-            store.save_manifest(manifest_path, _manifest_payload())
-
-        def _prepare_manifest() -> Callable[[], None]:
-            payload = _manifest_payload()
-            return lambda: store.save_manifest(manifest_path, payload)
-
-        scheduler.set_manifest_writer(
-            _write_manifest,
-            prepare_fn=_prepare_manifest,
+    try:
+        lead_environment = session_factory.lead_environment
+        worktree_pool = WorktreePool(
+            ctx.workspace,
+            use_worktrees=use_worktrees,
+            base_environment=environment,
+            owned_save_dir=run_dir,
+            enable_adoption=any("adopt_agent" in role.tools for role in team_cfg.roles.values()),
+            owned_output_paths=getattr(ctx.tracer, "owned_paths", ()),
+            owned_environments=(lead_environment,) if environment is None else (),
         )
 
-    scheduler.create_init_process(
-        LaunchSpec(session_file=session_file, auto_save_path=lead_save_path)
-    )
-    return scheduler
+        # The graded tree is where agent 0 works: the environment when the run was
+        # given one (a container the repository lives in), the host workspace
+        # otherwise. Same choice ``_workflow_runtime_session`` makes for the probe
+        # it hands a workflow, so both regimes measure the same directory.
+        delivery_tree_probe = (
+            EnvWorkingTreeProbe(
+                lead_environment,
+                from_initial_head=True,
+            )
+            if record_delivery_tree
+            else None
+        )
+
+        recovery_dir = run_dir
+
+        async def write_candidate_diff(aid: int, role: str, patch: str) -> str:
+            nonlocal recovery_dir
+            if recovery_dir is None:
+                recovery_dir = await asyncio.to_thread(tempfile.mkdtemp, prefix="opencollab-team-recovery-")
+            path = str(Path(agent_save_path(recovery_dir, aid, role)).with_suffix(".patch"))
+            await asyncio.to_thread(write_regular_bytes_atomic, path, patch.encode("utf-8"))
+            return path
+
+        scheduler = Scheduler(
+            session_factory=session_factory,
+            worktree_pool=worktree_pool,
+            event_sink=event_bus,
+            tracer=ctx.tracer,
+            # Declared per-role allowances are independent, so the team total is
+            # their sum; otherwise one shared pool of the configured budget.
+            max_budget_tokens=(
+                sum(team_cfg.role_budgets.values()) if team_cfg.role_budgets else cfg["budget"]
+            ),
+            permission_policy=ctx.permission_policy,
+            topology=team_cfg.topology,
+            roles=tuple(team_cfg.roles),
+            role_budgets=team_cfg.role_budgets,
+            entry_role=team_cfg.entry,
+            prebuild_team=prebuild_team,
+            serialize_turns=serialize_turns,
+            delivery_tree_probe=delivery_tree_probe,
+            candidate_diff_writer=write_candidate_diff,
+        )
+
+        # Attach hooks after the scheduler exists so the runner can hold its handle
+        # (the coordination-ready seam for a future ``agent`` executor). Subscribing
+        # appends to the same bus, leaving the TUI sink at target[0] untouched.
+        if enable_hooks and team_cfg.hooks:
+            runner = ShellHookRunner(
+                team_cfg.hooks,
+                scheduler=scheduler,
+                workspace=ctx.workspace,
+            )
+            scheduler.register_lifecycle_resource(runner, description="hook processes")
+            event_bus.subscribe(HookEventSubscriber(runner))
+
+        # Persist a team.json manifest from the live roster on every roster change.
+        # Wired before create_init_process so agent 0 is captured on registration.
+        if run_dir is not None:
+            store = SessionStore()
+            manifest_path = os.path.join(run_dir, "team.json")
+            team_file = (
+                Path(os.path.abspath(os.fspath(team_config_path)))
+                if team_config_path is not None
+                else resolve_team_file(ctx.workspace)
+            )
+            started_at = datetime.now(timezone.utc).isoformat()
+
+            def _manifest_payload() -> dict:
+                return {
+                    "run_id": manifest_run_id,
+                    "started_at": started_at,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "team_file": str(team_file) if team_file else None,
+                    "agents": scheduler.team_snapshot(),
+                }
+
+            def _write_manifest() -> None:
+                store.save_manifest(manifest_path, _manifest_payload())
+
+            def _prepare_manifest() -> Callable[[], None]:
+                payload = _manifest_payload()
+                return lambda: store.save_manifest(manifest_path, payload)
+
+            scheduler.set_manifest_writer(
+                _write_manifest,
+                prepare_fn=_prepare_manifest,
+            )
+
+        scheduler.create_init_process(
+            LaunchSpec(session_file=session_file, auto_save_path=lead_save_path)
+        )
+        return scheduler
+    except BaseException:
+        # Construction is synchronous; these environments have started no tasks.
+        session_factory._discard_unstarted_lead_environment()
+        raise
 
 
 __all__ = ["build_scheduler"]

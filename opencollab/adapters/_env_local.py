@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import threading
 import uuid
 from collections.abc import Callable
 from typing import TypeVar
@@ -61,7 +62,7 @@ class LocalEnvironment(Environment):
         self.source_workspace = self.workspace
         self._processes = ProcessRegistry()
         self._temporary_files: set[str] = set()
-        self._file_io_semaphore = asyncio.Semaphore(_FILE_IO_CONCURRENCY)
+        self._file_io_semaphore = threading.BoundedSemaphore(_FILE_IO_CONCURRENCY)
         self._file_operations: set[asyncio.Task] = set()
 
     def _relative_path(self, path: str) -> str:
@@ -88,6 +89,11 @@ class LocalEnvironment(Environment):
             raise RuntimeError("Local environment workspace is closed.")
         return self._workspace_fd
 
+    def _close_workspace(self) -> None:
+        if self._workspace_fd is not None:
+            os.close(self._workspace_fd)
+            self._workspace_fd = None
+
     async def exec_cmd(self, cmd: str, timeout: float = 120.0) -> ExecResult:
         self._ensure_active()
         try:
@@ -112,8 +118,12 @@ class LocalEnvironment(Environment):
         *args: object,
         **kwargs: object,
     ) -> T:
-        async with self._file_io_semaphore:
+        while not self._file_io_semaphore.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
             return await asyncio.to_thread(operation, *args, **kwargs)
+        finally:
+            self._file_io_semaphore.release()
 
     async def _run_file_operation(
         self,
@@ -252,8 +262,7 @@ class LocalEnvironment(Environment):
         # closing this descriptor while an owned path remains would make that
         # retry permanently incapable of reaching the anchored workspace.
         if not self._temporary_files and self._workspace_fd is not None:
-            os.close(self._workspace_fd)
-            self._workspace_fd = None
+            self._close_workspace()
 
         if failures:
             failure = OSError("failed to remove one or more environment temporary files")

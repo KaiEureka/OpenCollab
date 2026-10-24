@@ -9,29 +9,32 @@ import pytest
 from opencollab.adapters.tools.submit import SubmitTool
 from opencollab.bootstrap import build_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import FakeLLM, agent_with_submit, llm_response, tool_call
 
 
 @pytest.mark.parametrize("create_second_before_first_turn", [False, True])
-def test_wind_down_preserves_tools_for_a_session_reusing_the_template(
+def test_wind_down_preserves_tools_for_a_session_reusing_the_template(local_environment_factory,
     create_second_before_first_turn,
 ):
     template = agent_with_submit()
     first_model = FakeLLM([llm_response(content="first protected answer")])
     second_model = FakeLLM([llm_response(content="second answer")])
-    first = build_session(agent=template, llm=first_model, max_budget_tokens=50_000)
+    first = build_session(env=local_environment_factory(), agent=template, llm=first_model, max_budget_tokens=50_000)
 
     async def scenario():
         second = None
         if create_second_before_first_turn:
-            second = build_session(agent=template, llm=second_model, max_budget_tokens=50_000)
+            second = build_session(
+                env=local_environment_factory(), agent=template, llm=second_model, max_budget_tokens=50_000)
             await second.add_user_message("Read for an independent turn.")
         await first.add_user_message("Inspect and submit.")
         first.runner.configure_enforcement(enforcement_strength="needs-enforcement")
         first.used_tokens = 25_000
         await first.run_loop()
         if second is None:
-            second = build_session(agent=template, llm=second_model, max_budget_tokens=50_000)
+            second = build_session(
+                env=local_environment_factory(), agent=template, llm=second_model, max_budget_tokens=50_000)
             await second.add_user_message("Read for a later turn.")
         await second.run_loop()
         return second
@@ -51,11 +54,13 @@ def test_wind_down_preserves_tools_for_a_session_reusing_the_template(
     assert first.agent is not second.agent
     assert first.agent.tools[0] is template.tools[1]
 
-def test_separate_templates_keep_their_tool_configuration():
+def test_separate_templates_keep_their_tool_configuration(local_environment_factory):
     first_template = agent_with_submit()
     second_template = agent_with_submit()
-    first = build_session(agent=first_template, llm=FakeLLM([llm_response(content="first")]))
-    second = build_session(agent=second_template, llm=FakeLLM([llm_response(content="second")]))
+    first = build_session(
+        env=local_environment_factory(), agent=first_template, llm=FakeLLM([llm_response(content="first")]))
+    second = build_session(
+        env=local_environment_factory(), agent=second_template, llm=FakeLLM([llm_response(content="second")]))
 
     async def scenario():
         await first.add_user_message("first")
@@ -69,14 +74,14 @@ def test_separate_templates_keep_their_tool_configuration():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("shared, concurrent", [(True, True), (False, True), (True, False)])
-async def test_reused_submit_tool_keeps_each_sessions_accepted_answer(shared, concurrent):
+async def test_reused_submit_tool_keeps_each_sessions_accepted_answer(local_environment_factory, shared, concurrent):
     template = Agent(name="lead", system_prompt="Finish the task.", tools=[SubmitTool()])
     second_template = template if shared else Agent(
         name="lead", system_prompt="Finish the task.", tools=[SubmitTool()],
     )
     sessions = [
         build_session(
-            agent=agent,
+            env=local_environment_factory(), agent=agent,
             llm=FakeLLM([llm_response(tool_calls=[tool_call(
                 name="submit", arguments='{"summary": "%s"}' % summary,
             )])]),
@@ -98,12 +103,12 @@ async def test_reused_submit_tool_keeps_each_sessions_accepted_answer(shared, co
     assert sessions[1].agent.tools[0] is second_template.tools[0]
 
 @pytest.mark.asyncio
-async def test_invalid_concurrent_submit_keeps_the_other_sessions_accepted_answer():
+async def test_invalid_concurrent_submit_keeps_the_other_sessions_accepted_answer(local_environment_factory):
     template = Agent(name="lead", system_prompt="Finish the task.", tools=[SubmitTool()])
-    first = build_session(agent=template, llm=FakeLLM([llm_response(tool_calls=[
+    first = build_session(env=local_environment_factory(), agent=template, llm=FakeLLM([llm_response(tool_calls=[
         tool_call(name="submit", arguments='{"summary": "accepted"}'),
     ])]))
-    second = build_session(agent=template, llm=FakeLLM([
+    second = build_session(env=local_environment_factory(), agent=template, llm=FakeLLM([
         llm_response(tool_calls=[tool_call(name="submit", arguments='{"summary": ""}')]),
         llm_response(content="corrected answer"),
     ]))

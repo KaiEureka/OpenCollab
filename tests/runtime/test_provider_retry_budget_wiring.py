@@ -11,6 +11,7 @@ from opencollab.adapters.llm.retry import RetryTimeBudget
 from opencollab.bootstrap import container
 from opencollab.bootstrap._workflow_runtime_session import WorkflowSessionFactory
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 class _FakeLLM:
@@ -55,6 +56,7 @@ def test_agent_new_retry_fields_follow_the_legacy_positional_fields():
     )
 
 def test_workflow_sessions_and_summarizers_share_one_provider_retry_budget(
+    local_environment_factory,
     monkeypatch,
     tmp_path,
 ):
@@ -74,6 +76,7 @@ def test_workflow_sessions_and_summarizers_share_one_provider_retry_budget(
     monkeypatch.setattr(container, "LLMClient", fake_client)
     monkeypatch.setattr(container, "_build_summarizer", capture_summarizer_budget)
     factory = WorkflowSessionFactory(
+        env=local_environment_factory(str(tmp_path)),
         model="model",
         provider="openai",
         api_key="fake",  # pragma: allowlist secret

@@ -14,6 +14,7 @@ from opencollab.application.async_timeout import (
     consume_task_result,
     force_task_terminal,
 )
+from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.ports import LLMPort, TracePort
 from opencollab.application.run_control import RunControl
 from opencollab.application.session_lifecycle import close_session_resources
@@ -186,20 +187,30 @@ async def run_agent(
     run_control: RunControl | None = None,
 ) -> AgentRuntimeResult:
     """Run one Agent and return only after cleanup and final save quiesce."""
-    session = build_session(
-        agent=agent,
-        env=environment,
-        tracer=tracer,
-        max_budget_tokens=max_tokens,
-        max_steps=max_steps,
-        auto_save_path=transcript_path,
-        safety_policy=build_workspace_safety_policy(environment),
-        llm=llm,
-        llm_timeout=llm_timeout_seconds,
-        agent_profile=agent_profile,
-        run_id=run_id,
-        run_control=run_control,
-    )
+    try:
+        session = build_session(
+            agent=agent,
+            env=environment,
+            tracer=tracer,
+            max_budget_tokens=max_tokens,
+            max_steps=max_steps,
+            auto_save_path=transcript_path,
+            safety_policy=build_workspace_safety_policy(environment),
+            llm=llm,
+            llm_timeout=llm_timeout_seconds,
+            agent_profile=agent_profile,
+            run_id=run_id,
+            run_control=run_control,
+        )
+    except BaseException as exc:
+        if cleanup_environment:
+            cleaned = await await_owned_operation(
+                run_environment_hook(environment, "cleanup", cleanup_timeout_seconds),
+                propagate_cancellation=False,
+            )
+            if not cleaned:
+                add_exception_note(exc, "environment cleanup after session construction failure did not complete")
+        raise
     owner = asyncio.create_task(_run_session(session, prompt))
     finalization_task: asyncio.Task[bool] | None = None
     finalization_succeeded = False

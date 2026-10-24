@@ -15,6 +15,7 @@ from opencollab.application.session_run import GenerationTimeoutError
 from opencollab.bootstrap import build_session, load_session
 from opencollab.domain.session import SessionPhase
 from tests.runtime.test_async_compaction import history
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -85,11 +86,13 @@ async def _abandon_call(session, provider, trigger):
     ],
 )
 async def test_session_accounts_only_successful_abandoned_response_once(
+    local_environment_factory,
     trigger, outcome, repeat_cancel, protected_call, tmp_path,
 ):
     provider = _DelayedProvider(outcome)
     path = tmp_path / "automatic.json"
     session = build_session(
+        env=local_environment_factory(),
         agent=FakeAgent(), llm=provider, llm_timeout=0.01 if trigger == "timeout" else 600,
         auto_save_path=str(path),
     )
@@ -149,7 +152,7 @@ async def test_session_accounts_only_successful_abandoned_response_once(
         assert snapshot["session_state"]["used_tokens"] == expected_usage
         assert snapshot["session_state"]["budget_reserve_consumed"] is expected_reserve_consumed
         assert _message_payloads(snapshot["messages"]) == session.messages
-        restored = load_session(str(path), agent=FakeAgent(), llm=provider)
+        restored = load_session(str(path), env=local_environment_factory(), agent=FakeAgent(), llm=provider)
         assert restored.used_tokens == expected_usage
         assert restored.state.budget_reserve_consumed is expected_reserve_consumed
         assert restored.phase is expected_phase
@@ -169,7 +172,7 @@ async def test_session_accounts_only_successful_abandoned_response_once(
         await _drain(session)
 
 @pytest.mark.parametrize("trigger", ["cancel", "timeout"])
-async def test_late_usage_autosave_failure_remains_visible(trigger, tmp_path):
+async def test_late_usage_autosave_failure_remains_visible(local_environment_factory, trigger, tmp_path):
     error = OSError("late usage save failed")
 
     class FailingStore(SessionStore):
@@ -184,6 +187,7 @@ async def test_late_usage_autosave_failure_remains_visible(trigger, tmp_path):
     store = FailingStore()
     path = tmp_path / "failing.json"
     session = build_session(
+        env=local_environment_factory(),
         agent=FakeAgent(), llm=provider, llm_timeout=0.01 if trigger == "timeout" else 600,
         auto_save_path=str(path), store=store,
     )
@@ -210,10 +214,11 @@ async def test_late_usage_autosave_failure_remains_visible(trigger, tmp_path):
         await _drain(session)
 
 @pytest.mark.parametrize("trigger", ["cancel", "timeout"])
-async def test_late_summary_usage_is_automatically_saved(trigger, tmp_path):
+async def test_late_summary_usage_is_automatically_saved(local_environment_factory, trigger, tmp_path):
     provider = _DelayedProvider()
     path = tmp_path / "summary.json"
     session = build_session(
+        env=local_environment_factory(),
         agent=FakeAgent(), llm=provider, llm_timeout=0.01 if trigger == "timeout" else None,
         auto_save_path=str(path),
     )
@@ -231,7 +236,7 @@ async def test_late_summary_usage_is_automatically_saved(trigger, tmp_path):
         snapshot = SessionStore().load_snapshot(str(path), session.agent.system_prompt)
         assert snapshot["session_state"]["used_tokens"] == 37
         assert _message_payloads(snapshot["messages"]) == original_messages
-        restored = load_session(str(path), agent=FakeAgent(), llm=provider)
+        restored = load_session(str(path), env=local_environment_factory(), agent=FakeAgent(), llm=provider)
         assert restored.used_tokens == 37
         assert restored.messages == original_messages
         assert restored.step_count == 0
@@ -240,13 +245,13 @@ async def test_late_summary_usage_is_automatically_saved(trigger, tmp_path):
         provider.release.set()
         await _drain(session)
 
-async def test_session_accounts_provider_success_when_cancellation_races_with_completion():
+async def test_session_accounts_provider_success_when_cancellation_races_with_completion(local_environment_factory):
     class Provider:
         async def complete(self, **kwargs):
             call.cancel()
             return llm_response(content="racing response", input_tokens=13, output_tokens=24)
 
-    session = build_session(agent=FakeAgent(), llm=Provider())
+    session = build_session(env=local_environment_factory(), agent=FakeAgent(), llm=Provider())
     await session.add_user_message("run")
     call = asyncio.create_task(session.run_loop())
     with pytest.raises(asyncio.CancelledError):
@@ -268,13 +273,15 @@ class _ChildFactory:
         agent = FakeAgent()
         agent.name = kwargs["role"]
         self.session = build_session(
-            agent=agent, llm=self.provider, aid=kwargs["aid"], max_budget_tokens=kwargs["budget"],
+            agent=agent, llm=self.provider, env=kwargs["env"], aid=kwargs["aid"], max_budget_tokens=kwargs["budget"],
             auto_save_path=self.auto_save_path,
         )
         return self.session
 
 @pytest.mark.parametrize("cancel", [False, True])
-async def test_scheduler_preserves_child_usage_after_parent_cancellation(cancel, tmp_path, monkeypatch):
+async def test_scheduler_preserves_child_usage_after_parent_cancellation(
+    local_environment_factory, cancel, tmp_path, monkeypatch,
+):
     monkeypatch.chdir(tmp_path)
     provider = _DelayedProvider()
     path = tmp_path / "child.json"
@@ -288,7 +295,9 @@ async def test_scheduler_preserves_child_usage_after_parent_cancellation(cancel,
         )], finish_reason="tool_calls"),
         llm_response(content="lead response"),
     ])
-    lead = build_session(agent=FakeAgent(tools=[SpawnAgentTool(scheduler)]), llm=lead_model)
+    lead = build_session(
+        env=local_environment_factory(),
+        agent=FakeAgent(tools=[SpawnAgentTool(scheduler)]), llm=lead_model)
     scheduler.register_lead(lead)
     cancel_event = asyncio.Event()
     turn = asyncio.create_task(scheduler.run("run", cancel_event=cancel_event))
@@ -319,7 +328,7 @@ async def test_scheduler_preserves_child_usage_after_parent_cancellation(cancel,
         assert factory.session.used_tokens == 37
         snapshot = SessionStore().load_snapshot(str(path), factory.session.agent.system_prompt)
         assert snapshot["session_state"]["used_tokens"] == 37
-        restored = load_session(str(path), agent=FakeAgent(), llm=provider)
+        restored = load_session(str(path), env=local_environment_factory(), agent=FakeAgent(), llm=provider)
         assert restored.used_tokens == 37
         assert restored.messages == factory.session.messages
         assert scheduler.table.get(1).state.used_tokens == 37

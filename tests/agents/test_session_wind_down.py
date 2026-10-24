@@ -23,6 +23,7 @@ from opencollab.bootstrap import build_session as Session
 from opencollab.bootstrap import load_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase, SessionState
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_run_test_support import (
     CapturingToolExecution,
     FakeLLM,
@@ -302,8 +303,8 @@ def test_t2_winddown_retry_capped_at_one_then_terminal_strayed():
     )
     assert payload["terminus"] == "strayed"
 
-def test_restored_wind_down_does_not_regrant_an_already_allocated_retry(tmp_path):
-    session = Session(agent=_agent_with_submit(), llm=FakeLLM())
+def test_restored_wind_down_does_not_regrant_an_already_allocated_retry(local_environment_factory, tmp_path):
+    session = Session(env=local_environment_factory(), agent=_agent_with_submit(), llm=FakeLLM())
     session.state.wind_down_done = True
     # This is the durable checkpoint immediately after the sole retry was
     # allocated and before its provider call could complete.
@@ -312,7 +313,7 @@ def test_restored_wind_down_does_not_regrant_an_already_allocated_retry(tmp_path
     session.save(str(path))
 
     restored_llm = FakeLLM()
-    restored = load_session(path, agent=_agent_with_submit(), llm=restored_llm)
+    restored = load_session(path, env=local_environment_factory(), agent=_agent_with_submit(), llm=restored_llm)
     restored.runner.configure_enforcement(
         enforcement_strength=ENFORCEMENT_ON,
         commit_reserve=25_000,
@@ -324,8 +325,8 @@ def test_restored_wind_down_does_not_regrant_an_already_allocated_retry(tmp_path
     assert restored_llm.calls == []
     assert restored.state.phase is SessionPhase.STOPPED
 
-def test_legacy_wind_down_snapshot_without_attempts_stops_conservatively(tmp_path):
-    session = Session(agent=_agent_with_submit(), llm=FakeLLM())
+def test_legacy_wind_down_snapshot_without_attempts_stops_conservatively(local_environment_factory, tmp_path):
+    session = Session(env=local_environment_factory(), agent=_agent_with_submit(), llm=FakeLLM())
     session.state.wind_down_done = True
     path = tmp_path / "legacy-wind-down.json"
     session.save(str(path))
@@ -335,7 +336,7 @@ def test_legacy_wind_down_snapshot_without_attempts_stops_conservatively(tmp_pat
     path.write_text(json.dumps(snapshot))
 
     restored_llm = FakeLLM()
-    restored = load_session(path, agent=_agent_with_submit(), llm=restored_llm)
+    restored = load_session(path, env=local_environment_factory(), agent=_agent_with_submit(), llm=restored_llm)
     restored.runner.configure_enforcement(
         enforcement_strength=ENFORCEMENT_ON,
         commit_reserve=25_000,

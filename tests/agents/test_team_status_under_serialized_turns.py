@@ -48,7 +48,10 @@ def _snapshot_inside_first_turn(*, serialize_turns: bool) -> dict[str, dict]:
                     ScriptedSession("tester", [turn("tester")])]
         scheduler, _ = build_scheduler(lead, children, serialize_turns=serialize_turns)
         box["scheduler"] = scheduler
-        return await asyncio.wait_for(scheduler.run("please delegate"), GATE_TIMEOUT_SECONDS)
+        try:
+            return await asyncio.wait_for(scheduler.run("please delegate"), GATE_TIMEOUT_SECONDS)
+        finally:
+            await scheduler.cleanup()
 
     assert asyncio.run(scenario()) == "final: coder, tester"
     return seen
@@ -80,7 +83,10 @@ def test_the_manifest_roster_does_not_carry_the_display_field():
         scheduler, _ = build_scheduler(lead, [ScriptedSession("coder", [step_fn(None)])],
                                        serialize_turns=True)
         box["scheduler"] = scheduler
-        return await asyncio.wait_for(scheduler.run("go"), GATE_TIMEOUT_SECONDS)
+        try:
+            return await asyncio.wait_for(scheduler.run("go"), GATE_TIMEOUT_SECONDS)
+        finally:
+            await scheduler.cleanup()
 
     asyncio.run(scenario())
     assert seen and all("turn_queued" not in e for e in seen)
@@ -159,7 +165,10 @@ def test_team_status_run_by_the_running_agent_shows_its_teammate_queued():
                     ScriptedSession("tester", [turn("tester")])]
         scheduler, _ = build_scheduler(lead, children, serialize_turns=True)
         box["scheduler"] = scheduler
-        return await asyncio.wait_for(scheduler.run("go"), GATE_TIMEOUT_SECONDS)
+        try:
+            return await asyncio.wait_for(scheduler.run("go"), GATE_TIMEOUT_SECONDS)
+        finally:
+            await scheduler.cleanup()
 
     asyncio.run(scenario())
     me, lines = printed[0], printed[1:]

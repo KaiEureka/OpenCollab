@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from openai.types.chat import ChatCompletion
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.errors import StreamedUsageUnavailableError
 from opencollab.adapters.tools.fs import FileReadTool, FileWriteTool
@@ -13,6 +12,7 @@ from opencollab.bootstrap.session_factory import build_session
 from opencollab.domain.agent import Agent
 from opencollab.domain.session import SessionPhase
 from tests.runtime.test_llm_chat_streaming import FakeClient, chunk, usage_chunk
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 USAGE = {"prompt_tokens": 100, "completion_tokens": 100, "total_tokens": 200}
 
@@ -34,7 +34,7 @@ def finish_chunk(finish):
     result.choices[0].finish_reason = finish
     return result
 
-async def session_with_wire(tmp_path, wire, *, stream, tools, thinking=False, retries=0):
+async def session_with_wire(tmp_path, wire, *, local_environment_factory, stream, tools, thinking=False, retries=0):
     client = LLMClient(model="deepseek-flash", api_key="unused", max_retries=retries, stream_chat=stream)
     await client._openai.close()
     client._openai = wire
@@ -43,7 +43,7 @@ async def session_with_wire(tmp_path, wire, *, stream, tools, thinking=False, re
         thinking=thinking, thinking_params={"thinking": {"type": "enabled"}} if thinking else {},
     )
     session = build_session(
-        agent=agent, llm=client, env=LocalEnvironment(str(tmp_path)),
+        agent=agent, llm=client, env=local_environment_factory(str(tmp_path)),
         max_steps=3, max_budget_tokens=10_000,
     )
     await session.add_user_message("inspect the file")
@@ -52,7 +52,9 @@ async def session_with_wire(tmp_path, wire, *, stream, tools, thinking=False, re
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("retries", [0, 1])
 @pytest.mark.parametrize("finish", ["length", "max_tokens"])
-async def test_provider_limit_retains_usage_text_and_stops_partial_tool(tmp_path, stream, retries, finish):
+async def test_provider_limit_retains_usage_text_and_stops_partial_tool(
+    local_environment_factory, tmp_path, stream, retries, finish,
+):
     call = {"id": "write-1", "type": "function", "function": {
         "name": "file_write", "arguments": '{"path":"app.py","content":"unfinished',
     }}
@@ -61,7 +63,10 @@ async def test_provider_limit_retains_usage_text_and_stops_partial_tool(tmp_path
         finish_chunk(finish), usage_chunk(USAGE),
     ] if stream else completion("partial text", [call], finish)
     wire = FakeClient([script])
-    session = await session_with_wire(tmp_path, wire, stream=stream, tools=[FileWriteTool()], retries=retries)
+    session = await session_with_wire(
+        tmp_path, wire, stream=stream, tools=[FileWriteTool()], retries=retries,
+        local_environment_factory=local_environment_factory,
+    )
 
     assert await session.run_loop() == "partial text"
     assert session.phase is SessionPhase.STOPPED
@@ -77,24 +82,30 @@ async def test_provider_limit_retains_usage_text_and_stops_partial_tool(tmp_path
     {"index": 0, "function": {"arguments": '{"path":'}},
     {"index": 0, "id": "write-1", "function": {"name": "file_", "arguments": "{"}},
 ])
-async def test_provider_limit_can_interrupt_tool_identity(tmp_path, delta):
+async def test_provider_limit_can_interrupt_tool_identity(local_environment_factory, tmp_path, delta):
     wire = FakeClient([[
         chunk(delta={"content": "partial text", "tool_calls": [delta]}),
         chunk(finish_reason="length"), usage_chunk(USAGE),
     ]])
-    session = await session_with_wire(tmp_path, wire, stream=True, tools=[FileWriteTool()], retries=1)
+    session = await session_with_wire(
+        tmp_path, wire, stream=True, tools=[FileWriteTool()], retries=1,
+        local_environment_factory=local_environment_factory,
+    )
     assert await session.run_loop() == "partial text"
     assert session.phase is SessionPhase.STOPPED
     assert session.used_tokens == 200
     assert len(wire.calls) == 1
     assert all(stream.closed for stream in wire.streams)
 
-async def test_provider_limit_without_usage_keeps_missing_usage_failure(tmp_path):
+async def test_provider_limit_without_usage_keeps_missing_usage_failure(local_environment_factory, tmp_path):
     wire = FakeClient([[
         chunk(delta={"tool_calls": [{"index": 0, "function": {"arguments": "{"}}]}),
         chunk(finish_reason="length"),
     ]])
-    session = await session_with_wire(tmp_path, wire, stream=True, tools=[FileWriteTool()], retries=1)
+    session = await session_with_wire(
+        tmp_path, wire, stream=True, tools=[FileWriteTool()], retries=1,
+        local_environment_factory=local_environment_factory,
+    )
     with pytest.raises(StreamedUsageUnavailableError):
         await session.run_loop()
     assert session.phase is SessionPhase.ERROR
@@ -104,7 +115,9 @@ async def test_provider_limit_without_usage_keeps_missing_usage_failure(tmp_path
 
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("thinking", [False, True])
-async def test_thinking_tool_continuation_replays_reasoning_through_session(tmp_path, stream, thinking):
+async def test_thinking_tool_continuation_replays_reasoning_through_session(
+    local_environment_factory, tmp_path, stream, thinking,
+):
     (tmp_path / "f.py").write_text("x = 1\n", encoding="utf-8")
     call = {"id": "read-1", "type": "function", "function": {
         "name": "file_read", "arguments": '{"path":"f.py"}',
@@ -118,7 +131,10 @@ async def test_thinking_tool_continuation_replays_reasoning_through_session(tmp_
     second = [chunk(delta={"content": "done"}), chunk(finish_reason="stop"), usage_chunk(USAGE)] \
         if stream else completion("done", [], "stop")
     wire = FakeClient([first, second])
-    session = await session_with_wire(tmp_path, wire, stream=stream, tools=[FileReadTool()], thinking=thinking)
+    session = await session_with_wire(
+        tmp_path, wire, stream=stream, tools=[FileReadTool()], thinking=thinking,
+        local_environment_factory=local_environment_factory,
+    )
 
     assert await session.run_loop() == "done"
     assert session.phase is SessionPhase.DONE

@@ -167,6 +167,7 @@ async def test_snapshot_preserves_completed_native_output_before_the_batch_is_pu
         for session in (branch, restored, source):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()
 
 
 @pytest.mark.parametrize("autosave", [False, True])
@@ -237,6 +238,7 @@ async def test_cancelled_native_batch_keeps_the_output_of_completed_commands(tmp
         for session in (source, restored):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()
 
 
 @pytest.mark.parametrize("event_type", ["tool_end", "text_delta", "step_end"])
@@ -326,6 +328,7 @@ async def test_submitted_snapshot_finishes_without_another_model_call(tmp_path, 
         for session in (branch, restored, source):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()
 
 
 async def test_snapshot_during_native_tool_execution_resumes_without_replaying_it(tmp_path):
@@ -388,6 +391,7 @@ async def test_snapshot_during_native_tool_execution_resumes_without_replaying_i
         for session in (branch, restored, source):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()
 
 
 async def test_snapshot_marks_deferred_work_without_a_branch_producer_as_interrupted(tmp_path):
@@ -424,7 +428,9 @@ async def test_snapshot_marks_deferred_work_without_a_branch_producer_as_interru
         assert branch.state.phase is SessionPhase.DONE
     finally:
         await branch.aclose()
+        await branch.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()
 
 
 async def test_stopped_snapshot_closes_an_open_deferred_tool_call(tmp_path):
@@ -456,7 +462,9 @@ async def test_stopped_snapshot_closes_an_open_deferred_tool_call(tmp_path):
         assert branch.state.phase is SessionPhase.DONE
     finally:
         await branch.aclose()
+        await branch.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()
 
 
 async def test_snapshot_events_follow_registered_lead_identity(tmp_path):
@@ -477,7 +485,9 @@ async def test_snapshot_events_follow_registered_lead_identity(tmp_path):
         assert {event.type for event in events} >= {"step_start", "text_delta", "tool_start", "tool_end"}
     finally:
         await scheduler.cleanup()
+        await snapshot.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()
 
 @pytest.mark.parametrize("configuration", ["policy", "injected", "profile"])
 async def test_snapshot_keeps_the_configured_tool_result_view(tmp_path, configuration):
@@ -516,7 +526,9 @@ async def test_snapshot_keeps_the_configured_tool_result_view(tmp_path, configur
     finally:
         if snapshot is not None:
             await snapshot.aclose()
+            await snapshot.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()
 
 async def test_snapshot_summary_charges_its_own_budget_and_has_an_independent_cache(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENCOLLAB_BUDGET_NUDGE_MODE", "off")
@@ -556,7 +568,9 @@ async def test_snapshot_summary_charges_its_own_budget_and_has_an_independent_ca
     finally:
         if snapshot is not None:
             await snapshot.aclose()
+            await snapshot.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()
 
 class _OwnedShaper:
     def __init__(self, provider):
@@ -604,7 +618,9 @@ async def test_injected_shaper_reuses_the_model_and_rebinds_session_owners(tmp_p
     finally:
         if snapshot is not None:
             await snapshot.aclose()
+            await snapshot.env.cleanup()
         await source.aclose()
+        await source.env.cleanup()
 
 @pytest.mark.parametrize("copy_failure", ["exception", "same_object"])
 async def test_snapshot_reports_an_uncloneable_injected_shaper(tmp_path, copy_failure):
@@ -628,3 +644,4 @@ async def test_snapshot_reports_an_uncloneable_injected_shaper(tmp_path, copy_fa
         assert await source.run_loop() == "answer"
     finally:
         await source.aclose()
+        await source.env.cleanup()

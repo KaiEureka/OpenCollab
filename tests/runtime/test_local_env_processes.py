@@ -14,6 +14,7 @@ from opencollab.adapters import _env_local as local_module
 from opencollab.adapters import _env_process as process_module
 from opencollab.adapters._env_process import ProcessCleanupError, run_process
 from opencollab.adapters.env import LocalEnvironment
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 async def _wait_for(path) -> None:
@@ -36,8 +37,8 @@ def _descendant_command(ready, sentinel, *, delay: float = 0.35) -> str:
     )
     return f"exec {shlex.quote(sys.executable)} -c {shlex.quote(parent)}"
 
-async def test_local_exec_returns_command_output(tmp_path) -> None:
-    env = LocalEnvironment(str(tmp_path))
+async def test_local_exec_returns_command_output(local_environment_factory, tmp_path) -> None:
+    env = local_environment_factory(str(tmp_path))
     result = await env.exec_cmd("printf 'hello'; printf 'problem' >&2")
     assert result.returncode == 0
     assert result.stdout == "hello"
@@ -46,12 +47,14 @@ async def test_local_exec_returns_command_output(tmp_path) -> None:
     assert result.stdout_dropped_bytes == 0
     assert result.stderr_dropped_bytes == 0
 
-async def test_local_file_operations_reject_absolute_paths_outside_workspace(tmp_path) -> None:
+async def test_local_file_operations_reject_absolute_paths_outside_workspace(
+    local_environment_factory, tmp_path,
+) -> None:
     workspace = tmp_path / "workspace"
     outside = tmp_path / "outside.txt"
     workspace.mkdir()
     outside.write_text("secret", encoding="utf-8")
-    env = LocalEnvironment(str(workspace))
+    env = local_environment_factory(str(workspace))
 
     with pytest.raises(PermissionError, match="workspace"):
         await env.read_file(str(outside))
@@ -60,6 +63,7 @@ async def test_local_file_operations_reject_absolute_paths_outside_workspace(tmp
     assert outside.read_text(encoding="utf-8") == "secret"
 
 async def test_local_read_is_anchored_when_parent_is_replaced_by_symlink(
+    local_environment_factory,
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -71,7 +75,7 @@ async def test_local_read_is_anchored_when_parent_is_replaced_by_symlink(
     outside.mkdir()
     (parent / "value.txt").write_text("inside", encoding="utf-8")
     (outside / "value.txt").write_text("outside-secret", encoding="utf-8")
-    env = LocalEnvironment(str(workspace))
+    env = local_environment_factory(str(workspace))
 
     final_open_started = threading.Event()
     resume_final_open = threading.Event()
@@ -99,6 +103,7 @@ async def test_local_read_is_anchored_when_parent_is_replaced_by_symlink(
 
 @pytest.mark.parametrize("operation", ["range", "write"])
 async def test_local_file_operations_stay_anchored_during_parent_replacement(
+    local_environment_factory,
     tmp_path,
     monkeypatch,
     operation,
@@ -112,7 +117,7 @@ async def test_local_file_operations_stay_anchored_during_parent_replacement(
     (parent / "value.txt").write_text("inside\nsecond", encoding="utf-8")
     outside_value = outside / "value.txt"
     outside_value.write_text("outside-secret", encoding="utf-8")
-    env = LocalEnvironment(str(workspace))
+    env = local_environment_factory(str(workspace))
 
     final_operation_started = threading.Event()
     resume_final_operation = threading.Event()
@@ -162,19 +167,19 @@ async def test_local_file_operations_stay_anchored_during_parent_replacement(
         assert (moved_parent / "value.txt").read_text(encoding="utf-8") == "updated"
     assert outside_value.read_text(encoding="utf-8") == "outside-secret"
 
-async def test_local_range_rejects_absolute_path_outside_workspace(tmp_path) -> None:
+async def test_local_range_rejects_absolute_path_outside_workspace(local_environment_factory, tmp_path) -> None:
     workspace = tmp_path / "workspace"
     outside = tmp_path / "outside.txt"
     workspace.mkdir()
     outside.write_text("secret", encoding="utf-8")
-    env = LocalEnvironment(str(workspace))
+    env = local_environment_factory(str(workspace))
 
     with pytest.raises(PermissionError, match="workspace"):
         await env.read_text_range(str(outside), offset=1, limit=1, max_chars=10)
 
-async def test_local_exec_bounds_output(tmp_path, monkeypatch) -> None:
+async def test_local_exec_bounds_output(local_environment_factory, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(local_module, "PROCESS_OUTPUT_CAPTURE_BYTES", 32)
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     result = await env.exec_cmd(f"{shlex.quote(sys.executable)} -c \"print('x' * 100)\"")
     assert len(result.stdout.encode()) == 32
     assert result.stdout_truncated
@@ -221,12 +226,12 @@ async def test_process_output_limit_preserves_real_head_and_tail() -> None:
     assert len(result.stdout) == 16
     assert result.stdout_dropped_bytes == len(payload) - 16
 
-async def test_local_timeout_kills_descendant_before_it_mutates_workspace(tmp_path) -> None:
+async def test_local_timeout_kills_descendant_before_it_mutates_workspace(local_environment_factory, tmp_path) -> None:
     ready = tmp_path / "ready"
     sentinel = tmp_path / "late-write"
     # The timeout allows descendant startup and fires before its deferred write.
     late_write_delay = 1.0
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     owner = asyncio.create_task(env.exec_cmd(_descendant_command(ready, sentinel, delay=late_write_delay), timeout=0.5))
     await _wait_for(ready)
     result = await owner
@@ -235,10 +240,10 @@ async def test_local_timeout_kills_descendant_before_it_mutates_workspace(tmp_pa
     await asyncio.sleep(late_write_delay + 0.6)
     assert not sentinel.exists()
 
-async def test_local_cancellation_kills_descendant_before_returning(tmp_path) -> None:
+async def test_local_cancellation_kills_descendant_before_returning(local_environment_factory, tmp_path) -> None:
     ready = tmp_path / "ready"
     sentinel = tmp_path / "late-write"
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     owner = asyncio.create_task(env.exec_cmd(_descendant_command(ready, sentinel), timeout=5))
     await _wait_for(ready)
     owner.cancel()
@@ -248,6 +253,7 @@ async def test_local_cancellation_kills_descendant_before_returning(tmp_path) ->
     assert not sentinel.exists()
 
 async def test_local_double_cancellation_cannot_interrupt_process_cleanup(
+    local_environment_factory,
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -263,7 +269,7 @@ async def test_local_double_cancellation_cannot_interrupt_process_cleanup(
         return await original_terminate(process, **kwargs)
 
     monkeypatch.setattr(process_module, "terminate_process", delayed_terminate)
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     owner = asyncio.create_task(env.exec_cmd(_descendant_command(ready, sentinel), timeout=5))
     await _wait_for(ready)
     owner.cancel()
@@ -275,7 +281,7 @@ async def test_local_double_cancellation_cannot_interrupt_process_cleanup(
     await asyncio.sleep(0.4)
     assert not sentinel.exists()
 
-async def test_local_normal_exit_cleans_residual_descendant(tmp_path) -> None:
+async def test_local_normal_exit_cleans_residual_descendant(local_environment_factory, tmp_path) -> None:
     sentinel = tmp_path / "late-write"
     child = f"import pathlib,time;time.sleep(0.3);pathlib.Path({str(sentinel)!r}).write_text('leaked')"
     parent = (
@@ -283,7 +289,7 @@ async def test_local_normal_exit_cleans_residual_descendant(tmp_path) -> None:
         f"subprocess.Popen([sys.executable,'-c',{child!r}],"
         "stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
     )
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
 
     result = await env.exec_cmd(f"exec {shlex.quote(sys.executable)} -c {shlex.quote(parent)}")
 
@@ -584,12 +590,12 @@ async def test_run_process_retains_unquiesced_process_for_registry_retry(
     await registry.abort()
     assert not registry._processes
 
-async def test_local_file_operations_reject_symlink_and_escape(tmp_path) -> None:
+async def test_local_file_operations_reject_symlink_and_escape(local_environment_factory, tmp_path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside"
     outside.write_text("outside", encoding="utf-8")
     link = tmp_path / "link"
     link.symlink_to(outside)
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     with pytest.raises(OSError):
         await env.read_file("link")
     with pytest.raises(OSError):
@@ -600,6 +606,7 @@ async def test_local_file_operations_reject_symlink_and_escape(tmp_path) -> None
 
 @pytest.mark.parametrize("operation", ["read", "write"])
 async def test_local_file_io_does_not_block_event_loop(
+    local_environment_factory,
     tmp_path,
     monkeypatch,
     operation,
@@ -612,7 +619,7 @@ async def test_local_file_io_does_not_block_event_loop(
         assert release.wait(1.0)
         return b"payload"
 
-    env = LocalEnvironment(str(tmp_path))
+    env = local_environment_factory(str(tmp_path))
     if operation == "read":
         monkeypatch.setattr(local_module, "read_regular_bytes", slow_file_io)
         owner = asyncio.create_task(env.read_file("value"))
@@ -652,8 +659,8 @@ async def test_local_cleanup_waits_for_cancelled_file_io(tmp_path, monkeypatch) 
         await writer
     await cleanup
 
-async def test_local_temp_files_have_owned_cleanup(tmp_path) -> None:
-    env = LocalEnvironment(str(tmp_path))
+async def test_local_temp_files_have_owned_cleanup(local_environment_factory, tmp_path) -> None:
+    env = local_environment_factory(str(tmp_path))
     path = await env.write_temp_file("payload", prefix="probe-", suffix=".txt")
     assert os.stat(path).st_mode & 0o777 == 0o600
     with pytest.raises(OSError, match="unowned"):
@@ -661,18 +668,18 @@ async def test_local_temp_files_have_owned_cleanup(tmp_path) -> None:
     await env.remove_file(path)
     assert not os.path.exists(path)
 
-async def test_local_temp_cleanup_removes_registered_path(tmp_path) -> None:
-    env = LocalEnvironment(str(tmp_path))
+async def test_local_temp_cleanup_removes_registered_path(local_environment_factory, tmp_path) -> None:
+    env = local_environment_factory(str(tmp_path))
     path = await env.write_temp_file("owned", prefix="probe-", suffix=".txt")
     await env.remove_file(path)
     assert not os.path.exists(path)
 
-async def test_local_temp_cleanup_rejects_replaced_workspace_symlink(tmp_path) -> None:
+async def test_local_temp_cleanup_rejects_replaced_workspace_symlink(local_environment_factory, tmp_path) -> None:
     workspace = tmp_path / "workspace"
     outside = tmp_path / "outside"
     workspace.mkdir()
     outside.mkdir()
-    env = LocalEnvironment(str(workspace))
+    env = local_environment_factory(str(workspace))
     path = await env.write_temp_file("owned", prefix="probe-", suffix=".txt")
     saved_workspace = tmp_path / "saved-workspace"
     workspace.rename(saved_workspace)
@@ -680,21 +687,25 @@ async def test_local_temp_cleanup_rejects_replaced_workspace_symlink(tmp_path) -
     foreign = outside / os.path.basename(path)
     foreign.write_text("foreign", encoding="utf-8")
 
-    with pytest.raises(OSError, match="real directory"):
-        await env.remove_file(path)
+    try:
+        with pytest.raises(OSError, match="real directory"):
+            await env.remove_file(path)
 
-    assert foreign.read_text(encoding="utf-8") == "foreign"
+        assert foreign.read_text(encoding="utf-8") == "foreign"
+    finally:
+        workspace.unlink()
+        saved_workspace.rename(workspace)
 
-async def test_local_abort_blocks_future_operations_and_removes_temps(tmp_path) -> None:
-    env = LocalEnvironment(str(tmp_path))
+async def test_local_abort_blocks_future_operations_and_removes_temps(local_environment_factory, tmp_path) -> None:
+    env = local_environment_factory(str(tmp_path))
     path = await env.write_temp_file("payload", prefix="probe-", suffix=".txt")
     await env.abort()
     assert not os.path.exists(path)
     with pytest.raises(RuntimeError, match="aborted"):
         await env.exec_cmd("true")
 
-async def test_local_rejects_invalid_timeout_before_spawn(tmp_path) -> None:
-    env = LocalEnvironment(str(tmp_path))
+async def test_local_rejects_invalid_timeout_before_spawn(local_environment_factory, tmp_path) -> None:
+    env = local_environment_factory(str(tmp_path))
     with pytest.raises(ValueError, match="positive"):
         await env.exec_cmd("true", timeout=0)
 

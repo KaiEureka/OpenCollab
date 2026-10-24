@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from opencollab import OpenCollab, RunError, workflow
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.tools.bash import BashTool
 from opencollab.application.workflow import WorkflowBudgetExceeded
@@ -25,6 +24,7 @@ from opencollab.bootstrap import (
 )
 from opencollab.bootstrap.programmatic import ProgrammaticLifecycleError, ProgrammaticResult
 from opencollab.sdk import client as sdk_client
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 class ReplyLLM:
@@ -219,10 +219,10 @@ def _completed_agent_metrics() -> dict[str, object]:
         "agent_tool_names": [],
     }
 
-async def test_agent_does_not_claim_caller_owned_environment_quiescence(
+async def test_agent_does_not_claim_caller_owned_environment_quiescence(local_environment_factory,
     tmp_path: Path,
 ) -> None:
-    environment = LocalEnvironment(str(tmp_path))
+    environment = local_environment_factory(str(tmp_path))
     result = await OpenCollab(
         tmp_path,
         model="model",
@@ -641,10 +641,10 @@ async def test_user_workflow_status_payload_does_not_fake_a_budget_stop(
     assert result.reason is None
     assert result.output == {"status": "budget_exceeded", "source": "user"}
 
-async def test_workflow_does_not_claim_caller_owned_environment_quiescence(
+async def test_workflow_does_not_claim_caller_owned_environment_quiescence(local_environment_factory,
     tmp_path: Path,
 ) -> None:
-    environment = LocalEnvironment(str(tmp_path))
+    environment = local_environment_factory(str(tmp_path))
 
     async def plain(_ctx, _inputs):
         return "done"

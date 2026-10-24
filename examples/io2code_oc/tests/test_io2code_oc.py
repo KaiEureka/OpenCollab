@@ -350,20 +350,26 @@ def test_resume_keeps_zero_token_results_with_successful_output(
     assert main.is_finished(record) is True
 
 
-@pytest.mark.parametrize("legacy", [False, True], ids=["current-record", "legacy-record"])
+@pytest.mark.parametrize("legacy,failed_tokens", [(False, 0), (False, 37), (True, 0)],
+                         ids=["current-record", "billed-failure", "legacy-record"])
 @pytest.mark.parametrize("write_candidate", [True, False], ids=["zero-usage-candidate", "zero-usage-reply"])
 def test_failed_provider_batch_persists_retryable_task_and_resume_runs_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy: bool, write_candidate: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy: bool, failed_tokens: int, write_candidate: bool
 ) -> None:
     from opencollab import OpenCollab
     from opencollab.adapters._env_local import LocalEnvironment
-    from opencollab.adapters.llm.types import LLMResponse
+    from opencollab.adapters.llm.types import LLMResponse, Usage
 
     main = _load_main()
+    billed_tokens = []
 
     class FailingLLM:
         async def complete(self, messages: Any, tools: Any = None, temperature: float = 0.0, **kwargs: Any):
-            raise RuntimeError("controlled provider configuration failure")
+            billed_tokens.append(failed_tokens)
+            failure = RuntimeError("controlled provider failure")
+            if failed_tokens:
+                failure.usage = Usage(input_tokens=10, output_tokens=failed_tokens - 10)
+            raise failure
 
     class WritingLLM:
         calls = 0
@@ -432,7 +438,7 @@ def test_failed_provider_batch_persists_retryable_task_and_resume_runs_it(
     failed = json.loads((run_dir / "Sum_Abs" / "result.json").read_text(encoding="utf-8"))
     skipped = json.loads((run_dir / "Next_Task" / "result.json").read_text(encoding="utf-8"))
     assert failed["status"] == "infrastructure_error"
-    assert failed["tokens"] == 0 and failed["candidate"] is None
+    assert failed["tokens"] == sum(billed_tokens) and failed["candidate"] is None
     assert failed["agent_failures"] and failed["reason"]
     assert skipped["status"] == "skipped"
     if legacy:

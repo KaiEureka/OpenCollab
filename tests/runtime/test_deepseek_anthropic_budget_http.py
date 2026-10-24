@@ -146,3 +146,4 @@ async def test_actual_session_caps_output_with_ignored_thinking_budget(tmp_path,
                     assert requests == []
             finally:
                 await session.aclose()
+                await session.env.cleanup()

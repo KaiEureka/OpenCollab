@@ -86,5 +86,8 @@ async def test_large_partial_diff_keeps_parent_bound_and_single_capture(tmp_path
             assert changes[0]["truncated_in_result"] is True
             assert changes[0]["files"][0]["path"] == "solution.py"
     finally:
-        if tracer is not None:
-            tracer.close()
+        try:
+            await scheduler.cleanup()
+        finally:
+            if tracer is not None:
+                tracer.close()

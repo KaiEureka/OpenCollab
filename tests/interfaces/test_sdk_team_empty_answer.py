@@ -10,6 +10,7 @@ from opencollab.adapters.llm.client import LLMClient
 from opencollab.application.session_run import _EMPTY_STOP_PLACEHOLDER
 from opencollab.bootstrap import load_session
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, install_sdk_transport
 from tests.support.session_characterization_test_support import FakeLLMClient
 
@@ -34,7 +35,7 @@ from tests.support.session_characterization_test_support import FakeLLMClient
         if protocol != "responses" or replies[0] is not None
     ],
 )
-async def test_public_team_keeps_empty_retry_placeholder_out_of_answer(
+async def test_public_team_keeps_empty_retry_placeholder_out_of_answer(local_environment_factory,
     tmp_path, monkeypatch, serialized, provider, wire_protocol, replies, max_steps, expected, status,
 ):
     for key in tuple(os.environ):
@@ -83,7 +84,8 @@ async def test_public_team_keeps_empty_retry_placeholder_out_of_answer(
     assert len(placeholders) == int(replies[0] is None)
     assert all(message["content"] == _EMPTY_STOP_PLACEHOLDER for message in placeholders)
     restored = load_session(
-        str(snapshot_path), agent=Agent(name="lead", system_prompt="Return the final task answer."),
+        str(snapshot_path), env=local_environment_factory(),
+        agent=Agent(name="lead", system_prompt="Return the final task answer."),
         llm=FakeLLMClient(),
     )
     try:

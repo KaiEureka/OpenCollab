@@ -10,9 +10,11 @@ import pytest
 
 from opencollab import OpenCollab
 from opencollab.adapters.llm.types import LLMResponse, Usage
+from opencollab.adapters.working_tree import EnvWorkingTreeProbe
 from opencollab.application.scheduler import Scheduler
 from opencollab.application.tool_execution import ToolExecutionUseCase
 from opencollab.bootstrap import container
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def _call(name, arguments, step):
@@ -187,14 +189,16 @@ async def test_public_team_runs_coder_and_reviewer_and_delivers_file(
         assert ("reviewer", "file_read") in observed["work"]
     assert ("coder", "file_write") in observed["work"]
 
-async def test_resumed_parent_edit_has_its_own_delivery_tree_boundary(tmp_path, reviewed_team):
+async def test_resumed_parent_edit_has_its_own_delivery_tree_boundary(
+    tmp_path, reviewed_team, local_environment_factory,
+):
     for args in (
         ("init", "-q"),
         ("-c", "user.name=OpenCollab Tests", "-c", "user.email=tests@example.invalid",
          "commit", "--allow-empty", "-qm", "\u6d4b\u8bd5\u521d\u59cb\u76ee\u5f55"),
     ):
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
-    run, observed, schedulers = reviewed_team
+    run, observed, _schedulers = reviewed_team
     observed["lead_edit"] = True
     result = await run(record_delivery_tree=True)
     assert result.status == "completed", result.reason
@@ -211,7 +215,8 @@ async def test_resumed_parent_edit_has_its_own_delivery_tree_boundary(tmp_path, 
 
     assert "answer = 42" in diff(snapshots[2])
     assert "lead result" not in diff(snapshots[3])
-    assert "lead result" in await schedulers[-1]._delivery_tree_probe.diff()
+    final_tree = EnvWorkingTreeProbe(local_environment_factory(str(tmp_path)), from_initial_head=True)
+    assert "lead result" in await final_tree.diff()
 
 @pytest.mark.parametrize("failures,expected", [(1, "PASSED"), (2, "FAILED")])
 async def test_serial_review_respects_iteration_limit_and_preserves_artifact(

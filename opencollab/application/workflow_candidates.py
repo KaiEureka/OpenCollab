@@ -267,15 +267,18 @@ class WorkflowCandidatesMixin:
 
     async def _finish_candidate_run(
         self, lease: Any, candidate: CandidateRun | None, failure: BaseException | None,
-        *, label: str, preserve_lease: bool,
+        *, label: str, preserve_lease: bool, cleanup_quiesced: bool = False,
     ) -> CandidateRun:
         if failure is not None:
-            if (
-                not preserve_lease
-                and not isinstance(failure, (CandidateCaptureError, CandidateWorkspaceTrackingError))
-            ):
+            retained = preserve_lease or isinstance(failure, (CandidateCaptureError, CandidateWorkspaceTrackingError))
+            cleanup = None
+            if not retained:
+                cleanup = lease.cleanup
+            elif cleanup_quiesced and callable(inspect.getattr_static(lease, "close_execution", None)):
+                cleanup = lease.close_execution
+            if cleanup is not None:
                 try:
-                    await lease.cleanup()
+                    await cleanup()
                 except Exception as cleanup_exc:
                     add_exception_note(
                         failure,
@@ -410,16 +413,22 @@ class WorkflowCandidatesMixin:
             finally:
                 if token is not None:
                     self._active_budget_lease.reset(token)
+                cleanup_task = asyncio.create_task(_wait_for_candidate_cleanup(budget_lease))
                 try:
                     await await_owned_operation(
-                        _wait_for_candidate_cleanup(budget_lease),
+                        cleanup_task,
                         propagate_cancellation=True,
                     )
                 except asyncio.CancelledError as exc:
                     if failure is None:
                         failure = exc
+                finally:
+                    cleanup_quiesced = (
+                        cleanup_task.done() and not cleanup_task.cancelled() and cleanup_task.exception() is None
+                    )
             return await self._finish_candidate_run(
                 lease, candidate, failure, label=label, preserve_lease=preserve_lease,
+                cleanup_quiesced=cleanup_quiesced,
             )
 
         async def run() -> CandidateRun:
@@ -553,6 +562,7 @@ class WorkflowCandidatesMixin:
             except BaseException as exc:
                 failure = exc
             finally:
+                cleanup_quiesced = child is None
                 try:
                     if child is not None:
                         try:
@@ -564,6 +574,7 @@ class WorkflowCandidatesMixin:
                                         active.cancel()
                             await child.wait_for_pending_cleanup()
                             await child.release_isolated_workspaces()
+                            cleanup_quiesced = True
                         except Exception as exc:
                             detail = f"{type(exc).__name__}: {exc}"
                             preserve_lease = preserve_lease or bool(
@@ -589,11 +600,16 @@ class WorkflowCandidatesMixin:
                         pending = [task for task in budget_lease.pending_tasks or () if not task.done()]
                         if pending:
                             await asyncio.gather(*pending, return_exceptions=True)
+                    if child is not None:
+                        cleanup_quiesced = cleanup_quiesced and not child.pending_cleanup_tasks and not bool(
+                            getattr(child._factory, "has_pending_isolated_cleanup", False)
+                        )
                 finally:
                     if budget_lease is not None:
                         self.budget.release(budget_lease)
             return await self._finish_candidate_run(
                 lease, candidate, failure, label=label, preserve_lease=preserve_lease,
+                cleanup_quiesced=cleanup_quiesced,
             )
 
         return await self._run_owned_candidate_call(run)

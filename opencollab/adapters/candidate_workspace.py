@@ -352,14 +352,18 @@ class _CandidateLease:
             strict=self.strict_capture,
         )
 
+    async def close_execution(self) -> None:
+        """Close native resources while retaining the candidate worktree."""
+        if self.environment is not None:
+            await await_owned_operation(self.environment.cleanup(), propagate_cancellation=True)
+
     async def cleanup(self) -> None:
         await await_owned_operation(self._cleanup_resources(), propagate_cancellation=True)
 
     async def _cleanup_resources(self) -> None:
         if self.cleaned:
             return
-        if self.environment is not None:
-            await self.environment.cleanup()
+        await self.close_execution()
         git = f"git -C {shlex.quote(self.source_workspace)}"
         listed = _complete(
             await self.base_environment.exec_cmd(f"{git} worktree list --porcelain -z", timeout=120),

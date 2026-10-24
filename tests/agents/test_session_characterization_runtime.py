@@ -6,6 +6,7 @@ import asyncio
 
 from opencollab.bootstrap import build_session as Session
 from opencollab.bootstrap import load_session
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -28,15 +29,21 @@ def test_session_closes_only_composition_owned_llm(monkeypatch):
     owned = ClosableLLM()
     monkeypatch.setattr(session_module, "LLMClient", lambda **_kwargs: owned)
     owned_session = Session(agent=FakeAgent())
-    asyncio.run(owned_session.aclose())
-    asyncio.run(owned_session.aclose())
+    injected_session = None
+    try:
+        asyncio.run(owned_session.aclose())
+        asyncio.run(owned_session.aclose())
 
-    injected = ClosableLLM()
-    injected_session = Session(agent=FakeAgent(), llm=injected)
-    asyncio.run(injected_session.aclose())
+        injected = ClosableLLM()
+        injected_session = Session(agent=FakeAgent(), llm=injected)
+        asyncio.run(injected_session.aclose())
 
-    assert owned.close_calls == 1
-    assert injected.close_calls == 0
+        assert owned.close_calls == 1
+        assert injected.close_calls == 0
+    finally:
+        asyncio.run(owned_session.env.cleanup())
+        if injected_session is not None:
+            asyncio.run(injected_session.env.cleanup())
 
 def test_session_runtime_config_mutations_update_all_runtime_consumers():
     old_env = object()
@@ -85,13 +92,16 @@ def test_scheduler_init_process_lead_uses_workspace_local_env(tmp_path, monkeypa
         event_sink=event_bus,
     )
     scheduler.create_init_process(LaunchSpec())
-
-    lead = scheduler._lead_session
-    assert isinstance(lead.env, LocalEnvironment)
-    assert lead.env.workspace == os.path.abspath(str(tmp_path))
-    assert lead.tool_execution.environment is lead.env
-    tool_names = {t.name for t in lead.agent.tools}
-    assert "spawn_agent" in tool_names
+    try:
+        lead = scheduler._lead_session
+        assert isinstance(lead.env, LocalEnvironment)
+        assert lead.env.workspace == os.path.abspath(str(tmp_path))
+        assert lead.tool_execution.environment is lead.env
+        tool_names = {t.name for t in lead.agent.tools}
+        assert "spawn_agent" in tool_names
+    finally:
+        asyncio.run(scheduler.cleanup())
+        asyncio.run(scheduler._lead_session.env.cleanup())
 
 def test_lead_safety_policy_is_independent_of_child_safety_factory(tmp_path, monkeypatch):
     from opencollab.adapters.safety import SandboxInterceptor
@@ -112,14 +122,17 @@ def test_lead_safety_policy_is_independent_of_child_safety_factory(tmp_path, mon
         event_sink=event_bus,
     )
     scheduler.create_init_process(LaunchSpec())
+    try:
+        policy = scheduler._lead_session.tool_execution.safety_policy
+        assert isinstance(policy, SandboxInterceptor)
+        assert policy.root == str(tmp_path.resolve())
+    finally:
+        asyncio.run(scheduler.cleanup())
+        asyncio.run(scheduler._lead_session.env.cleanup())
 
-    policy = scheduler._lead_session.tool_execution.safety_policy
-    assert isinstance(policy, SandboxInterceptor)
-    assert policy.root == str(tmp_path.resolve())
-
-def test_save_and_load_round_trip_restores_runtime_state(tmp_path):
+def test_save_and_load_round_trip_restores_runtime_state(local_environment_factory, tmp_path):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     session.messages.extend([
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "world"},
@@ -133,7 +146,7 @@ def test_save_and_load_round_trip_restores_runtime_state(tmp_path):
     path = tmp_path / "session.jsonl"
 
     session.save(str(path))
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     assert loaded.messages == session.messages
     assert loaded.used_tokens == 123
@@ -141,9 +154,9 @@ def test_save_and_load_round_trip_restores_runtime_state(tmp_path):
     assert loaded.is_done is True
     assert loaded.state.pending_user_messages == session.state.pending_user_messages
 
-def test_save_and_load_round_trip_restores_control_flow_latches(tmp_path):
+def test_save_and_load_round_trip_restores_control_flow_latches(local_environment_factory, tmp_path):
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     state = session.state
     state.turn.reads_since_last_edit = 7
     state.turn.has_landed_write = True
@@ -159,7 +172,7 @@ def test_save_and_load_round_trip_restores_control_flow_latches(tmp_path):
     path = tmp_path / "control-state.json"
 
     session.save(str(path))
-    loaded = load_session(str(path), agent=agent, llm=FakeLLMClient())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
 
     restored = loaded.state
     assert restored.turn.reads_since_last_edit == 7
@@ -174,10 +187,10 @@ def test_save_and_load_round_trip_restores_control_flow_latches(tmp_path):
     assert restored.budget_reserve_consumed is True
     assert restored.turn.loop_blocked_since_progress == 2
 
-def test_checkpoint_and_restore_user_turn_roll_back_per_turn_enforcement():
+def test_checkpoint_and_restore_user_turn_roll_back_per_turn_enforcement(local_environment_factory):
     # A failed append rolls back the per-turn enforcement window.
     agent = FakeAgent()
-    session = Session(agent=agent, llm=FakeLLMClient())
+    session = Session(env=local_environment_factory(), agent=agent, llm=FakeLLMClient())
     state = session.state
     state.turn.recent_call_hashes = ["h-a"]
     state.turn.reads_since_last_edit = 5

@@ -9,7 +9,6 @@ import os
 import pytest
 
 from opencollab.adapters import storage as storage_module
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.worktree_pool import WorktreePool
 from opencollab.application.event_bus import EventBus
@@ -23,6 +22,7 @@ from opencollab.bootstrap.container import (
 from opencollab.domain.identity import role_storage_slug
 from opencollab.domain.session import SessionState
 from tests.support.bootstrap_test_support import spawn_config
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def test_store_round_trip_preserves_metadata_and_messages(tmp_path) -> None:
@@ -469,11 +469,11 @@ def test_message_timestamp_sidecar_keeps_runtime_messages_clean() -> None:
 def _spawn_cfg() -> SpawnConfig:
     return spawn_config(api_key="test-key")
 
-def test_factory_assigns_structured_child_save_path(tmp_path) -> None:
+def test_factory_assigns_structured_child_save_path(local_environment_factory, tmp_path) -> None:
     run_dir = str(tmp_path / "run")
     session = DefaultSessionFactory(_spawn_cfg(), save_dir=run_dir).build_spawn_session(
         role="coder",
-        env=LocalEnvironment(str(tmp_path)),
+        env=local_environment_factory(str(tmp_path)),
         budget=1000,
         aid=2,
     )
@@ -516,18 +516,21 @@ async def test_manifest_records_parent_child_relationship(tmp_path) -> None:
         worktree_pool=WorktreePool(".", use_worktrees=False),
         event_sink=EventBus(None),
     )
-    def write_manifest() -> None:
-        SessionStore().save_manifest(
-            str(path), {"run_id": "run", "agents": scheduler.team_snapshot()}
-        )
+    try:
+        def write_manifest() -> None:
+            SessionStore().save_manifest(
+                str(path), {"run_id": "run", "agents": scheduler.team_snapshot()}
+            )
 
-    scheduler.set_manifest_writer(write_manifest)
-    scheduler.register_lead(_FakeLead())
-    child = await scheduler.spawn(0, "coder", "do it")
-    task = scheduler._tasks.get(child)
-    if task is not None:
-        await task
-    write_manifest()
-    agents = {entry["aid"]: entry for entry in json.loads(path.read_text())["agents"]}
-    assert agents[0]["parent_aid"] is None
-    assert agents[child]["parent_aid"] == 0
+        scheduler.set_manifest_writer(write_manifest)
+        scheduler.register_lead(_FakeLead())
+        child = await scheduler.spawn(0, "coder", "do it")
+        task = scheduler._tasks.get(child)
+        if task is not None:
+            await task
+        write_manifest()
+        agents = {entry["aid"]: entry for entry in json.loads(path.read_text())["agents"]}
+        assert agents[0]["parent_aid"] is None
+        assert agents[child]["parent_aid"] == 0
+    finally:
+        await scheduler.cleanup()

@@ -5,10 +5,11 @@ import asyncio
 from opencollab.application.event_bus import EventBus
 from opencollab.bootstrap import build_session
 from opencollab.domain.events import SessionRuntimeEvent as SessionEvent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import FakeAgent, FakeLLMClient
 
 
-def test_cancelled_emit_returns_while_subscriber_cleanup_is_tracked():
+def test_cancelled_emit_returns_while_subscriber_cleanup_is_tracked(local_environment_factory):
     bus = EventBus()
     started = asyncio.Event()
     cancellation_seen = asyncio.Event()
@@ -23,7 +24,7 @@ def test_cancelled_emit_returns_while_subscriber_cleanup_is_tracked():
             await release.wait()
 
     bus.subscribe(cancellation_resistant)
-    session = build_session(agent=FakeAgent(), llm=FakeLLMClient(), event_sink=bus)
+    session = build_session(env=local_environment_factory(), agent=FakeAgent(), llm=FakeLLMClient(), event_sink=bus)
 
     async def scenario():
         emit = asyncio.create_task(bus.emit(SessionEvent(type="ping")))

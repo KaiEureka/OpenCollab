@@ -463,128 +463,133 @@ def build_session_runtime(
     resolved_context = context_policy if context_policy is not None else ContextPolicy()
     tracer = agent_trace_view(tracer, aid, agent)
     resolved_env = env if env is not None else LocalEnvironment()
-    resolved_store: SessionStorePort = store if store is not None else SessionStore()
+    try:
+        resolved_store: SessionStorePort = store if store is not None else SessionStore()
 
-    event_bus = EventBus(event_sink)
-    auto_save_subscriber: AutoSaveSubscriber | None = None
-    if auto_save_path and auto_save_callback is not None:
-        auto_save_subscriber = AutoSaveSubscriber(
-            auto_save_callback,
-            prepare_fn=auto_save_prepare_callback,
+        event_bus = EventBus(event_sink)
+        auto_save_subscriber: AutoSaveSubscriber | None = None
+        if auto_save_path and auto_save_callback is not None:
+            auto_save_subscriber = AutoSaveSubscriber(
+                auto_save_callback,
+                prepare_fn=auto_save_prepare_callback,
+            )
+            event_bus.subscribe(auto_save_subscriber)
+
+        state = _build_initial_state(
+            agent,
+            seed_user_messages,
+            seed_system_messages,
         )
-        event_bus.subscribe(auto_save_subscriber)
+        state.aid = aid
 
-    state = _build_initial_state(
-        agent,
-        seed_user_messages,
-        seed_system_messages,
-    )
-    state.aid = aid
+        # The main transport and each auxiliary summary belong to one session.
+        if llm is None and provider_retry_budget is None:
+            error_allowance = getattr(agent, "provider_error_time_budget", 0.0)
+            if error_allowance > 0:
+                provider_retry_budget = RetryTimeBudget(error_allowance)
+        resolved_llm = _resolve_llm(agent, llm, llm_timeout, provider_retry_budget)
 
-    # The main transport and each auxiliary summary belong to one session.
-    if llm is None and provider_retry_budget is None:
-        error_allowance = getattr(agent, "provider_error_time_budget", 0.0)
-        if error_allowance > 0:
-            provider_retry_budget = RetryTimeBudget(error_allowance)
-    resolved_llm = _resolve_llm(agent, llm, llm_timeout, provider_retry_budget)
-
-    if agent_profile is not None:
-        safety_policy = agent_profile.wrap_safety(
-            safety_policy,
-            resolved_env.workspace,
+        if agent_profile is not None:
+            safety_policy = agent_profile.wrap_safety(
+                safety_policy,
+                resolved_env.workspace,
+            )
+        tool_options: dict[str, Any] = {}
+        if run_control is not None and run_control.tool_cancellation_cleanup_timeout is not None:
+            tool_options["cancellation_cleanup_timeout"] = run_control.tool_cancellation_cleanup_timeout
+        tool_execution = ToolExecutionUseCase(
+            agent=agent,
+            environment=resolved_env,
+            state=state,
+            event_publisher=event_bus,
+            tracer=tracer,
+            permission_policy=permission_policy,
+            ask_policy=ask_policy,
+            safety_policy=safety_policy,
+            **tool_options,
         )
-    tool_options: dict[str, Any] = {}
-    if run_control is not None and run_control.tool_cancellation_cleanup_timeout is not None:
-        tool_options["cancellation_cleanup_timeout"] = run_control.tool_cancellation_cleanup_timeout
-    tool_execution = ToolExecutionUseCase(
-        agent=agent,
-        environment=resolved_env,
-        state=state,
-        event_publisher=event_bus,
-        tracer=tracer,
-        permission_policy=permission_policy,
-        ask_policy=ask_policy,
-        safety_policy=safety_policy,
-        **tool_options,
-    )
-    runner = SessionRunUseCase(
-        agent=agent,
-        state=state,
-        llm=resolved_llm,
-        event_publisher=event_bus,
-        tool_execution=tool_execution,
-        tracer=tracer,
-        max_budget_tokens=max_budget_tokens,
-        max_steps=max_steps,
-        shaper=shaper,
-        team_budget_exhausted=team_budget_exhausted,
-        run_control=run_control,
-        run_id=run_id,
-        # The context-overflow classifier lives in the adapter layer; injected
-        # as a plain callable so the application use case never imports it (same
-        # boundary pattern as the team-budget predicate). Enables the
-        # force-compact-and-retry + graceful-stop safety net in ``call_llm``.
-        is_context_overflow=is_context_overflow_error,
-        # Cooperative per-generation ceiling: bound a single model call to the
-        # configured provider timeout so one slow (thinking) generation cannot
-        # eat the whole run wall (P7).
-        per_call_timeout=llm_timeout,
-    )
-    if run_control is not None:
-        event_bus.subscribe(runner._observe_runtime_event)
-    summarizer = _build_summarizer(
-        agent,
-        llm,
-        resolved_llm,
-        llm_timeout,
-        auto_save_path,
-        provider_retry_budget,
-        completion_handler=runner._invoke_summary,
-        output_limit=runner._request_output_limit,
-    )
-    shaper_options = resolved_context.shaper_options()
-    shaper_options["max_output_tokens"] = getattr(agent, "max_tokens_per_step", DEFAULT_MAX_TOKENS_PER_STEP)
-    if run_control is not None and run_control.history_trigger_tokens is not None:
-        shaper_options["history_trigger_tokens"] = run_control.history_trigger_tokens
-    resolved_shaper: ShaperPort
-    if shaper is not None:
-        resolved_shaper = shaper
-    elif agent_profile is not None:
-        resolved_shaper = agent_profile.build_shaper(
-            resolved_llm, summarizer, **shaper_options
+        runner = SessionRunUseCase(
+            agent=agent,
+            state=state,
+            llm=resolved_llm,
+            event_publisher=event_bus,
+            tool_execution=tool_execution,
+            tracer=tracer,
+            max_budget_tokens=max_budget_tokens,
+            max_steps=max_steps,
+            shaper=shaper,
+            team_budget_exhausted=team_budget_exhausted,
+            run_control=run_control,
+            run_id=run_id,
+            # The context-overflow classifier lives in the adapter layer; injected
+            # as a plain callable so the application use case never imports it (same
+            # boundary pattern as the team-budget predicate). Enables the
+            # force-compact-and-retry + graceful-stop safety net in ``call_llm``.
+            is_context_overflow=is_context_overflow_error,
+            # Cooperative per-generation ceiling: bound a single model call to the
+            # configured provider timeout so one slow (thinking) generation cannot
+            # eat the whole run wall (P7).
+            per_call_timeout=llm_timeout,
         )
-    else:
-        resolved_shaper = _build_default_shaper(
-            resolved_llm, summarizer, **shaper_options
+        if run_control is not None:
+            event_bus.subscribe(runner._observe_runtime_event)
+        summarizer = _build_summarizer(
+            agent,
+            llm,
+            resolved_llm,
+            llm_timeout,
+            auto_save_path,
+            provider_retry_budget,
+            completion_handler=runner._invoke_summary,
+            output_limit=runner._request_output_limit,
         )
-    # A profile shaper is NOT an injected one: ``build_shaper`` routes back
-    # through ``_build_default_shaper``, so it runs on the very thresholds
-    # derived above. Only a caller-supplied shaper carries thresholds this
-    # wiring never chose.
-    _trace_history_compaction(
-        tracer,
-        aid=aid,
-        agent=agent,
-        resolved_llm=resolved_llm,
-        shaper_injected=shaper is not None,
-        context_policy=resolved_context,
-        history_trigger_tokens=None if run_control is None else run_control.history_trigger_tokens,
-    )
-    runner.shaper = resolved_shaper
+        shaper_options = resolved_context.shaper_options()
+        shaper_options["max_output_tokens"] = getattr(agent, "max_tokens_per_step", DEFAULT_MAX_TOKENS_PER_STEP)
+        if run_control is not None and run_control.history_trigger_tokens is not None:
+            shaper_options["history_trigger_tokens"] = run_control.history_trigger_tokens
+        resolved_shaper: ShaperPort
+        if shaper is not None:
+            resolved_shaper = shaper
+        elif agent_profile is not None:
+            resolved_shaper = agent_profile.build_shaper(
+                resolved_llm, summarizer, **shaper_options
+            )
+        else:
+            resolved_shaper = _build_default_shaper(
+                resolved_llm, summarizer, **shaper_options
+            )
+        # A profile shaper is NOT an injected one: ``build_shaper`` routes back
+        # through ``_build_default_shaper``, so it runs on the very thresholds
+        # derived above. Only a caller-supplied shaper carries thresholds this
+        # wiring never chose.
+        _trace_history_compaction(
+            tracer,
+            aid=aid,
+            agent=agent,
+            resolved_llm=resolved_llm,
+            shaper_injected=shaper is not None,
+            context_policy=resolved_context,
+            history_trigger_tokens=None if run_control is None else run_control.history_trigger_tokens,
+        )
+        runner.shaper = resolved_shaper
 
-    return SessionRuntime(
-        state=state,
-        event_bus=event_bus,
-        llm=resolved_llm,
-        store=resolved_store,
-        tool_execution=tool_execution,
-        runner=runner,
-        auto_save_path=auto_save_path,
-        run_id=run_id,
-        auto_save_subscriber=auto_save_subscriber,
-        owns_llm=llm is None,
-        context_summarizer=summarizer,
-    )
+        return SessionRuntime(
+            state=state,
+            event_bus=event_bus,
+            llm=resolved_llm,
+            store=resolved_store,
+            tool_execution=tool_execution,
+            runner=runner,
+            auto_save_path=auto_save_path,
+            run_id=run_id,
+            auto_save_subscriber=auto_save_subscriber,
+            owns_llm=llm is None,
+            context_summarizer=summarizer,
+        )
+    except BaseException:
+        if env is None:
+            resolved_env._close_workspace()
+        raise
 
 
 # ---------------------------------------------------------------------------

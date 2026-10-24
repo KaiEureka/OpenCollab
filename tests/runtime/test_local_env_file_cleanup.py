@@ -103,6 +103,8 @@ async def test_local_cleanup_reports_process_and_file_failures(
 ) -> None:
     env = LocalEnvironment(str(tmp_path))
     await env.write_temp_file("owned", prefix="probe-", suffix=".txt")
+    real_abort = env._processes.abort
+    real_removal = local_module.unlink_regular_file_durable_at
 
     async def fail_abort() -> None:
         raise local_module.ProcessCleanupError("forced process cleanup failure")
@@ -117,17 +119,22 @@ async def test_local_cleanup_reports_process_and_file_failures(
         fail_removal,
     )
 
-    with pytest.raises(
-        local_module.ProcessCleanupError,
-        match="forced process cleanup failure",
-    ) as captured:
-        await env.cleanup()
+    try:
+        with pytest.raises(
+            local_module.ProcessCleanupError,
+            match="forced process cleanup failure",
+        ) as captured:
+            await env.cleanup()
 
-    assert any(
-        "file cleanup also failed" in note
-        for note in getattr(captured.value, "__notes__", ())
-    )
-    assert isinstance(captured.value.__cause__, OSError)
+        assert any(
+            "file cleanup also failed" in note
+            for note in getattr(captured.value, "__notes__", ())
+        )
+        assert isinstance(captured.value.__cause__, OSError)
+    finally:
+        monkeypatch.setattr(env._processes, "abort", real_abort)
+        monkeypatch.setattr(local_module, "unlink_regular_file_durable_at", real_removal)
+        await env.cleanup()
 
 async def test_local_cleanup_cancellation_still_closes_workspace_fd(
     tmp_path,

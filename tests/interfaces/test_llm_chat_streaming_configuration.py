@@ -1,5 +1,8 @@
 """Chat stream configuration reaches each runtime composition path."""
 
+import asyncio
+
+
 def test_env_flag_reaches_the_config(monkeypatch, tmp_path):
     from opencollab.bootstrap.config import build_config
 
@@ -47,7 +50,10 @@ def test_team_lead_and_child_receive_the_same_chat_stream_switch(tmp_path):
            "llm_stream_chat": True}
     ctx = build_runtime_context(str(tmp_path), cfg, trace=False)
     scheduler = build_scheduler(ctx, use_worktrees=False, interactive=False, auto_save=False)
-    assert scheduler.lead_session.agent.llm_stream_chat is True
-    factory = scheduler._session_factory
-    child_agent = ContextBuilder(factory._team, factory._cfg).build_agent("coder", scheduler=scheduler)
-    assert child_agent.llm_stream_chat is True
+    try:
+        assert scheduler.lead_session.agent.llm_stream_chat is True
+        factory = scheduler._session_factory
+        child_agent = ContextBuilder(factory._team, factory._cfg).build_agent("coder", scheduler=scheduler)
+        assert child_agent.llm_stream_chat is True
+    finally:
+        asyncio.run(scheduler.cleanup())

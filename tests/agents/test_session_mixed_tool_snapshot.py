@@ -156,6 +156,7 @@ async def test_recovery_preserves_completed_output_and_interrupts_remaining_call
         for session in (recovered, source):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()
 
 
 @pytest.mark.parametrize("recovery", ["snapshot", "restore"])
@@ -210,3 +211,4 @@ async def test_recovery_keeps_registered_deferred_rows_ahead_of_duplicate_receip
         for session in (recovered, source):
             if session is not None:
                 await session.aclose()
+                await session.env.cleanup()

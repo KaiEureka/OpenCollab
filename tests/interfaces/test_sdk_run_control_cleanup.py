@@ -11,6 +11,7 @@ from opencollab import OpenCollab, RunControl, RunError
 from opencollab.adapters.storage import SessionStore
 from opencollab.bootstrap import agent_runtime, build_session, container
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeLLMClient,
     FakeTool,
@@ -119,7 +120,9 @@ async def test_failed_owned_provider_close_retains_error_without_cleanup_event(t
     assert not any(event.type == "cleanup_completed" for event in events)
 
 
-async def test_late_provider_usage_keeps_receiver_through_new_subscriber_work(tmp_path, monkeypatch):
+async def test_late_provider_usage_keeps_receiver_through_new_subscriber_work(
+    local_environment_factory, tmp_path, monkeypatch,
+):
     started, release = asyncio.Event(), asyncio.Event()
     save_started, save_release = threading.Event(), threading.Event()
     events = []
@@ -136,7 +139,7 @@ async def test_late_provider_usage_keeps_receiver_through_new_subscriber_work(tm
             return llm_response(content="late answer", input_tokens=13, output_tokens=24)
 
     session = build_session(
-        agent=Agent(name="late-provider", system_prompt="sys"), llm=LateModel(),
+        env=local_environment_factory(), agent=Agent(name="late-provider", system_prompt="sys"), llm=LateModel(),
         auto_save_path=str(path), run_control=RunControl(on_event=events.append),
     )
     await session.add_user_message("finish")

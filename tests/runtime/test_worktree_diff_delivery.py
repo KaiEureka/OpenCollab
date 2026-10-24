@@ -57,14 +57,17 @@ def test_child_worktree_diff_is_delivered_to_parent_pending_row():
         if resume is not None:
             await resume
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
 
-    row = lead.state.pending_events.rows["tc-1"]
-    assert row.status is RowStatus.DONE
-    assert row.result == (
-        "implemented it\n\n[Changes made in worktree]\n```diff\n" + diff + "\n```"
-    )
-    assert scheduler.table.get(1).result == row.result
+        row = lead.state.pending_events.rows["tc-1"]
+        assert row.status is RowStatus.DONE
+        assert row.result == (
+            "implemented it\n\n[Changes made in worktree]\n```diff\n" + diff + "\n```"
+        )
+        assert scheduler.table.get(1).result == row.result
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 @pytest.mark.parametrize("failure_site", ["tracer", "event"])
 def test_observability_failure_still_delivers_to_parent(failure_site):
@@ -98,12 +101,15 @@ def test_observability_failure_still_delivers_to_parent(failure_site):
         lead.state.set_phase(SessionPhase.AWAITING_EVENTS)
         await scheduler._tasks[aid]
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
 
-    row = lead.state.pending_events.rows["tc-1"]
-    assert row.status is RowStatus.DONE
-    assert row.result == "implemented it"
-    assert 1 not in scheduler._spawn_origin
+        row = lead.state.pending_events.rows["tc-1"]
+        assert row.status is RowStatus.DONE
+        assert row.result == "implemented it"
+        assert 1 not in scheduler._spawn_origin
+    finally:
+        asyncio.run(scheduler.cleanup())
 
 def test_worktree_diff_failure_marks_child_failed():
     child = _ChildSession("coder", "implemented it", _FailingDiffEnv(""))
@@ -129,10 +135,13 @@ def test_worktree_diff_failure_marks_child_failed():
         lead.state.set_phase(SessionPhase.AWAITING_EVENTS)
         await scheduler._tasks[aid]
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
 
-    row = lead.state.pending_events.rows["tc-1"]
-    assert row.status is RowStatus.FAILED
-    assert row.result == "Error: worktree diff extraction failed: diff failed"
-    assert scheduler.table.get(1).state.phase is SessionPhase.ERROR
-    assert 1 not in scheduler._spawn_origin
+        row = lead.state.pending_events.rows["tc-1"]
+        assert row.status is RowStatus.FAILED
+        assert row.result == "Error: worktree diff extraction failed: diff failed"
+        assert scheduler.table.get(1).state.phase is SessionPhase.ERROR
+        assert 1 not in scheduler._spawn_origin
+    finally:
+        asyncio.run(scheduler.cleanup())

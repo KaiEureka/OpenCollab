@@ -6,13 +6,13 @@ import json
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
 from opencollab.application.run_control import RunControl
 from opencollab.bootstrap import build_session
 from opencollab.bootstrap.agent_profiles import resolve_agent_profile
 from opencollab.bootstrap.container import _history_compaction_settings
 from opencollab.domain.agent import Agent
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.provider_sdk_http import completion_http_response, install_sdk_transport
 from tests.support.session_run_loop_test_support import FakeTracer
 
@@ -32,7 +32,7 @@ def isolate_configuration(monkeypatch, tmp_path):
 @pytest.mark.parametrize("budget", [None, 1_024])
 @pytest.mark.parametrize("profile", [None, "single2"])
 async def test_short_public_turns_complete_without_unneeded_summary_requests(
-    monkeypatch, tmp_path, configuration, window, budget, profile,
+    monkeypatch, tmp_path, configuration, window, budget, profile, local_environment_factory,
 ):
     requests = []
 
@@ -54,7 +54,7 @@ async def test_short_public_turns_complete_without_unneeded_summary_requests(
                 name="notes", system_prompt="Keep the user's task notes and answer the current request.",
                 **configuration, max_tokens_per_step=1_024,
             ),
-            llm=client, env=LocalEnvironment(str(tmp_path)), max_budget_tokens=budget,
+            llm=client, env=local_environment_factory(str(tmp_path)), max_budget_tokens=budget,
             agent_profile=None if profile is None else resolve_agent_profile(profile),
         )
         try:
@@ -83,7 +83,9 @@ def test_unknown_and_larger_windows_keep_existing_reservations(window):
 
 @pytest.mark.parametrize("output_limit", [1_024, 2_048])
 @pytest.mark.parametrize("cap", [None, 2_000, 7_000])
-def test_small_window_uses_configured_output_limit_and_records_effective_cap(tmp_path, output_limit, cap):
+def test_small_window_uses_configured_output_limit_and_records_effective_cap(
+    tmp_path, output_limit, cap, local_environment_factory,
+):
     class Model:
         def context_window(self):
             return 8_192
@@ -91,7 +93,7 @@ def test_small_window_uses_configured_output_limit_and_records_effective_cap(tmp
     tracer = FakeTracer()
     session = build_session(
         agent=Agent(name="notes", system_prompt="Keep task notes.", max_tokens_per_step=output_limit),
-        llm=Model(), env=LocalEnvironment(str(tmp_path)), tracer=tracer,
+        llm=Model(), env=local_environment_factory(str(tmp_path)), tracer=tracer,
         run_control=RunControl(history_trigger_tokens=cap),
     )
     record = next(step["payload"] for step in tracer.steps if step["step_type"] == "session.history_compaction")

@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.bootstrap import container
 from opencollab.sdk import OpenCollab
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 ANALYST_AID, CODER_AID = 0, 1
 
@@ -149,11 +149,11 @@ def run_team_in(tmp_path, monkeypatch):
 
     return run
 
-async def test_a_team_works_in_the_environment_it_was_given(run_team_in, tmp_path):
+async def test_a_team_works_in_the_environment_it_was_given(local_environment_factory, run_team_in, tmp_path):
     """Agent 0 and every teammate's worktree come from the supplied repository."""
     elsewhere = _repo(tmp_path / "elsewhere", "supplied-environment")
 
-    observed = await run_team_in(environment=LocalEnvironment(str(elsewhere)))
+    observed = await run_team_in(environment=local_environment_factory(str(elsewhere)))
 
     assert observed["analyst_saw"].strip().endswith("supplied-environment")
     assert observed["coder_saw"].strip().endswith("supplied-environment")
@@ -177,13 +177,13 @@ async def test_a_finished_team_run_says_it_wound_down(run_team_in):
     assert metrics["environment_owned"] is True
     assert metrics["execution_quiesced"] is True
 
-async def test_a_team_says_nothing_about_an_environment_it_was_lent(
+async def test_a_team_says_nothing_about_an_environment_it_was_lent(local_environment_factory,
     run_team_in, tmp_path
 ):
     """It never cleans a supplied environment, so it does not vouch for one."""
     elsewhere = _repo(tmp_path / "elsewhere", "supplied-environment")
 
-    metrics = (await run_team_in(environment=LocalEnvironment(str(elsewhere))))[
+    metrics = (await run_team_in(environment=local_environment_factory(str(elsewhere))))[
         "result"
     ].metrics
 

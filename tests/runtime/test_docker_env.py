@@ -10,13 +10,14 @@ import pytest
 from opencollab.adapters import _env_docker as docker_module
 from opencollab.adapters._env_local import LOCAL_FILE_WRITE_LIMIT_BYTES
 from opencollab.adapters._env_process import ProcessCleanupError
-from opencollab.adapters.env import DockerEnvironment, LocalEnvironment
+from opencollab.adapters.env import DockerEnvironment
 from tests.support.docker_env_test_support import (
     CONTAINER_ID,
     FakeDocker,
     _patch,
     _result,
 )
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 OTHER_ID = "b" * 64
 
@@ -680,9 +681,9 @@ async def test_docker_writes_reject_oversize_utf8_before_transport(
 
     assert calls == 0
 
-async def test_only_docker_declares_os_process_isolation(tmp_path) -> None:
+async def test_only_docker_declares_os_process_isolation(local_environment_factory, tmp_path) -> None:
     assert DockerEnvironment().process_isolated
-    assert not LocalEnvironment(str(tmp_path)).process_isolated
+    assert not local_environment_factory(str(tmp_path)).process_isolated
 
 async def test_every_exec_carries_a_git_identity(monkeypatch) -> None:
     """Anonymous benchmark images need a Git identity to create handoff commits.

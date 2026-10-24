@@ -11,6 +11,7 @@ from opencollab.application.tool_execution import DeferredCall
 from opencollab.bootstrap import build_session
 from opencollab.domain.pending import RowStatus
 from opencollab.domain.session import SessionPhase
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 from tests.support.session_characterization_test_support import (
     FakeAgent,
     FakeLLMClient,
@@ -33,7 +34,9 @@ class WaitingTool(FakeTool):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("completed_first", [False, True])
-async def test_cancelled_tool_batch_can_continue_with_complete_chat_history(completed_first, tmp_path):
+async def test_cancelled_tool_batch_can_continue_with_complete_chat_history(
+    local_environment_factory, completed_first, tmp_path,
+):
     waiting = WaitingTool()
     output = tmp_path / "completed.txt"
 
@@ -52,7 +55,7 @@ async def test_cancelled_tool_batch_can_continue_with_complete_chat_history(comp
             llm_response(content="continued answer"),
         ]
     )
-    session = build_session(agent=FakeAgent(tools=tools), llm=llm)
+    session = build_session(env=local_environment_factory(), agent=FakeAgent(tools=tools), llm=llm)
     await session.add_user_message("run tools")
     active = asyncio.create_task(session.run_loop())
     await asyncio.wait_for(waiting.started.wait(), timeout=0.5)
@@ -85,7 +88,7 @@ async def test_cancelled_tool_batch_can_continue_with_complete_chat_history(comp
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("completed_prefix", [False, True])
-async def test_cancellation_keeps_deferred_result_with_a_live_producer(completed_prefix):
+async def test_cancellation_keeps_deferred_result_with_a_live_producer(local_environment_factory, completed_prefix):
     class ProducingTool(FakeTool):
         def __init__(self):
             super().__init__(name="spawn_agent")
@@ -121,7 +124,7 @@ async def test_cancellation_keeps_deferred_result_with_a_live_producer(completed
         [llm_response(tool_calls=calls, finish_reason="tool_calls")]
     )
     session = build_session(
-        agent=FakeAgent(tools=[producer, completed, waiting]), llm=llm,
+        env=local_environment_factory(), agent=FakeAgent(tools=[producer, completed, waiting]), llm=llm,
         event_sink=hold_completed_event,
     )
     producer.state = session.state

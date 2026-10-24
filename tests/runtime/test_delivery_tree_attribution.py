@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.adapters.worktree_pool import WorktreePool
 from opencollab.application._scheduler_delivery_tree import (
@@ -25,6 +24,7 @@ from opencollab.domain.scheduler import SessionControlBlock
 from opencollab.domain.session import SessionState
 from opencollab.domain.team import Topology
 from opencollab.sdk import OpenCollab
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 ANALYST_AID, CODER_AID = 0, 1
 
@@ -140,7 +140,7 @@ def _scripted_llm():
     return ScriptedLLM
 
 @pytest.fixture
-def run_team_in(tmp_path, monkeypatch):
+def run_team_in(local_environment_factory, tmp_path, monkeypatch):
     async def run(*, record_delivery_tree: bool) -> dict:
         repo = _repo(tmp_path / "repo")
         anchor = tmp_path / "anchor"
@@ -155,7 +155,7 @@ def run_team_in(tmp_path, monkeypatch):
                 "base_url": None,
                 "budget": 2_000_000,
             },
-            environment=LocalEnvironment(str(repo)),
+            environment=local_environment_factory(str(repo)),
         )
         result = await client.team(
             "Fix it.",

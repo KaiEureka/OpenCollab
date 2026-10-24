@@ -9,7 +9,9 @@ import os
 import pytest
 
 from opencollab import OpenCollab
+from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.llm.client import LLMClient
+from opencollab.bootstrap import programmatic
 from tests.support.provider_sdk_http import completion_http_response, install_sdk_transport
 
 INITIAL_API_KEY = "fake-key-at-construction"  # pragma: allowlist secret
@@ -163,6 +165,14 @@ async def test_independent_llm_client_keeps_provider_environment_selection(monke
 
 
 async def test_dashscope_does_not_send_an_unrelated_provider_key(monkeypatch, tmp_path, requests):
+    environments = []
+
+    class ObservedEnvironment(LocalEnvironment):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            environments.append((self, self._workspace_fd))
+
+    monkeypatch.setattr(programmatic, "LocalEnvironment", ObservedEnvironment)
     monkeypatch.delenv("OPENCOLLAB_API_KEY")
     monkeypatch.setenv("OPENAI_API_KEY", "fake-unrelated-openai-key")  # pragma: allowlist secret
     endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -175,6 +185,11 @@ async def test_dashscope_does_not_send_an_unrelated_provider_key(monkeypatch, tm
     with pytest.raises(ValueError, match="no API key configured"):
         await client.agent("finish once", tools=(), trace=False)
     assert requests == []
+    assert len(environments) == 1
+    environment, descriptor = environments[0]
+    assert environment._workspace_fd is None
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
 
     monkeypatch.setenv("DASHSCOPE_API_KEY", "fake-dashscope-key")  # pragma: allowlist secret
     configured = OpenCollab(tmp_path, model="fixture-model", base_url=endpoint)

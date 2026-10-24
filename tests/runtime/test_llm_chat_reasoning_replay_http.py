@@ -108,6 +108,7 @@ async def _run_tool_continuation(tmp_path, model, stream, thinking, params, keep
     except openai.BadRequestError as exc:
         error = type(exc).__name__
     finally:
+        await session.env.cleanup()
         await client.close()
     return {
         "model": model, "stream": stream, "thinking": agent.thinking, "thinking_params": params,

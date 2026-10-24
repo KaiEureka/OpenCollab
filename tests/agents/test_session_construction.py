@@ -17,6 +17,7 @@ from opencollab.application.session_run import SessionRunUseCase
 from opencollab.application.tool_execution import ToolExecutionUseCase
 from opencollab.bootstrap import build_session as Session
 from opencollab.bootstrap import load_session, snapshot_session
+from tests.support.environment_test_support import local_environment_factory as local_environment_factory
 
 
 def run(coro):
@@ -52,21 +53,25 @@ class _ForkableEnvironment:
     def fork_snapshot(self):
         return _ForkableEnvironment()
 
-def _new_session(**overrides) -> Session:
+def _new_session(local_environment_factory, **overrides) -> Session:
     kwargs = dict(agent=_FakeAgent(), llm=_FakeLLM())
     kwargs.update(overrides)
+    if "env" not in kwargs:
+        kwargs["env"] = local_environment_factory()
     return Session(**kwargs)
 
 def test_session_builds_runtime_collaborators_eagerly():
-    session = _new_session()
+    session = Session(agent=_FakeAgent(), llm=_FakeLLM())
+    try:
+        assert isinstance(session.tool_execution, ToolExecutionUseCase)
+        assert isinstance(session.runner, SessionRunUseCase)
+        assert isinstance(session.store, SessionStore)
+    finally:
+        run(session.env.cleanup())
 
-    assert isinstance(session.tool_execution, ToolExecutionUseCase)
-    assert isinstance(session.runner, SessionRunUseCase)
-    assert isinstance(session.store, SessionStore)
-
-def test_session_pending_cleanup_includes_tool_execution_owners():
+def test_session_pending_cleanup_includes_tool_execution_owners(local_environment_factory):
     async def scenario():
-        session = _new_session()
+        session = _new_session(local_environment_factory)
         owner = asyncio.create_task(asyncio.Event().wait())
         session.tool_execution._pending_cleanup_tasks.add(owner)
         try:
@@ -77,8 +82,8 @@ def test_session_pending_cleanup_includes_tool_execution_owners():
 
     run(scenario())
 
-def test_session_seed_user_messages_follow_system_prompt():
-    session = _new_session(
+def test_session_seed_user_messages_follow_system_prompt(local_environment_factory):
+    session = _new_session(local_environment_factory,
         seed_user_messages=[{"role": "user", "content": "Task:\nbuild it"}]
     )
     assert session.messages == [
@@ -86,13 +91,13 @@ def test_session_seed_user_messages_follow_system_prompt():
         {"role": "user", "content": "Task:\nbuild it"},
     ]
 
-def test_session_wires_a_default_shaper_pipeline():
+def test_session_wires_a_default_shaper_pipeline(local_environment_factory):
     from opencollab.application.shaping import ShaperPipeline
 
-    session = _new_session()
+    session = _new_session(local_environment_factory)
     assert isinstance(session.runner.shaper, ShaperPipeline)
 
-def test_session_event_bus_reaches_injected_sink():
+def test_session_event_bus_reaches_injected_sink(local_environment_factory):
     from opencollab.domain.events import SessionRuntimeEvent as SessionEvent
 
     seen: list = []
@@ -100,7 +105,7 @@ def test_session_event_bus_reaches_injected_sink():
     async def sink(event):
         seen.append(event)
 
-    session = _new_session(event_sink=sink)
+    session = _new_session(local_environment_factory, event_sink=sink)
     event = SessionEvent(type="marker", data={"k": 1})
     run(session.event_bus.emit(event))
 
@@ -117,21 +122,21 @@ def test_session_runtime_preserves_legacy_positional_optional_fields():
     assert runtime.owns_llm is True
     assert runtime.run_id is None
 
-def test_session_with_auto_save_path_subscribes_autosave_subscriber(tmp_path):
+def test_session_with_auto_save_path_subscribes_autosave_subscriber(local_environment_factory, tmp_path):
     path = tmp_path / "auto.jsonl"
-    session = _new_session(auto_save_path=str(path))
+    session = _new_session(local_environment_factory, auto_save_path=str(path))
 
     subs = [t for t in session.event_bus._targets if isinstance(t, AutoSaveSubscriber)]
     assert len(subs) == 1
 
-def test_session_without_auto_save_path_does_not_subscribe_autosave():
-    session = _new_session()
+def test_session_without_auto_save_path_does_not_subscribe_autosave(local_environment_factory):
+    session = _new_session(local_environment_factory)
     subs = [t for t in session.event_bus._targets if isinstance(t, AutoSaveSubscriber)]
     assert subs == []
 
-def test_session_user_message_appended_triggers_autosave(tmp_path):
+def test_session_user_message_appended_triggers_autosave(local_environment_factory, tmp_path):
     path = tmp_path / "auto.jsonl"
-    session = _new_session(auto_save_path=str(path))
+    session = _new_session(local_environment_factory, auto_save_path=str(path))
 
     run(session.add_user_message("hello"))
 
@@ -141,7 +146,7 @@ def test_session_user_message_appended_triggers_autosave(tmp_path):
     user_msgs = [m for m in saved["messages"] if m["role"] == "user"]
     assert any(m["content"] == "hello" and "timestamp" in m for m in user_msgs)
 
-def test_apply_launch_recovers_journal_when_atomic_base_is_absent(tmp_path):
+def test_apply_launch_recovers_journal_when_atomic_base_is_absent(local_environment_factory, tmp_path):
     path = tmp_path / "journal-only.json"
     store = SessionStore()
     store.append_snapshot_delta(
@@ -162,7 +167,7 @@ def test_apply_launch_recovers_journal_when_atomic_base_is_absent(tmp_path):
     )
     assert not path.exists()
 
-    session = _new_session(auto_save_path=str(path), store=store)
+    session = _new_session(local_environment_factory, auto_save_path=str(path), store=store)
     session.apply_launch(
         LaunchSpec(
             session_file=str(path),
@@ -378,7 +383,7 @@ def test_checkpoint_rejects_ambiguous_duplicate_journal_sequence(tmp_path):
     with open(path + ".journal", encoding="utf-8") as journal:
         assert journal.read().count("\n") == 2
 
-def test_apply_launch_checkpoints_restore_into_distinct_autosave_target(tmp_path):
+def test_apply_launch_checkpoints_restore_into_distinct_autosave_target(local_environment_factory, tmp_path):
     source = tmp_path / "source.json"
     target = tmp_path / "target.json"
     store = SessionStore()
@@ -398,7 +403,7 @@ def test_apply_launch_checkpoints_restore_into_distinct_autosave_target(tmp_path
         sequence=2,
     )
 
-    session = _new_session(auto_save_path=str(target), store=store)
+    session = _new_session(local_environment_factory, auto_save_path=str(target), store=store)
     session.apply_launch(
         LaunchSpec(
             session_file=str(source),
@@ -419,16 +424,16 @@ def test_apply_launch_checkpoints_restore_into_distinct_autosave_target(tmp_path
     run(append_and_flush())
     restored = load_session(
         str(target),
-        agent=_FakeAgent(),
+        env=local_environment_factory(), agent=_FakeAgent(),
         llm=_FakeLLM(),
         store=store,
     )
     assert restored._auto_save_sequence == 4
     assert restored.messages[-1]["content"] == "continue here"
 
-def test_relative_save_alias_uses_autosave_checkpoint(tmp_path, monkeypatch):
+def test_relative_save_alias_uses_autosave_checkpoint(local_environment_factory, tmp_path, monkeypatch):
     target = tmp_path / "alias.json"
-    session = _new_session(auto_save_path=str(target))
+    session = _new_session(local_environment_factory, auto_save_path=str(target))
     session._auto_save_sequence = 4
     session.messages.append({"role": "user", "content": "durable"})
     monkeypatch.chdir(tmp_path)
@@ -439,9 +444,9 @@ def test_relative_save_alias_uses_autosave_checkpoint(tmp_path, monkeypatch):
     assert saved["_autosave_sequence"] == 5
     assert (tmp_path / "alias.json.journal").read_bytes() == b""
 
-def test_session_snapshot_returns_independent_session_without_autosave(tmp_path):
+def test_session_snapshot_returns_independent_session_without_autosave(local_environment_factory, tmp_path):
     path = tmp_path / "auto.jsonl"
-    session = _new_session(auto_save_path=str(path), env=_ForkableEnvironment())
+    session = _new_session(local_environment_factory, auto_save_path=str(path), env=_ForkableEnvironment())
     session.messages.extend([
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "world"},
@@ -460,8 +465,8 @@ def test_session_snapshot_returns_independent_session_without_autosave(tmp_path)
     snap.messages.append({"role": "user", "content": "isolated"})
     assert {"role": "user", "content": "isolated"} not in session.messages
 
-def test_session_snapshot_preserves_queued_external_turn():
-    session = _new_session(env=_ForkableEnvironment())
+def test_session_snapshot_preserves_queued_external_turn(local_environment_factory):
+    session = _new_session(local_environment_factory, env=_ForkableEnvironment())
     run(session.add_user_message("resume this request"))
 
     snap = snapshot_session(session)
@@ -469,13 +474,13 @@ def test_session_snapshot_preserves_queued_external_turn():
     assert snap.state.pending_external_user_turn == session.state.pending_external_user_turn
     assert snap.state.pending_external_user_turn is not session.state.pending_external_user_turn
 
-def test_session_snapshot_preserves_external_sink():
+def test_session_snapshot_preserves_external_sink(local_environment_factory):
     seen: list = []
 
     async def sink(event):
         seen.append(event)
 
-    session = _new_session(event_sink=sink, env=_ForkableEnvironment())
+    session = _new_session(local_environment_factory, event_sink=sink, env=_ForkableEnvironment())
     snap = snapshot_session(session)
 
     targets = list(snap.event_bus._targets)
@@ -483,25 +488,25 @@ def test_session_snapshot_preserves_external_sink():
     observed = snapshot_session(session, event_sink=sink)
     assert sink in observed.event_bus._targets
 
-def test_session_load_returns_session_with_loaded_messages(tmp_path):
+def test_session_load_returns_session_with_loaded_messages(local_environment_factory, tmp_path):
     path = tmp_path / "round.jsonl"
     agent = _FakeAgent()
-    session = Session(agent=agent, llm=_FakeLLM())
+    session = Session(env=local_environment_factory(), agent=agent, llm=_FakeLLM())
     session.messages.extend([
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "world"},
     ])
     session.save(str(path))
 
-    loaded = load_session(str(path), agent=agent, llm=_FakeLLM())
+    loaded = load_session(str(path), env=local_environment_factory(), agent=agent, llm=_FakeLLM())
 
     assert loaded.messages[0]["role"] == "system"
     assert loaded.messages[0]["content"] == agent.system_prompt
     assert {"role": "user", "content": "hello"} in loaded.messages
     assert {"role": "assistant", "content": "world"} in loaded.messages
 
-def test_session_permission_policy_setter_propagates_to_tool_processor():
-    session = _new_session()
+def test_session_permission_policy_setter_propagates_to_tool_processor(local_environment_factory):
+    session = _new_session(local_environment_factory)
     assert session.permission_policy is None
     assert session.tool_execution.permission_policy is None
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from opencollab.adapters.tools.single2 import SINGLE2_BASH_OUTPUT_CHARS
@@ -133,9 +135,12 @@ def test_both_seats_carry_the_profile_into_their_session(monkeypatch, tmp_path) 
     factory = session_factory.DefaultSessionFactory(
         _cfg(), team_cfg=_team("single2"), lead_workspace=str(tmp_path),
     )
-    factory.create_lead_session(scheduler=SCHED, launch=_launch(), budget=1_000)
-    assert seen["adopter"] is not None
-    assert seen["adopter"].name == "single2"
+    try:
+        factory.create_lead_session(scheduler=SCHED, launch=_launch(), budget=1_000)
+        assert seen["adopter"] is not None
+        assert seen["adopter"].name == "single2"
+    finally:
+        asyncio.run(factory.lead_environment.cleanup())
 
 
 # --- Declaration and validation ------------------------------------------------
@@ -213,11 +218,14 @@ def test_a_declared_team_seats_single2_through_the_scheduler(tmp_path, monkeypat
         auto_save=False,
         team_config_path=str(team_file),
     )
-    lead = scheduler.lead_session
+    try:
+        lead = scheduler.lead_session
 
-    assert lead.agent.name == "adopter"
-    assert lead.agent.system_prompt.startswith(SINGLE2_SYSTEM_PROMPT)
-    assert "## You are on a team" in lead.agent.system_prompt
-    assert [tool.name for tool in lead.agent.tools] == list(SEAT_TOOLS)
-    bash = next(tool for tool in lead.agent.tools if tool.name == "bash")
-    assert bash.max_output_chars == SINGLE2_BASH_OUTPUT_CHARS
+        assert lead.agent.name == "adopter"
+        assert lead.agent.system_prompt.startswith(SINGLE2_SYSTEM_PROMPT)
+        assert "## You are on a team" in lead.agent.system_prompt
+        assert [tool.name for tool in lead.agent.tools] == list(SEAT_TOOLS)
+        bash = next(tool for tool in lead.agent.tools if tool.name == "bash")
+        assert bash.max_output_chars == SINGLE2_BASH_OUTPUT_CHARS
+    finally:
+        asyncio.run(scheduler.cleanup())
