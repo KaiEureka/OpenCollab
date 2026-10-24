@@ -1,6 +1,6 @@
 # 阅读路径
 
-[帮助中心](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
+[Wiki](index.md) · [返回项目站主页](https://rise-x-lab.github.io/OpenCollab/) · [GitHub 源码](https://github.com/RISE-X-Lab/OpenCollab)
 
 选择你要完成的任务，按顺序阅读相关指南。熟悉的部分可以跳过，直接进入需要的章节。
 

@@ -1,7 +1,7 @@
-# Help center
+# Wiki
 
-The project site links to the help center at `help/`, which opens the Chinese
-guides on first visit. A global Chinese and English switch selects the help center
+The project site links to the wiki at `help/`, which opens the Chinese
+guides on first visit. A global Chinese and English switch selects the wiki
 edition. The browser remembers the selected edition when entering through `help/`
 again. Explicit article URLs open their specified edition. The English
 page at `help/en/` uses the same reader layout and displays "Coming soon."
