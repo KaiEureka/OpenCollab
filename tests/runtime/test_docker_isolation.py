@@ -36,6 +36,15 @@ def _repository(workspace: Path, *, object_format: str = "sha1") -> None:
     _git(workspace, "commit", "--quiet", "-m", "initial")
 
 
+def _shallow_repository(workspace: Path, *, object_format: str = "sha1") -> None:
+    origin = workspace.with_name(workspace.name + "-origin")
+    _repository(origin, object_format=object_format)
+    (origin / "answer.py").write_text("answer = 2\n")
+    _git(origin, "commit", "--quiet", "-am", "second")
+    _git(origin, "tag", "v1.2")
+    _git(origin, "clone", "--quiet", "--depth=1", origin.as_uri(), str(workspace))
+
+
 class _LocalImportTarget(LocalEnvironment):
     def __init__(self, workspace):
         Path(workspace).mkdir()
@@ -86,6 +95,39 @@ async def test_import_rebuilds_linked_git_metadata_and_keeps_physical_contents(
     assert _git(Path(target.workspace), "show", "HEAD:answer.py") == "answer = 1"
     assert "answer.py" in _git(Path(target.workspace), "diff", "--name-only")
     assert not list(linked.glob(".docker-import-*"))
+
+
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+@pytest.mark.parametrize("layout", ["repository", "linked", "submodule"])
+async def test_import_preserves_shallow_history(tmp_path: Path, object_format: str, layout: str) -> None:
+    source = tmp_path / "source"
+    _shallow_repository(source, object_format=object_format)
+    workspace = source
+    relative = "."
+    if layout == "linked":
+        workspace = tmp_path / "linked"
+        _git(source, "worktree", "add", "--quiet", "--detach", str(workspace))
+    elif layout == "submodule":
+        workspace = tmp_path / "parent"
+        _repository(workspace, object_format=object_format)
+        _git(workspace, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", "--depth=1",
+             source.as_uri(), "child")
+        _git(workspace, "commit", "--quiet", "-am", "submodule")
+        relative = "child"
+    repository = workspace / relative
+    shallow = Path(_git(repository, "rev-parse", "--path-format=absolute", "--git-path", "shallow"))
+    boundary = shallow.read_bytes()
+    target = _LocalImportTarget(str(tmp_path / "target"))
+    await _import_snapshot(LocalEnvironment(str(workspace)), target)
+    imported = Path(target.workspace) / relative
+    assert _git(imported, "rev-parse", "--show-object-format") == object_format
+    assert _git(imported, "rev-parse", "--is-shallow-repository") == "true"
+    assert _git(imported, "rev-list", "--count", "HEAD") == "1"
+    assert _git(imported, "describe", "--tags") == "v1.2"
+    assert _git(imported, "show", "HEAD:answer.py") == "answer = 2"
+    assert shallow.read_bytes() == boundary
+    shutil.rmtree(workspace)
+    assert _git(imported, "rev-list", "--count", "HEAD") == "1"
 
 
 @pytest.mark.parametrize("object_format", ["sha1", "sha256"])
@@ -305,6 +347,31 @@ async def test_docker_sessions_preserve_tagged_build_versions(tmp_path: Path, sc
         assert result.stdout.splitlines() == [version, version, "answer = 1", "answer = 2", "commit", "tag"]
     finally:
         await pool.release()
+
+
+@pytest.mark.parametrize("scope", ["group", "session"])
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+async def test_docker_sessions_preserve_shallow_source_history(tmp_path: Path, scope: str, object_format: str) -> None:
+    image = os.environ.get("OPENCOLLAB_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("OPENCOLLAB_DOCKER_TEST_IMAGE selects a local image with bash and git")
+    source = tmp_path / "source"
+    _shallow_repository(source, object_format=object_format)
+    pool = DockerIsolationPool(str(source), scope=scope, options=DockerOptions(image=image))
+    try:
+        first = await pool.acquire("builder")
+        reviewer = await pool.acquire("reviewer", source=first)
+        for environment in (first, reviewer):
+            result = await environment.exec_cmd(
+                "git rev-parse --is-shallow-repository && git rev-list --count HEAD && "
+                "git describe --tags && git show HEAD:answer.py"
+            )
+            assert result.returncode == 0, result.stderr
+            assert result.stdout.splitlines() == ["true", "1", "v1.2", "answer = 2"]
+    finally:
+        await pool.release()
+    assert _git(source, "rev-parse", "--is-shallow-repository") == "true"
+    assert _git(source, "rev-list", "--count", "HEAD") == "1"
 
 
 @pytest.mark.parametrize("scope", ["group", "session"])

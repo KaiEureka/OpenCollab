@@ -78,8 +78,18 @@ async def _import_snapshot(source: Any, target: DockerEnvironment) -> str:
                         f"GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "
                         f"git -c core.hooksPath=/dev/null -C {shlex.quote(str(local_root))}"
                     )
+                    _complete(await local.exec_cmd(
+                        f"{git} init --quiet --object-format={shlex.quote(object_format)}", timeout=900,
+                    ), "Docker private repository initialization")
+                    shallow = _complete(await source.exec_cmd(
+                        f"git -C {shlex.quote(source_root)} rev-parse --is-shallow-repository",
+                    ), "Docker source shallow history").strip()
+                    if shallow == "true":
+                        shallow_path = _complete(await source.exec_cmd(
+                            f"git -C {shlex.quote(source_root)} rev-parse --path-format=absolute --git-path shallow",
+                        ), "Docker source shallow boundary").removesuffix("\n")
+                        await _copy_to_host(source, shallow_path, local_root / ".git" / "shallow")
                     command = (
-                        f"{git} init --quiet --object-format={shlex.quote(object_format)} && "
                         f"{git} fetch --quiet --tags {shlex.quote(str(bundle))} HEAD && "
                         f"{git} reset --mixed --quiet FETCH_HEAD"
                     )
