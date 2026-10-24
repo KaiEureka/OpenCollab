@@ -6,7 +6,7 @@
 
 ```python
 from opencollab.adapters.env import VMEnvironment
-from opencollab.domain.vm import VMConnection
+from opencollab.adapters.vm_config import VMConnection
 
 connection = VMConnection(
     host="vm.example.net",

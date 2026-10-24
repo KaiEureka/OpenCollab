@@ -13,8 +13,8 @@ import pytest
 import pytest_asyncio
 
 from opencollab.adapters.env import VMEnvironment
+from opencollab.adapters.vm_config import VMConnection
 from opencollab.adapters.working_tree import EnvWorkingTreeProbe
-from opencollab.domain.vm import VMConnection
 
 
 @pytest_asyncio.fixture

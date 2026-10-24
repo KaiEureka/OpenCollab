@@ -26,9 +26,9 @@ from opencollab.adapters._env_process import (
     run_process,
 )
 from opencollab.adapters._vm_archive import pack, publish, unpack
+from opencollab.adapters.vm_config import VMConnection, validate_vm_path
 from opencollab.application.async_timeout import await_owned_operation
 from opencollab.application.exception_notes import add_exception_note
-from opencollab.domain.vm import VMConnection, validate_vm_path
 
 _MESSAGE_LIMIT = 32 * 1024 * 1024
 _FRAME = b"OCVM1\n"

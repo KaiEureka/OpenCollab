@@ -33,7 +33,7 @@ from opencollab.adapters.safe_anchored_files import (
     unlink_regular_file_durable_at,
     write_regular_bytes_atomic_at,
 )
-from opencollab.domain.vm import validate_vm_path
+from opencollab.adapters.vm_config import validate_vm_path
 
 _MAX_MESSAGE = 32 * 1024 * 1024
 _FRAME = b"OCVM1\n"

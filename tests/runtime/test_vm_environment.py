@@ -8,7 +8,7 @@ import pytest
 
 from opencollab import __version__
 from opencollab.adapters.env import ExecResult, VMEnvironment, VMOperationError, VMTransportError
-from opencollab.domain.vm import VMConnection
+from opencollab.adapters.vm_config import VMConnection
 
 
 def _env():
