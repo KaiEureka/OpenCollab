@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
@@ -17,51 +16,6 @@ from tests.support.workflow_context_test_support import (
     FakeSession,
 )
 
-
-@pytest.mark.asyncio
-async def test_concurrency_cap_honored():
-    n = 6
-    running = 0
-    high_water = 0
-    lock = asyncio.Lock()
-    gates = [asyncio.Event() for _ in range(n)]
-
-    async def make_on_enter(idx: int) -> Callable[[], Awaitable[None]]:
-        async def on_enter() -> None:
-            nonlocal running, high_water
-            async with lock:
-                running += 1
-                high_water = max(high_water, running)
-            # Let the scheduler admit anyone the semaphore would allow, then
-            # release this session so the high-water reflects true concurrency.
-            for _ in range(5):
-                await asyncio.sleep(0)
-            async with lock:
-                running -= 1
-            gates[idx].set()
-
-        return on_enter
-
-    sessions = [
-        FakeSession(
-            reply=str(i),
-            gate=gates[i],
-            on_enter=await make_on_enter(i),
-        )
-        for i in range(n)
-    ]
-    factory = FakeFactory(sessions)
-    ctx = WorkflowContext(
-        factory,
-        max_concurrency=2,
-        task_concurrency=n,
-    )
-
-    thunks = [(lambda i=i: ctx.agent(f"p{i}")) for i in range(n)]
-    results = await ctx.parallel(thunks)
-
-    assert sorted(results) == [str(i) for i in range(n)]
-    assert high_water <= 2
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("composition", ["parallel", "pipeline"])

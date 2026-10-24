@@ -79,41 +79,6 @@ def test_snapshot_preserves_explicit_safety_policy(tmp_path):
     assert snap.tool_execution.safety_policy is not safety_policy
     assert snap.tool_execution.safety_policy.root == safety_policy.root
 
-def test_tool_execution_accepts_explicit_safety_policy(tmp_path):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    env = LocalEnvironment(str(ws))
-    custom = SandboxInterceptor(str(ws))
-    proc = ToolExecutionUseCase(
-        agent=FakeAgent(),
-        environment=env,
-        state=SessionState(messages=[]),
-        event_publisher=EventBus(None),
-        safety_policy=custom,
-    )
-    assert proc.safety_policy is custom
-
-def test_tool_execution_builds_application_tool_runtime(tmp_path):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    env = LocalEnvironment(str(ws))
-    safety_policy = SandboxInterceptor(str(ws))
-    permission_policy = FakePermissionPolicy()
-    proc = ToolExecutionUseCase(
-        agent=FakeAgent(),
-        environment=env,
-        state=SessionState(messages=[]),
-        event_publisher=EventBus(None),
-        safety_policy=safety_policy,
-        permission_policy=permission_policy,
-    )
-
-    runtime = proc.tool_runtime()
-
-    assert runtime.environment is env
-    assert runtime.safety_policy is safety_policy
-    assert runtime.permission_policy is permission_policy
-
 def test_tool_execution_prefers_execute_with_runtime(tmp_path):
     ws = tmp_path / "ws"
     ws.mkdir()

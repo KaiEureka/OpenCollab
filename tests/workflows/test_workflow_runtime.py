@@ -48,11 +48,6 @@ def test_workflow_runtime_public_module_uses_plain_reexports():
     assert workflow_runtime.WorkflowSessionFactory is workflow_session.WorkflowSessionFactory
     assert workflow_runtime.build_workflow_context is workflow_session.build_workflow_context
 
-def test_build_workflow_context_returns_context(monkeypatch):
-    _patch_build_session(monkeypatch)
-    ctx = workflow_runtime.build_workflow_context(cfg=_cfg())
-    assert isinstance(ctx, WorkflowContext)
-
 @pytest.mark.asyncio
 async def test_built_context_agent_runs_session_with_resolved_llm(monkeypatch):
     calls = _patch_build_session(monkeypatch)

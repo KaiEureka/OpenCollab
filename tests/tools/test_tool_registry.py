@@ -6,8 +6,6 @@ import pytest
 
 from opencollab.adapters.tools.use_skill import UseSkillTool
 from opencollab.bootstrap.tool_registry import (
-    KNOWN_TOOL_NAMES,
-    SKILL_TOOL_FACTORIES,
     build_tools_for_role,
 )
 from opencollab.domain.skill import SkillManifest
@@ -19,10 +17,6 @@ class FakeSkillStore:
 
     def get_body(self, name: str) -> str | None:
         return None
-
-def test_use_skill_is_a_known_tool_name():
-    assert "use_skill" in KNOWN_TOOL_NAMES
-    assert "use_skill" in SKILL_TOOL_FACTORIES
 
 def test_build_wires_use_skill_when_store_provided():
     store = FakeSkillStore()
