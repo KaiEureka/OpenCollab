@@ -9,6 +9,7 @@ import pytest
 
 from opencollab import OpenCollab
 from opencollab.builtin_workflows import WeaveAdapter
+from opencollab.builtin_workflows._weave_execution import _static_printer_supplies, _verification_mode
 from tests.workflows.test_weave_execution import FileModel
 
 
@@ -20,6 +21,34 @@ async def _check(workspace, command, seconds=10):
     result = await OpenCollab(workspace, model="offline").workflow(flow, trace=False, timeout=20)
     assert result.ok, result.reason
     return result.output
+
+
+@pytest.mark.parametrize("command,executable,supplied", [
+    ("exec echo CHECK_OK", False, True),
+    ("busybox echo CHECK_OK", False, True),
+    ("bash -c 'echo CHECK_OK'", False, True),
+    ("nice -n 0 echo CHECK_OK", False, True),
+    ("echo CHECK_OK && python -c 'import sys; sys.exit(0)'", True, True),
+    ("python -c 'print(\"CHECK_OK\")'", True, True),
+    ("node -e 'console.log(\"CHECK_OK\")'", True, True),
+    ("eval 'echo CHECK_OK'", False, True),
+    ("env -i python check.py", False, False),
+    ("echo 'Starting check' && python check.py", True, False),
+])
+def test_static_output_cannot_satisfy_an_expected_probe(command, executable, supplied):
+    assert _verification_mode(command) is executable
+    assert _static_printer_supplies(command, "CHECK_OK") is supplied
+
+
+async def test_printer_prefix_cannot_authenticate_a_noop_program(tmp_path):
+    command = f"echo CHECK_OK && {shlex.quote(sys.executable)} -c 'import sys; sys.exit(0)'"
+    output = await _check(
+        tmp_path,
+        {"command": command, "expected_output": "CHECK_OK"},
+    )
+    assert output["executed"] is True
+    assert output["ok"] is False
+    assert output["report"]["checks"][0]["reason"] == "expected output is supplied by a static printer"
 
 
 @pytest.mark.parametrize("passed", [False, True])
@@ -53,6 +82,15 @@ async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed, wrap
     "echo Starting && true\nprintf CHECK_OK", "echo Starting && :\nprintf CHECK_OK",
     "echo Starting && false\nprintf CHECK_OK",
     "echo Starting && false # a comment\nprintf CHECK_OK",
+    "exec echo CHECK_OK",
+    "exec printf CHECK_OK",
+    "eval echo CHECK_OK",
+    "busybox echo CHECK_OK",
+    "nice echo CHECK_OK",
+    "xargs echo CHECK_OK",
+    "/usr/bin/time echo CHECK_OK",
+    "bash -c 'echo CHECK_OK'",
+    "sh -c 'printf CHECK_OK'",
 ])
 async def test_static_printing_compounds_remain_unverified(tmp_path, command):
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})

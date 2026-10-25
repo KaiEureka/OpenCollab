@@ -125,22 +125,91 @@ def _command_segments(command: str) -> list[str]:
         segments.append(command[start:])
     return segments
 
-def _command_words(tokens: list[str]) -> list[str]:
-    for index, token in enumerate(tokens):
+_WRAPPERS = frozenset({
+    "exec", "eval", "nice", "nohup", "time", "timeout", "setsid", "sudo",
+    "ionice", "chrt", "taskset", "flock", "xargs", "stdbuf", "busybox",
+    "unbuffer", "script",
+})
+_SHELLS = frozenset({"bash", "sh", "dash", "zsh", "ksh", "ash"})
+_STATIC_COMMANDS = frozenset({"true", "false", ":", "echo", "printf", "test", "["})
+_INLINE_SCRIPT_FLAGS = {
+    "perl": {"-e"},
+    "ruby": {"-e"},
+    "node": {"-e", "--eval"},
+    "nodejs": {"-e", "--eval"},
+    "php": {"-r"},
+    "lua": {"-e"},
+    "awk": {"-e", "--source"},
+}
+
+
+def _command_basename(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+
+def _effective_tokens(tokens: list[str]) -> list[str] | None:
+    """Return the program argv, or None when a wrapper can hide a printer.
+
+    Assignments and ``env`` / ``command`` / ``builtin`` are skipped, as before.
+    Their options stay in place, so ``env -i python`` remains unverified.
+    ``exec``, ``bash -c``, ``busybox``, and similar wrappers are rejected
+    outright: peeling their options can mistake the next word for the program.
+    """
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
         variable, separator, _ = token.partition("=")
         if separator and variable.isidentifier():
+            index += 1
             continue
-        name = token.rsplit("/", 1)[-1]
+        name = _command_basename(token)
         if name in {"env", "command", "builtin", "--"}:
+            index += 1
             continue
+        if name in _WRAPPERS or name in _SHELLS:
+            return None
         return tokens[index:]
     return []
 
+
+def _command_words(tokens: list[str]) -> list[str]:
+    words = _effective_tokens(tokens)
+    return [] if words is None else words
+
 def _has_behavior_command(tokens: list[str]) -> bool:
-    words = _command_words(tokens)
-    return bool(words) and not words[0].startswith("-") and words[0].rsplit("/", 1)[-1] not in {
-        "true", ":", "echo", "printf",
-    }
+    words = _effective_tokens(tokens)
+    if not words or words[0].startswith("-"):
+        return False
+    return _command_basename(words[0]) not in _STATIC_COMMANDS
+
+
+def _static_printer_supplies(command: str, expected: str) -> bool:
+    """True when a printer or one-liner already contains the expected text.
+
+    ``echo CHECK_OK && python -c 'exit(0)'`` would otherwise match CHECK_OK
+    from the printer while the second command only has to exit zero.
+    """
+    if not expected:
+        return False
+    for segment in _command_segments(command):
+        try:
+            tokens = shlex.split(segment)
+        except ValueError:
+            return True
+        words = _effective_tokens(tokens)
+        if not words:
+            if words is None and any(expected in token for token in tokens):
+                return True
+            continue
+        name = _command_basename(words[0])
+        if name in {"echo", "printf"} and any(expected in token for token in words[1:]):
+            return True
+        flags = {"-c"} if name.startswith("python") else _INLINE_SCRIPT_FLAGS.get(name)
+        if flags is not None:
+            for index, token in enumerate(words):
+                if token in flags and index + 1 < len(words) and expected in words[index + 1]:
+                    return True
+    return False
 
 def _verification_mode(command: str) -> bool:
     try:
@@ -193,6 +262,9 @@ async def _verify_commands(ctx: Any, commands: Sequence[Any], seconds: float | N
                 row["expected_output"] = expected
                 row["matched"] = expected in output
                 row["ok"] = (row["ok"] if records else not requires_test_evidence) and completed and row["matched"]
+                if row["ok"] and _static_printer_supplies(command, expected):
+                    row["ok"] = False
+                    row["reason"] = "expected output is supplied by a static printer"
         checks.append(row)
     return {
         "ok": bool(checks) and all(row["ok"] for row in checks),

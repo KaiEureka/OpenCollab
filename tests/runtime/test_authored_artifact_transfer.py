@@ -10,7 +10,7 @@ import pytest
 
 from opencollab.adapters import _docker_snapshot as snapshot_module
 from opencollab.adapters._docker_snapshot import _copy_artifact_to_host
-from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters._env_vm import VMEnvironment, VMTransportError
 from opencollab.adapters.env import DockerEnvironment, ExecResult, LocalEnvironment, WorktreeEnvironment
 from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.application.tool_execution import ToolRuntime
@@ -116,6 +116,45 @@ async def test_remote_artifact_transfer_uses_existing_transport_and_requires_reg
         contained.assert_awaited_once_with("/workspace/result.json")
     with pytest.raises(PermissionError, match="escapes workspace"):
         await _copy_artifact_to_host(environment, "/outside/result.json", target)
+
+
+@pytest.mark.parametrize("kind", ["docker", "vm"])
+async def test_missing_remote_artifact_stays_distinguishable_from_transport_failure(
+    tmp_path, monkeypatch, kind,
+):
+    environment = object.__new__(DockerEnvironment if kind == "docker" else VMEnvironment)
+    environment.workspace = "/workspace"
+    target = tmp_path / "copied.json"
+
+    async def absent(command, timeout=120.0, **kwargs):
+        assert command == "test -e /workspace/result.json"
+        return ExecResult(1, "", "")
+
+    monkeypatch.setattr(environment, "exec_cmd", absent)
+    if kind == "docker":
+        environment._container_id = "owned-test-container"
+        monkeypatch.setattr(environment, "setup", AsyncMock())
+        monkeypatch.setattr(environment, "_contained_file_path", AsyncMock(return_value="/workspace/result.json"))
+
+        async def docker(*args):
+            return ExecResult(1, "", "No such file")
+
+        monkeypatch.setattr(environment, "_docker", docker)
+    else:
+        async def download(source, destination, *, directory=False):
+            raise VMTransportError("missing", operation_id="download")
+
+        monkeypatch.setattr(environment, "copy_to_host", download)
+    with pytest.raises(FileNotFoundError):
+        await _copy_artifact_to_host(environment, "/workspace/result.json", target)
+    assert not target.exists()
+
+    async def present(command, timeout=120.0, **kwargs):
+        return ExecResult(0, "", "")
+
+    monkeypatch.setattr(environment, "exec_cmd", present)
+    with pytest.raises((OSError, VMTransportError), match="copy failed|missing"):
+        await _copy_artifact_to_host(environment, "/workspace/result.json", target)
 
 
 async def test_artifact_copy_failure_closes_source_descriptor(tmp_path, monkeypatch):

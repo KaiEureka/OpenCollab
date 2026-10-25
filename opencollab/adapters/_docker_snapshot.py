@@ -14,7 +14,7 @@ from typing import Any
 from opencollab.adapters._candidate_physical import _initialized_submodule_paths
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
-from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters._env_vm import VMEnvironment, VMTransportError
 from opencollab.adapters._env_worktree import WorktreeEnvironment
 from opencollab.adapters._git_patch_bytes import _complete, _patch_temporary
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
@@ -68,11 +68,31 @@ async def _copy_artifact_to_host(environment: Any, source: str, target: Path) ->
     if isinstance(delegate, DockerEnvironment):
         source = await delegate._contained_file_path(source)
     if isinstance(delegate, (DockerEnvironment, VMEnvironment)):
-        await _copy_to_host(delegate, source, target)
+        try:
+            await _copy_to_host(delegate, source, target)
+        except (OSError, VMTransportError) as exc:
+            if await _remote_path_absent(delegate, source):
+                target.unlink(missing_ok=True)
+                raise FileNotFoundError(source) from exc
+            raise
         if not stat.S_ISREG(target.lstat().st_mode):
             raise OSError("artifact transfer requires a regular file")
         return
     target.write_text(await environment.read_file(source), encoding="utf-8")
+
+
+async def _remote_path_absent(environment: Any, source: str) -> bool:
+    """True only when the guest reports that the source path is absent.
+
+    A failed copy of a listed optional artifact must stay distinguishable from a
+    transport failure. ``test -e`` returns 1 for a missing path and another
+    status when the probe itself cannot run.
+    """
+    try:
+        result = await environment.exec_cmd(f"test -e {shlex.quote(source)}", timeout=30)
+    except Exception:
+        return False
+    return getattr(result, "returncode", None) == 1
 
 
 def _remove_marker(path: Path) -> None:

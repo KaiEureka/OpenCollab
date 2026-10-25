@@ -61,6 +61,8 @@ def test_native_bash_schema_output_command_and_timeout_are_unchanged():
     ('python -m pytest test.py && echo finished', 'python -m pytest test.py && echo finished'),
     ('python -m pytest --collect-only', 'python -m pytest --collect-only'),
     ('python -m pytest --help', 'python -m pytest --help'),
+    ('python -m pytest tests.py -q # keep this note',
+     'python -m pytest tests.py -q -rA # keep this note'),
 ])
 def test_opt_in_pass_reporting_preserves_shell_text_and_target_separator(command, expected):
     tool = evidence_tools("bash")[0]

@@ -117,7 +117,7 @@ class BashEvidence:
             token = lexer.get_token()
             if token is None:
                 return command + " -rA"
-            if runner_seen and token == "--":
+            if runner_seen and (token == "--" or token.startswith("#")):
                 return command[:start] + "-rA " + command[start:]
             if token == "&&":
                 runner_seen = False

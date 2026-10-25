@@ -53,6 +53,17 @@ async def test_anthropic_tool_response_replays_standard_assistant_history(monkey
         {"type": "tool_result", "tool_use_id": "toolu_lookup", "content": "42"}
     ]
 
+def test_anthropic_history_accepts_persisted_developer_instructions():
+    system, messages = convert_to_anthropic_messages([
+        {"role": "developer", "content": "Follow the workspace contract."},
+        {"role": "developer", "content": "Earlier summary.", "compacted": True},
+        {"role": "user", "content": "continue"},
+    ])
+    assert system == ["Follow the workspace contract."]
+    assert messages[0] == {"role": "user", "content": "Earlier summary."}
+    assert messages[1] == {"role": "user", "content": "continue"}
+
+
 @pytest.mark.parametrize("role,content", [("user", None), ("assistant", {"text": "invalid"})])
 def test_anthropic_history_retains_content_validation(role, content):
     with pytest.raises(ValueError, match="content must be text or a content block list"):
