@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 import opencollab.application.compaction_summary as compaction_summary
 from opencollab.application.compaction_summary import ReadTimeSummarizer, run_coro_blocking
 
@@ -67,6 +69,24 @@ def test_summarizer_falls_back_on_llm_error():
     assert "[user]: build the thing" in out
     assert "Summary:" not in out
     assert s.last_call_cacheable is False
+
+@pytest.mark.parametrize("finish_reason", ["length", "max_tokens", "model_context_window_exceeded"])
+async def test_truncation_rejects_even_a_well_formed_summary(finish_reason):
+    async def complete(_request):
+        return SimpleNamespace(content="<summary>Partial context.</summary>", finish_reason=finish_reason)
+
+    summarizer = ReadTimeSummarizer(complete)
+    assert await summarizer.asummarize(SEGMENT) == "[user]: build the thing\n[assistant]: working on it"
+    assert not summarizer.last_call_cacheable
+
+@pytest.mark.parametrize("finish_reason", [None, "stop", "end_turn", "stop_sequence"])
+async def test_complete_summary_accepts_supported_stop_reasons(finish_reason):
+    async def complete(_request):
+        return SimpleNamespace(content="<summary>Complete context.</summary>", finish_reason=finish_reason)
+
+    summarizer = ReadTimeSummarizer(complete)
+    assert await summarizer.asummarize(SEGMENT) == "Summary:\nComplete context."
+    assert summarizer.last_call_cacheable
 
 def test_summarizer_falls_back_when_no_summary_block():
     s = _summarizer("<analysis>only thinking, forgot the summary</analysis>")
