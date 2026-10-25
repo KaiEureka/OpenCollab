@@ -29,6 +29,7 @@ from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
 from opencollab.application.compaction_summary import run_coro_blocking
+from opencollab.application.event_bus import EventBus
 from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.ports import (
     AskUserPort,
@@ -328,6 +329,12 @@ def snapshot_session(
             for callback in (tool._environment_pool_factory, tool._environment_catalog, tool._describe_environment):
                 if callback is not None:
                     owner_bindings[id(callback)] = callback
+    for tool in session_tools:
+        if isinstance(tool, (AuthoredWorkflowTool, TeamWorkflowTool)) and id(tool._config) not in owner_bindings:
+            config = replace(tool._config, tracer=None, event_bus=EventBus())
+            owner_bindings[id(tool._config)] = _clone_snapshot_component(
+                config, label="workflow configuration", memo=owner_bindings,
+            )
     agent, initial_tools, initial_tool_choice = _clone_snapshot_component(
         (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
         label="agent",
