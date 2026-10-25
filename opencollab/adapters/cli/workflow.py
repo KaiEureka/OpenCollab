@@ -86,6 +86,7 @@ def run_cmd(
     api_key: Optional[str] = typer.Option(None, "--api-key", help="API key (default from config)"),
     base_url: Optional[str] = typer.Option(None, "--base-url", help="API base URL (default from config)"),
     workspace: str = typer.Option(".", "--workspace", "-w", help="Working directory"),
+    run_id: Optional[str] = typer.Option(None, "--run-id", help="Original run identity for workflow continuation"),
     budget: Optional[int] = typer.Option(
         None,
         "--budget",
@@ -177,6 +178,7 @@ def run_cmd(
             agent_profile=agent_profile,
             **({"isolation": isolation} if isolation is not None else {}),
             **({"cleanup_timeout": cleanup_timeout} if cleanup_timeout is not None else {}),
+            **({"run_id": run_id} if run_id is not None else {}),
             save_dir=save_dir,
             trace=trace,
             return_details=True,

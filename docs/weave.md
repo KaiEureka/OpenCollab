@@ -197,6 +197,7 @@ rounds. `max_repair_rounds` and `stagnant_round_limit` bound repair attempts.
 An adapter's `save_state(data)` hook receives independent JSON snapshots for
 storage. Supply a saved snapshot as the JSON `state` input or through
 `WeaveState(saved_snapshot)` with `run_weave`. Reuse the saved `run_id`
-when calling the SDK. Generated groups continue at their checks, checked groups
+when calling the SDK or pass it as `workflow run weave --run-id RUN_ID` through
+the CLI. Generated groups continue at their checks, checked groups
 retain their generation results, and consumed repair rounds remain counted.
 The saved group fields must agree with the supplied groups.
