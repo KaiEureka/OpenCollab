@@ -46,6 +46,20 @@ topology:
 
 Workflow CLI 支持 `--isolation shared` 和 `--isolation worktree`。
 
+## Session 快照
+
+`opencollab.bootstrap.snapshot_session(session)` 按照[快照协作者要求](migrations/0.5.0.md)，
+创建独立的会话状态和分叉环境。源会话与成功创建的快照共享模型传输。
+OC 创建的传输由每个会话分别持有一份所有权引用，
+`await session.aclose()` 释放该会话的引用，最后一个拥有者关闭传输一次。
+源会话或兄弟快照关闭后，存活快照仍可继续请求模型。
+通过 `build_session(llm=...)` 注入的模型由调用者拥有，调用者在所有会话结束后关闭它。
+
+快照在状态和运行时协作者全部复制成功后取得模型引用，构建失败会清理已分叉的环境。
+共享模型的所有权通过引用计数保存，源会话关闭后可以回收，存活快照继续运行。
+从已释放模型所有权的会话创建新快照会抛出 `SnapshotSessionError`。
+各会话的环境分别执行自己的清理操作。
+
 ## 自定义环境提供器
 
 向 `OpenCollab` 传入 `environment_providers={"custom": factory}`，随后使用 `isolation="custom"`。每个工厂通过关键字参数接收 `workspace`、`base_environment`、`owned_save_dir`、`enable_adoption` 和 `owned_output_paths`。
