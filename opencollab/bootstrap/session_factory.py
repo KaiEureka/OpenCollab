@@ -316,7 +316,7 @@ def snapshot_session(
     from opencollab.bootstrap.team_workflow import TeamWorkflowTool
 
     session_tools = (*session.agent.tools, *session.runner._initial_agent_tools)
-    # deepcopy preserves function closures, so bind these tools to the branch explicitly.
+    # Exclude callable owners from deepcopy. Python 3.14 functions bypass memo lookup.
     owner_bindings = {
         id(tool._get_session): lambda: new
         for tool in session_tools
@@ -328,6 +328,8 @@ def snapshot_session(
         memo=owner_bindings,
     )
     for tool in (*agent.tools, *initial_tools):
+        if isinstance(tool, (AuthoredWorkflowTool, TeamWorkflowTool)):
+            tool._get_session = lambda: new
         if isinstance(tool, AuthoredWorkflowTool):
             tool._registered = False
     permission_policy = _clone_snapshot_component(session.permission_policy, label="permission policy")

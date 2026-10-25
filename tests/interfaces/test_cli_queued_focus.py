@@ -315,7 +315,7 @@ async def test_question_batch_releases_the_input_after_interrupt(
             else:
                 keyboard.send_text("/help\r")
                 await _wait_for(lambda: "Question 1?" in "".join(text for _, text in session.message()))
-                keyboard.send_text("src/第二个.py\r")
+                keyboard.send_text("src/\u7b2c\u4e8c\u4e2a.py\r")
             phase = "stopped" if interrupted else "done"
             await _wait_for(lambda: _snapshot(tmp_path, 0)["session_state"]["phase"] == phase)
             await _wait_for(lambda: session.app.is_running and session.default_buffer.text == draft)
@@ -335,7 +335,7 @@ async def test_question_batch_releases_the_input_after_interrupt(
     answers = {message["tool_call_id"]: message["content"] for message in messages
                if message["role"] == "tool" and message["tool_call_id"].startswith("question_")}
     assert answers == ({f"question_{index}": "User declined to answer." for index in range(question_count)}
-                       if interrupted else {"question_0": "/help", "question_1": "src/第二个.py"})
+                       if interrupted else {"question_0": "/help", "question_1": "src/\u7b2c\u4e8c\u4e2a.py"})
     assert (tmp_path / "batch-completed.txt").read_text() == "Batch completed"
     assert "Interactive team help" not in output.getvalue()
     assert sum("OFFLINE_ANALYST_ROLE" in body["messages"][0]["content"]

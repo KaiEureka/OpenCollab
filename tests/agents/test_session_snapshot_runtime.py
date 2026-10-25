@@ -354,3 +354,33 @@ async def test_snapshot_registered_workflow_charges_its_own_session(tmp_path):
         assert await source.env.read_file("marker.txt") == "SOURCE_MARKER"
     finally:
         await _close(branch, source)
+
+
+class _SessionOwner:
+    def get_session(self):
+        return self.session
+
+
+@pytest.mark.parametrize("tool_type", [AuthoredWorkflowTool, TeamWorkflowTool])
+async def test_snapshot_workflow_bound_method_keeps_its_owner_out_of_the_copy(tmp_path, tool_type):
+    owner = _SessionOwner()
+    config = SpawnConfig(model="gpt-4o", provider="openai", api_key=None, base_url=None,
+                         llm_timeout=60, tracer=None, event_bus=EventBus(), permission_policy=None)
+    tool = (
+        TeamWorkflowTool(owner.get_session, Registry(), config, None)
+        if tool_type is TeamWorkflowTool else AuthoredWorkflowTool(owner.get_session, config, None)
+    )
+    source = build_session(
+        agent=Agent(name="parent", system_prompt="Run a workflow.", tools=[tool]),
+        env=_ForkableEnvironment(str(tmp_path)), llm=_FileModel(),
+    )
+    owner.session = source
+    branch = None
+    try:
+        branch = snapshot_session(source)
+        manager = branch.agent.find_tool(tool.name)
+        assert manager is branch.runner._initial_agent_tools[0]
+        assert manager._get_session() is branch
+        assert tool._get_session() is source
+    finally:
+        await _close(branch, source)
