@@ -13,6 +13,7 @@ import os
 import sys
 import uuid
 from collections.abc import Awaitable
+from contextvars import ContextVar
 from typing import Any, Optional
 
 import typer
@@ -366,10 +367,18 @@ async def _run(
     # ``--yolo`` only auto-approves risky commands; a human is still present, so
     # the ask-user tool stays interactive — its question takes the shared input
     # line ahead of whatever the user was typing.
+    turn_cancel: ContextVar[asyncio.Event | None] = ContextVar("cli_turn_cancel", default=None)
+
+    async def read_question(text: str) -> str:
+        cancel = turn_cancel.get()
+        if cancel is not None and cancel.is_set():
+            raise EOFError
+        return await prompt.ask(text)
+
     permission_policy = None
     if not yolo:
-        permission_policy = TuiPermissionPolicy(read_line=prompt.ask)
-    ask_policy = TuiAskUserPolicy(read_line=prompt.ask)
+        permission_policy = TuiPermissionPolicy(read_line=read_question)
+    ask_policy = TuiAskUserPolicy(read_line=read_question)
 
     event_sink = TuiEventSink(tui)
     events_file = os.environ.get("OPENCOLLAB_EVENTS_FILE")
@@ -418,6 +427,7 @@ async def _run(
             tui.record_user_message(target_aid, line)
             tui.start_turn(target_aid)
             failure: SchedulerTurnError | None = None
+            cancel_token = turn_cancel.set(cancel)
             try:
                 await scheduler.run_turn(target_aid, line, cancel_event=cancel)
             except SchedulerTurnError as exc:
@@ -425,6 +435,7 @@ async def _run(
             except KeyboardInterrupt:
                 pass
             finally:
+                turn_cancel.reset(cancel_token)
                 # Flush the answering agent's unprinted tail when focus moved to a teammate.
                 # Switching focus would reprint rows already in scrollback.
                 tui.settle_turn(
