@@ -7,12 +7,14 @@ import os
 import shutil
 import sys
 import tempfile
+from functools import partial
 from pathlib import Path
 
 import pytest
 
 from opencollab.adapters.env import LocalEnvironment
 from opencollab.adapters.safety import SandboxInterceptor
+from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.tools.bash import BashTool
 from opencollab.adapters.tools.fs import FileReadTool, FileWriteTool
 from opencollab.application.event_bus import EventBus
@@ -21,11 +23,12 @@ from opencollab.application.submit_findings import SubmitFindingsTool
 from opencollab.application.tool_execution import ToolRuntime
 from opencollab.application.workflow_agents import WorkflowAgentsMixin
 from opencollab.application.workflow_registry import Registry, WorkflowSpec
-from opencollab.bootstrap import build_session, snapshot_session
+from opencollab.bootstrap import DefaultSessionFactory, build_session, snapshot_session
 from opencollab.bootstrap.agent_profiles import resolve_agent_profile
 from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
 from opencollab.bootstrap.context_builder import SpawnConfig
 from opencollab.bootstrap.context_policy import ContextPolicy
+from opencollab.bootstrap.team_config import RoleConfig, TeamConfig
 from opencollab.bootstrap.team_workflow import TeamWorkflowTool
 from opencollab.domain.agent import Agent
 from tests.support.session_characterization_test_support import llm_response
@@ -384,3 +387,122 @@ async def test_snapshot_workflow_bound_method_keeps_its_owner_out_of_the_copy(tm
         assert tool._get_session() is source
     finally:
         await _close(branch, source)
+
+
+@pytest.mark.parametrize("close_first", ["source", "branch"])
+@pytest.mark.parametrize("bound_factory", [False, True])
+async def test_snapshot_factory_preserves_environment_providers_and_current_catalog(
+    tmp_path, monkeypatch, close_first, bound_factory,
+):
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[2]))
+    monkeypatch.setenv("OPENCOLLAB_API_USAGE_LOG", os.devnull)
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "marker.txt").write_text("SOURCE_MARKER\n")
+    (workspace / "authored.py").write_text(
+        'from pathlib import Path\n'
+        'async def main(ctx, args):\n'
+        '    marker = Path("marker.txt").read_text()\n'
+        '    Path("workflow-marker.txt").write_text(marker)\n'
+        '    return marker\n'
+    )
+    environment = _ForkableEnvironment(str(workspace))
+    pool = SessionEnvironmentPool(str(workspace), isolation="worktree", base_environment=environment)
+    pool.set_source(environment, isolation="shared")
+    provider = pool.child_pool if bound_factory else lambda env, *, role: pool.child_pool(env, role=role)
+    config = SpawnConfig(model="gpt-4o", provider="openai", api_key="offline-test",  # pragma: allowlist secret
+                         base_url="http://127.0.0.1:9/v1", llm_timeout=1, tracer=None,
+                         event_bus=EventBus(), permission_policy=None)
+    factory = DefaultSessionFactory(
+        config, team_cfg=TeamConfig(roles={
+            "worker": RoleConfig(prompt="Read the marker.", tools=["bash", "manage_workflow"]),
+        }), environment_pool_factory=provider, environment_catalog=pool.describe,
+        lead_workspace=str(workspace), lead_environment=environment, allow_unisolated_child_shell=True,
+    )
+    source = factory.build_spawn_session(role="worker", env=environment, budget=10_000)
+    branch = None
+    try:
+        source_manager = source.agent.find_tool("manage_workflow")
+        assert source_manager._catalog()["default_isolation"] == "shared"
+        branch = snapshot_session(source)
+        await branch.env.write_file("marker.txt", "BRANCH_MARKER\n")
+        manager = branch.agent.find_tool("manage_workflow")
+        assert manager is branch.runner._initial_agent_tools[-1]
+        assert manager._get_session() is branch
+        assert manager._environment_pool_factory is provider
+        assert manager._catalog() == pool.describe(branch.env, role="worker")
+        schema = manager.to_openai_schema()["function"]["parameters"]["properties"]["isolation"]
+        assert schema["default"] == "worktree"
+        source_schema = source_manager.to_openai_schema()["function"]["parameters"]["properties"]["isolation"]
+        assert source_schema["default"] == "shared"
+        description = json.loads(await manager.execute_with_runtime(
+            {"action": "describe"}, ToolRuntime(branch.env, None, None),
+        ))
+        assert description["default_isolation"] == "worktree"
+
+        child_pool = manager._environment_pool_factory(branch.env, role="worker")
+        try:
+            assert child_pool.default_isolation == "worktree"
+            child = await child_pool.acquire("child")
+            assert child is not branch.env
+            assert child.workspace != branch.env.workspace
+            assert await child.read_file("marker.txt") == "BRANCH_MARKER\n"
+            await child.write_file("marker.txt", "CHILD_MARKER\n")
+            outcome = await child.exec_cmd("cat marker.txt")
+            assert outcome.returncode == 0 and outcome.stdout == "CHILD_MARKER\n"
+            patch = await child.get_diff()
+            assert "-BRANCH_MARKER" in patch and "+CHILD_MARKER" in patch
+            assert await branch.env.read_file("marker.txt") == "BRANCH_MARKER\n"
+            assert await source.env.read_file("marker.txt") == "SOURCE_MARKER\n"
+            await child_pool.release_env(child)
+        finally:
+            await child_pool.release()
+
+        first, other = (source, branch) if close_first == "source" else (branch, source)
+        await first.aclose()
+        await first.env.cleanup()
+        manager = other.agent.find_tool("manage_workflow")
+        runtime = ToolRuntime(other.env, None, None)
+        launched = json.loads(await manager.execute_with_runtime({
+            "action": "launch", "source": "authored.py", "python": sys.executable,
+        }, runtime))
+        finished = json.loads(await manager.execute_with_runtime({
+            "action": "wait", "id": launched["id"], "timeout": 20,
+        }, runtime))
+        expected = "BRANCH_MARKER\n" if other is branch else "SOURCE_MARKER\n"
+        assert finished["status"] == "completed", finished
+        assert finished["result"]["output"] == expected
+        assert await other.env.read_file("workflow-marker.txt") == expected
+        assert not (Path(first.env.workspace) / "workflow-marker.txt").exists()
+        child = manager._children[launched["id"]]
+        assert child.bridge._pool._source is other.env
+        assert child.bridge._pool.default_isolation == manager._catalog()["default_isolation"]
+        assert manager._reserved_tokens() == 0
+    finally:
+        await _close(branch, source)
+        await pool.release()
+
+
+async def test_snapshot_preserves_legacy_zero_argument_environment_catalog(tmp_path):
+    environment = _ForkableEnvironment(str(tmp_path))
+    pool = SessionEnvironmentPool(str(tmp_path), isolation="worktree", base_environment=environment)
+    pool.set_source(environment, isolation="shared")
+    catalog = partial(pool.describe, environment, role="worker")
+    config = SpawnConfig(model="gpt-4o", provider="openai", api_key=None, base_url=None,
+                         llm_timeout=60, tracer=None, event_bus=EventBus(), permission_policy=None)
+    tool = AuthoredWorkflowTool(lambda: source, config, None, environment_catalog=catalog)
+    source = build_session(
+        agent=Agent(name="worker", system_prompt="Run a workflow.", tools=[tool]),
+        env=environment, llm=_FileModel(),
+    )
+    branch = None
+    try:
+        assert tool._catalog() == catalog()
+        branch = snapshot_session(source)
+        manager = branch.agent.find_tool("manage_workflow")
+        assert manager._environment_catalog is catalog
+        assert manager._catalog() == catalog()
+        assert manager.to_openai_schema()["function"]["parameters"]["properties"]["isolation"]["default"] == "shared"
+    finally:
+        await _close(branch, source)
+        await pool.release()

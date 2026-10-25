@@ -103,6 +103,7 @@ class AuthoredWorkflowTool(Tool):
         save_dir: str | None, *, allow_unisolated_shell: bool = False,
         environment_pool_factory: Callable[..., Any] | None = None,
         environment_catalog: Callable[[], dict[str, Any]] | None = None,
+        describe_environment: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self._get_session = get_session
         self._config = config
@@ -110,12 +111,16 @@ class AuthoredWorkflowTool(Tool):
         self._allow_unisolated_shell = allow_unisolated_shell
         self._environment_pool_factory = environment_pool_factory
         self._environment_catalog = environment_catalog
+        self._describe_environment = describe_environment
         self.parameters = deepcopy(type(self).parameters)
         self._children: dict[str, _Child] = {}
         self._registered = False
         self._launch_lock = asyncio.Lock()
 
     def _catalog(self) -> dict[str, Any]:
+        if self._describe_environment is not None:
+            parent = self._get_session()
+            return self._describe_environment(parent.env, role=parent.agent.name)
         if self._environment_catalog is not None:
             return self._environment_catalog()
         return {"default_isolation": "shared",

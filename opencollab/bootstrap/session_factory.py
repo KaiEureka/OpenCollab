@@ -322,6 +322,12 @@ def snapshot_session(
         for tool in session_tools
         if isinstance(tool, (AuthoredWorkflowTool, TeamWorkflowTool))
     }
+    for tool in session_tools:
+        if isinstance(tool, AuthoredWorkflowTool):
+            # Keep configured provider owners outside the session's independently copied state.
+            for callback in (tool._environment_pool_factory, tool._environment_catalog, tool._describe_environment):
+                if callback is not None:
+                    owner_bindings[id(callback)] = callback
     agent, initial_tools, initial_tool_choice = _clone_snapshot_component(
         (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
         label="agent",
@@ -745,9 +751,7 @@ class DefaultSessionFactory:
         return AuthoredWorkflowTool(
             get_session, self._cfg, self._save_dir,
             environment_pool_factory=self._environment_pool_factory,
-            environment_catalog=(
-                lambda: self._environment_catalog(get_session().env, role=get_session().agent.name)
-            ) if self._environment_catalog is not None else None,
+            describe_environment=self._environment_catalog,
             allow_unisolated_shell=self._unisolated_shell_allowed(seated_at_start=seated_at_start),
         )
 
