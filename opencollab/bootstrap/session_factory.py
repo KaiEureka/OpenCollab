@@ -12,6 +12,7 @@ import inspect
 import os
 import re
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +23,8 @@ from opencollab.adapters.llm.retry import RetryTimeBudget
 from opencollab.adapters.llm.types import model_capabilities
 from opencollab.adapters.repo_map import build_repo_map
 from opencollab.adapters.safe_files import ensure_directory_no_symlinks
+from opencollab.adapters.safety import SandboxInterceptor
+from opencollab.adapters.single2_safety import Single2SafetyPolicy
 from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
@@ -309,20 +312,38 @@ def snapshot_session(
     silently sharing a workspace would make the resulting sessions unsafe to run
     concurrently.
     """
+    from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
+    from opencollab.bootstrap.team_workflow import TeamWorkflowTool
+
+    session_tools = (*session.agent.tools, *session.runner._initial_agent_tools)
+    # deepcopy preserves function closures, so bind these tools to the branch explicitly.
+    owner_bindings = {
+        id(tool._get_session): lambda: new
+        for tool in session_tools
+        if isinstance(tool, (AuthoredWorkflowTool, TeamWorkflowTool))
+    }
     agent, initial_tools, initial_tool_choice = _clone_snapshot_component(
         (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
         label="agent",
+        memo=owner_bindings,
     )
+    for tool in (*agent.tools, *initial_tools):
+        if isinstance(tool, AuthoredWorkflowTool):
+            tool._registered = False
     permission_policy = _clone_snapshot_component(session.permission_policy, label="permission policy")
     ask_policy = _clone_snapshot_component(session.tool_execution.ask_policy, label="ask policy")
     safety_policy = _clone_snapshot_component(session.tool_execution.safety_policy, label="safety policy")
     state = _clone_snapshot_component(session.state, label="session state")
     environment = _fork_snapshot_environment(session.env)
     try:
+        _rebind_snapshot_safety_policy(safety_policy, session.env.workspace, environment.workspace)
+        control = session.runner._run_control
+        if control is not None:
+            control = replace(control, initial_soft_budget_tokens=session.max_budget_tokens, on_event=None)
         new = build_session(
             agent=agent,
             env=environment,
-            max_budget_tokens=session.max_budget_tokens,
+            max_budget_tokens=session.runner.hard_budget_tokens,
             max_steps=session.max_steps,
             event_sink=event_sink,
             permission_policy=permission_policy,
@@ -332,6 +353,12 @@ def snapshot_session(
             llm_timeout=session.runner._per_call_timeout,
             aid=session.state.aid,
             run_id=session.run_id,
+            run_control=control,
+        )
+        new.max_budget_tokens = session.max_budget_tokens
+        new.runner.configure_enforcement(
+            enforcement_strength=session.runner._enforcement_strength,
+            commit_reserve=session.runner._commit_reserve,
         )
         if state.phase not in {
             SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
@@ -375,6 +402,21 @@ def snapshot_session(
                 f"with {type(cleanup_error).__name__} ({cleanup_error})",
             )
         raise
+
+def _rebind_snapshot_safety_policy(policy: Any, source_workspace: str, workspace: str) -> None:
+    def relocate(path: str) -> str:
+        source_root = os.path.realpath(source_workspace)
+        absolute = os.path.realpath(path)
+        if os.path.commonpath((source_root, absolute)) == source_root:
+            return os.path.abspath(os.path.join(workspace, os.path.relpath(absolute, source_root)))
+        return path
+
+    if isinstance(policy, Single2SafetyPolicy):
+        policy.root = relocate(policy.root)
+        _rebind_snapshot_safety_policy(policy._policy, source_workspace, workspace)
+    elif isinstance(policy, SandboxInterceptor):
+        policy.root = relocate(policy.root)
+        policy.allowed_roots = [relocate(root) for root in policy.allowed_roots]
 
 def _clone_snapshot_component(value: Any, *, label: str, memo: dict[int, Any] | None = None) -> Any:
     try:
