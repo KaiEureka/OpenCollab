@@ -47,6 +47,20 @@ def _repo(path):
 def _branch_exists(repo, branch: str) -> bool:
     return _git(repo, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0
 
+
+async def test_worktree_exec_forwards_binary_stdin(tmp_path):
+    environment = WorktreeEnvironment(str(_repo(tmp_path / "repo")))
+    payload = b"\x00workflow\n\xff"
+    try:
+        result = await environment.exec_cmd(shlex.join([
+            sys.executable, "-c", "import sys; print(sys.stdin.buffer.read().hex())",
+        ]), timeout=10, input_bytes=payload)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == payload.hex()
+    finally:
+        await environment.cleanup()
+
+
 @pytest.mark.parametrize("suffix", ["", " ", "\n"])
 @pytest.mark.parametrize("subdirectory", [False, True])
 async def test_git_worktree_keeps_whitespace_in_repository_root(

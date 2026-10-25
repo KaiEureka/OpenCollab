@@ -10,7 +10,8 @@ from __future__ import annotations
 import os
 import stat
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import BinaryIO
 
 from opencollab.adapters._env_base import TextFileRange
@@ -116,15 +117,13 @@ def open_parent_beneath(
         os.close(current_fd)
         raise
 
-def read_regular_bytes_at(
+@contextmanager
+def open_regular_read_at(
     root_fd: int,
     root_path: str | os.PathLike[str],
     path: str | os.PathLike[str],
-    *,
-    max_bytes: int,
-) -> bytes:
-    """Read a bounded regular file beneath a pinned directory descriptor."""
-    limit = _require_limit(max_bytes)
+) -> Iterator[BinaryIO]:
+    """Open a regular file beneath a pinned directory without following symlinks."""
     parent_fd, name = open_parent_beneath(
         root_fd,
         root_path,
@@ -141,6 +140,28 @@ def read_regular_bytes_at(
         opened = os.fstat(fd)
         if not stat.S_ISREG(opened.st_mode):
             raise OSError(f"read target is not a regular file: {path}")
+        handle = os.fdopen(fd, "rb")
+        fd = -1
+        with handle:
+            yield handle
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        os.close(parent_fd)
+
+
+def read_regular_bytes_at(
+    root_fd: int,
+    root_path: str | os.PathLike[str],
+    path: str | os.PathLike[str],
+    *,
+    max_bytes: int,
+) -> bytes:
+    """Read a bounded regular file beneath a pinned directory descriptor."""
+    limit = _require_limit(max_bytes)
+    with open_regular_read_at(root_fd, root_path, path) as handle:
+        fd = handle.fileno()
+        opened = os.fstat(fd)
         if opened.st_size > limit:
             raise ValueError(f"read target exceeds {limit}-byte limit: {path}")
         chunks: list[bytes] = []
@@ -155,10 +176,6 @@ def read_regular_bytes_at(
         if len(payload) > limit:
             raise ValueError(f"read target exceeds {limit}-byte limit: {path}")
         return payload
-    finally:
-        if fd >= 0:
-            os.close(fd)
-        os.close(parent_fd)
 
 def read_regular_text_range_at(
     root_fd: int,
