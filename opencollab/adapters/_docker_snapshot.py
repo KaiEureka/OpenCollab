@@ -5,6 +5,7 @@ import os
 import posixpath
 import shlex
 import shutil
+import stat
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,8 +15,10 @@ from opencollab.adapters._candidate_physical import _initialized_submodule_paths
 from opencollab.adapters._env_docker import DockerEnvironment
 from opencollab.adapters._env_local import LocalEnvironment
 from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters._env_worktree import WorktreeEnvironment
 from opencollab.adapters._git_patch_bytes import _complete, _patch_temporary
 from opencollab.adapters._team_candidate_environment import _TeamCandidateEnvironment
+from opencollab.adapters.safe_anchored_files import open_regular_read_at
 from opencollab.application.async_timeout import await_owned_operation
 
 
@@ -38,6 +41,38 @@ async def _copy_to_host(environment: Any, source: str, target: Path, *, director
     result = await delegate._docker("cp", "--", f"{delegate._container_id}:{source_path}", str(target))
     if result.returncode or result.stdout_dropped_bytes or result.stderr_dropped_bytes:
         raise OSError("Docker source workspace copy failed")
+
+
+async def _copy_artifact_to_host(environment: Any, source: str, target: Path) -> None:
+    relative = (
+        posixpath.relpath(source, environment.workspace) if posixpath.isabs(source) else posixpath.normpath(source)
+    )
+    if relative == ".." or relative.startswith("../"):
+        raise PermissionError("artifact path escapes workspace")
+    source = posixpath.join(environment.workspace, relative)
+    delegate = environment._delegate if isinstance(environment, _TeamCandidateEnvironment) else environment
+    if isinstance(delegate, WorktreeEnvironment):
+        delegate._ensure_active()
+        if delegate._local_env is None:
+            await delegate.setup()
+        delegate = delegate._local_env
+    if isinstance(delegate, LocalEnvironment):
+        def copy() -> None:
+            with open_regular_read_at(
+                delegate._root_fd(), delegate.workspace, delegate._relative_path(source),
+            ) as handle, target.open("wb") as output:
+                shutil.copyfileobj(handle, output)
+
+        await delegate._run_file_operation(copy)
+        return
+    if isinstance(delegate, DockerEnvironment):
+        source = await delegate._contained_file_path(source)
+    if isinstance(delegate, (DockerEnvironment, VMEnvironment)):
+        await _copy_to_host(delegate, source, target)
+        if not stat.S_ISREG(target.lstat().st_mode):
+            raise OSError("artifact transfer requires a regular file")
+        return
+    target.write_text(await environment.read_file(source), encoding="utf-8")
 
 
 def _remove_marker(path: Path) -> None:

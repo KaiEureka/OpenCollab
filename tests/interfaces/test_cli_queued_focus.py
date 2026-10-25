@@ -235,3 +235,108 @@ async def test_one_shot_prints_final_lead_answer_after_user_tabs_to_analyst(monk
 
     assert tui.selected_aid == 1
     assert output.getvalue().count("Final lead answer after inspection") == 1
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("question_count", "interrupted"), [(2, True), (1, True), (2, False)])
+async def test_question_batch_releases_the_input_after_interrupt(
+    monkeypatch, tmp_path, question_count, interrupted,
+):
+    tui, output, team, cfg = _install_cli(monkeypatch, tmp_path)
+    team.write_text(team.read_text().replace(
+        "tools: [spawn_agent]", "tools: [spawn_agent, ask_user, file_write]",
+    ))
+    entered, release = asyncio.Event(), asyncio.Event()
+    requests = []
+
+    def tool(name, arguments, call_id):
+        return {"id": call_id, "type": "function", "function": {
+            "name": name, "arguments": json.dumps(arguments),
+        }}
+
+    async def respond(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if "OFFLINE_ANALYST_ROLE" in body["messages"][0]["content"]:
+            return completion_http_response(request, text="Analyst completed")
+        user = next(message["content"] for message in reversed(body["messages"]) if message["role"] == "user")
+        if body["messages"][-1]["role"] != "user":
+            return completion_http_response(request, text="Lead completed")
+        if "setup_team" in user:
+            calls = [tool("spawn_agent", {"role": "analyst", "task": "initial_child_task"}, "spawn")]
+        elif "ask_batch" in user:
+            entered.set()
+            await release.wait()
+            calls = [tool("ask_user", {"question": f"Question {index}?"}, f"question_{index}")
+                     for index in range(question_count)]
+            calls.append(tool("file_write", {
+                "path": "batch-completed.txt", "mode": "create", "content": "Batch completed",
+            }, "write"))
+        else:
+            return completion_http_response(request, text="Lead completed")
+        return http_response(request, 200, json={
+            "id": "chatcmpl_questions", "object": "chat.completion", "created": 1, "model": body["model"],
+            "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
+                "role": "assistant", "content": None, "tool_calls": calls,
+            }}],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30},
+        })
+
+    install_sdk_transport(monkeypatch, "openai", respond)
+    with create_pipe_input() as keyboard:
+        session = PromptSession(input=keyboard, output=DummyOutput(), erase_when_done=True)
+        _pin_status_row_under_input(session)
+        def prompt_session(prompt):
+            prompt._session = session
+            return session
+
+        monkeypatch.setattr(LivePrompt, "_ensure_session", prompt_session)
+        run = asyncio.create_task(cli_main._run(
+            str(tmp_path), cfg, None, False, True, False, team_config_path=str(team),
+        ))
+        try:
+            await _wait_for(lambda: session.app.is_running)
+            keyboard.send_text("setup_team\r")
+            await _wait_for(lambda: _snapshot(tmp_path, 0)
+                            and _snapshot(tmp_path, 0)["session_state"]["phase"] == "done")
+            keyboard.send_text("ask_batch\r")
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            draft = "Continue the draft café"
+            keyboard.send_text(draft)
+            await _wait_for(lambda: session.default_buffer.text == draft)
+            release.set()
+            await _wait_for(lambda: "Question 0?" in "".join(text for _, text in session.message()))
+            keyboard.send_text("\t")
+            await _wait_for(lambda: tui.selected_aid == 1)
+            if interrupted:
+                keyboard.send_bytes(b"\x03")
+                await _wait_for(lambda: "Question 1?" in "".join(text for _, text in session.message())
+                                or _snapshot(tmp_path, 0)["session_state"]["phase"] == "stopped")
+                assert "Question 1?" not in "".join(text for _, text in session.message())
+            else:
+                keyboard.send_text("/help\r")
+                await _wait_for(lambda: "Question 1?" in "".join(text for _, text in session.message()))
+                keyboard.send_text("src/第二个.py\r")
+            phase = "stopped" if interrupted else "done"
+            await _wait_for(lambda: _snapshot(tmp_path, 0)["session_state"]["phase"] == phase)
+            await _wait_for(lambda: session.app.is_running and session.default_buffer.text == draft)
+            keyboard.send_text("\r")
+            await _wait_for(lambda: _snapshot(tmp_path, 1)["session_state"]["phase"] == "done"
+                            and any(draft in (message.get("content") or "")
+                                    for message in _snapshot(tmp_path, 1)["messages"]))
+            keyboard.send_text("/exit\r")
+            await asyncio.wait_for(run, timeout=5)
+        finally:
+            release.set()
+            if not run.done():
+                run.cancel()
+            await asyncio.gather(run, return_exceptions=True)
+
+    messages = _snapshot(tmp_path, 0)["messages"]
+    answers = {message["tool_call_id"]: message["content"] for message in messages
+               if message["role"] == "tool" and message["tool_call_id"].startswith("question_")}
+    assert answers == ({f"question_{index}": "User declined to answer." for index in range(question_count)}
+                       if interrupted else {"question_0": "/help", "question_1": "src/第二个.py"})
+    assert (tmp_path / "batch-completed.txt").read_text() == "Batch completed"
+    assert "Interactive team help" not in output.getvalue()
+    assert sum("OFFLINE_ANALYST_ROLE" in body["messages"][0]["content"]
+               and draft in body["messages"][-1]["content"] for body in requests) == 1

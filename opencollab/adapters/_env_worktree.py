@@ -679,12 +679,12 @@ class WorktreeEnvironment(Environment):
                 "call get_diff() and deliver its artifact first"
             )
 
-    async def exec_cmd(self, cmd: str, timeout: float = 120.0) -> ExecResult:
+    async def exec_cmd(self, cmd: str, timeout: float = 120.0, *, input_bytes: bytes | None = None) -> ExecResult:
         self._ensure_active()
         if self._local_env is None:
             await self.setup()
         assert self._local_env is not None
-        return await self._local_env.exec_cmd(cmd, timeout)
+        return await self._local_env.exec_cmd(cmd, timeout, input_bytes=input_bytes)
 
     async def read_file(self, path: str) -> str:
         self._ensure_active()

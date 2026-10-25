@@ -113,7 +113,10 @@ async def test_short_summary_still_uses_one_original_request(window):
     assert requests == [build_summary_request(segment)]
     assert summarizer.last_call_cacheable
 
-@pytest.mark.parametrize("failure", [RuntimeError("provider failed"), "<summary> </summary>"])
+@pytest.mark.parametrize("failure", [
+    RuntimeError("provider failed"), "<summary> </summary>",
+    SimpleNamespace(content="<summary>Truncated earlier changes.</summary>", finish_reason="max_tokens"),
+])
 async def test_chunk_failure_stops_before_the_tail_and_never_returns_a_partial_summary(failure):
     requests = []
 
@@ -123,7 +126,7 @@ async def test_chunk_failure_stops_before_the_tail_and_never_returns_a_partial_s
             return SimpleNamespace(content="<summary>earlier user changes</summary>")
         if isinstance(failure, Exception):
             raise failure
-        return SimpleNamespace(content=failure)
+        return SimpleNamespace(content=failure) if isinstance(failure, str) else failure
 
     summarizer = ReadTimeSummarizer(
         complete, context_window=WINDOW, max_output_tokens=OUTPUT, transcript_path="session.json",

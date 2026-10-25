@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_args
 
+from opencollab.adapters._docker_snapshot import _copy_artifact_to_host
+from opencollab.adapters._env_process import ProcessCleanupError
 from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.adapters.tools._paths import checked_path
 from opencollab.adapters.tools.base import Tool
@@ -320,15 +322,16 @@ class AuthoredWorkflowTool(Tool):
             child.tokens = tokens
 
     async def _execute(self, child: _Child, command: str, request_bytes: bytes) -> None:
-        execution = asyncio.create_task(child.environment.exec_cmd(
-            command, timeout=math.inf, input_bytes=request_bytes,
-        ))
-        child.execution = execution
-        if child.stop_requested:
-            execution.cancel()
+        execution = None
         logs: dict[str, Any] = {}
         status = "running"
         try:
+            execution = asyncio.create_task(child.environment.exec_cmd(
+                command, timeout=math.inf, input_bytes=request_bytes,
+            ))
+            child.execution = execution
+            if child.stop_requested:
+                execution.cancel()
             while not execution.done():
                 await asyncio.wait({execution}, timeout=0.1)
                 assert child.bridge is not None
@@ -340,7 +343,12 @@ class AuthoredWorkflowTool(Tool):
             logs = {"returncode": outcome.returncode, "stdout": outcome.stdout, "stderr": outcome.stderr}
             if outcome.returncode:
                 raise RuntimeError(f"Workflow runner exited {outcome.returncode}: {outcome.stderr[-2000:]}")
-            child.result = json.loads(await child.environment.read_file(posixpath.join(child.artifacts, "result.json")))
+            with tempfile.TemporaryDirectory(prefix="opencollab-child-result-") as temporary:
+                result_path = Path(temporary) / "result.json"
+                await _copy_artifact_to_host(
+                    child.environment, posixpath.join(child.artifacts, "result.json"), result_path,
+                )
+                child.result = json.loads(result_path.read_text(encoding="utf-8"))
             self._account_usage(child, child.result["tokens"])
             status = child.result["status"]
         except asyncio.CancelledError:
@@ -350,14 +358,16 @@ class AuthoredWorkflowTool(Tool):
             status = "failed"
             child.result = {"status": "failed", "output": None, "reason": f"{type(exc).__name__}: {exc}"}
         finally:
-            if not execution.done():
-                execution.cancel()
-            settled = await asyncio.gather(execution, return_exceptions=True)
-            if isinstance(settled[0], Exception):
-                status = "failed"
-                child.cleanup_error = settled[0]
-                child.result = {"status": "failed", "output": None,
-                                "reason": f"child process cleanup failed: {settled[0]}"}
+            if execution is not None:
+                cancelling = not execution.done()
+                if cancelling:
+                    execution.cancel()
+                settled = await asyncio.gather(execution, return_exceptions=True)
+                if isinstance(settled[0], ProcessCleanupError) or (cancelling and isinstance(settled[0], Exception)):
+                    status = "failed"
+                    child.cleanup_error = settled[0]
+                    child.result = {"status": "failed", "output": None,
+                                    "reason": f"child process cleanup failed: {settled[0]}"}
             try:
                 assert child.bridge is not None
                 await await_owned_operation(child.bridge.aclose(), propagate_cancellation=False)
@@ -388,10 +398,11 @@ class AuthoredWorkflowTool(Tool):
                         ):
                             raise ValueError("invalid child artifact name")
                         try:
-                            content = await child.environment.read_file(posixpath.join(child.artifacts, name))
+                            await _copy_artifact_to_host(
+                                child.environment, posixpath.join(child.artifacts, name), directory / name,
+                            )
                         except FileNotFoundError:
                             continue
-                        (directory / name).write_text(content, encoding="utf-8")
                     child.saved_artifacts = str(directory)
                     (directory / "result.json").write_text(json.dumps(self._snapshot(child, include_result=True)),
                                                            encoding="utf-8")
