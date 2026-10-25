@@ -141,7 +141,7 @@ class _BoundedUTF8Writer:
         return len(text)
 
 class SessionStore:
-    allowed_roles = {"system", "user", "assistant", "tool"}
+    allowed_roles = {"system", "developer", "user", "assistant", "tool"}
 
     def has_snapshot(self, path: str) -> bool:
         """Return whether a base or recoverable journal sidecar is present."""
@@ -296,7 +296,7 @@ class SessionStore:
             role = msg.get("role")
             if role not in self.allowed_roles:
                 raise ValueError(f"Invalid message role at position {lineno}: {role}")
-            if role in {"system", "user"}:
+            if role in {"system", "developer", "user"}:
                 self._validate_content(msg, lineno)
             elif role == "assistant":
                 tool_calls = msg.get("tool_calls")
