@@ -54,16 +54,24 @@ class WorkflowBudget:
     def spent(self) -> int:
         return sum(int(getattr(s, "used_tokens", 0)) for s in self._sessions)
 
+    def _track_session(self, session: Any) -> None:
+        self._sessions.append(session)
+        if self._parent_allocation is not None:
+            parent, allocation = self._parent_allocation
+            allocation.sessions.append(session)
+            parent._track_session(session)
+
     def remaining(self) -> float:
         if self._total is None:
             return float("inf")
         total = self._total
+        spent = self.spent()
         if self._parent_allocation is not None:
             parent, allocation = self._parent_allocation
             # A sibling can overspend while this workflow waits for an agent slot.
-            total = min(total, parent.remaining() + allocation.remaining())
+            total = min(total, spent + parent.remaining() + allocation.remaining())
         reserved_unspent = sum(lease.remaining() for lease in self._leases)
-        return total - self.spent() - reserved_unspent
+        return total - spent - reserved_unspent
 
     def reserve(self, lease: _BudgetLease) -> None:
         self._leases.append(lease)
