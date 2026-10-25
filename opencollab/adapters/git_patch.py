@@ -36,16 +36,18 @@ def _git_command_and_config_guard(*, allow_core_worktree: bool = False) -> tuple
         "for config_scope in $config_scopes; do "
         f"unsafe_config=$({git_command} config \"$config_scope\" --includes --name-only --get-regexp "
         "'^(diff\\..*\\.(command|textconv)|filter\\..*|"
-        f"core\\.(excludesfile|sparsecheckout|sparsecheckoutcone{worktree_setting}))$' "
+        f"core\\.(excludesfile{worktree_setting}))$' "
         "2>/dev/null); "
         'config_rc=$?; if [ "$config_rc" -eq 0 ]; then '
         "echo \"unsafe repository Git configuration: $unsafe_config\" >&2; exit 125; "
         'elif [ "$config_rc" -ne 1 ]; then exit "$config_rc"; fi; '
-        f'fsmonitor=$({git_command} config "$config_scope" --includes --type=bool '
-        "--get core.fsmonitor 2>/dev/null); fsmonitor_rc=$?; "
-        'if [ "$fsmonitor_rc" -eq 0 ] && [ "$fsmonitor" = false ]; then :; '
-        'elif [ "$fsmonitor_rc" -ne 1 ]; then '
-        "echo 'unsafe repository Git configuration: core.fsmonitor' >&2; exit 125; fi; "
+        "for boolean_key in core.fsmonitor core.sparsecheckout core.sparsecheckoutcone; do "
+        f'config_value=$({git_command} config "$config_scope" --includes --type=bool '
+        '--get "$boolean_key" 2>/dev/null); config_rc=$?; '
+        'if [ "$config_rc" -eq 0 ] && [ "$config_value" = false ]; then :; '
+        'elif [ "$config_rc" -ne 1 ]; then '
+        'echo "unsafe repository Git configuration: $boolean_key" >&2; exit 125; fi; '
+        "done; "
         "done; "
         f'info_attributes=$({git_command} rev-parse --git-path info/attributes) || exit 125; '
         'if [ -L "$info_attributes" ] || { [ -e "$info_attributes" ] && [ ! -f "$info_attributes" ]; }; then '
@@ -164,13 +166,11 @@ def guarded_staged_diff_command(
     ``core.attributesFile`` and ``diff.ignoreSubmodules`` are pinned by an
     explicit ``-c``, which outranks any repository-local value, so a repository
     that marks a file undiffable or hides a gitlink change cannot do either
-    here. ``core.fsmonitor`` is judged by its value: a repository that turns a
-    monitor off is hardening itself and is allowed through, while one that turns
-    a monitor on is refused, because a monitor that lies about what changed can
-    only be trusted or refused, never overridden. Everything else that could
-    bend the reading -- a redirected working tree, a sparse checkout, an
-    excludes file, and the clean/smudge filters and external diff drivers a
-    tracked ``.gitattributes`` can still reach -- is refused outright.
+    here. ``core.fsmonitor``, ``core.sparsecheckout``, and
+    ``core.sparsecheckoutcone`` accept Git boolean false values or an absent
+    setting. Enabled or malformed values are refused. Redirected working trees,
+    excludes files, clean/smudge filters, and external diff drivers reachable
+    through tracked ``.gitattributes`` are refused outright.
 
     A refusal exits 125 rather than reporting a patch this command cannot vouch
     for.
