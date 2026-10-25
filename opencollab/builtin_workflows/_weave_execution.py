@@ -74,6 +74,10 @@ class _CommandProbe(_Proxy):
     def prepare_command(self, command: str) -> str:
         return self._delegate.with_pass_reporting(command)
 
+    def requires_test_evidence(self, command: str) -> bool:
+        return any(self._delegate.invokes_pytest(_command_words(shlex.split(segment)))
+                   for segment in _command_segments(command))
+
 def _command_spec(value: Any) -> tuple[str, str | None]:
     if isinstance(value, str):
         return value, None
@@ -103,6 +107,8 @@ def _command_segments(command: str) -> list[str]:
         elif quote is None and char in "(){}":
             return []
         elif quote is None and char == "#" and (index == 0 or command[index - 1].isspace()):
+            if any(line.strip() for line in command[index:].splitlines()[1:]):
+                return []
             command = command[:index]
             break
         elif quote != "'" and (char == "`" or command[index:index + 2] == "$("):
@@ -111,20 +117,30 @@ def _command_segments(command: str) -> list[str]:
             if command[start:index].strip():
                 segments.append(command[start:index])
             start = index + 2
+        elif quote is None and char in ";|&":
+            return []
+        elif quote is None and char in "\n\r" and command[:index].strip() and command[index:].strip():
+            return []
     if command[start:].strip():
         segments.append(command[start:])
     return segments
 
-def _has_behavior_command(tokens: list[str]) -> bool:
-    for token in tokens:
+def _command_words(tokens: list[str]) -> list[str]:
+    for index, token in enumerate(tokens):
         variable, separator, _ = token.partition("=")
         if separator and variable.isidentifier():
             continue
         name = token.rsplit("/", 1)[-1]
         if name in {"env", "command", "builtin", "--"}:
             continue
-        return not token.startswith("-") and name not in {"true", ":", "echo", "printf"}
-    return False
+        return tokens[index:]
+    return []
+
+def _has_behavior_command(tokens: list[str]) -> bool:
+    words = _command_words(tokens)
+    return bool(words) and not words[0].startswith("-") and words[0].rsplit("/", 1)[-1] not in {
+        "true", ":", "echo", "printf",
+    }
 
 def _verification_mode(command: str) -> bool:
     try:
@@ -167,9 +183,7 @@ async def _verify_commands(ctx: Any, commands: Sequence[Any], seconds: float | N
             completed = result.returncode == 0 and not truncated and not getattr(result, "timed_out", False)
             if records:
                 row["ok"] = completed and all(record.get("verified") is True for record in records)
-            lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-            lexer.whitespace_split = True
-            requires_test_evidence = any(token.rsplit("/", 1)[-1] == "pytest" for token in lexer)
+            requires_test_evidence = tool.requires_test_evidence(command)
             if not records and (expected is None or requires_test_evidence):
                 row["reason"] = ("pytest command requires per-target test evidence from a supported invocation"
                                  if requires_test_evidence else

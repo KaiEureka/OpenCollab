@@ -11,12 +11,13 @@ from opencollab.application.ports import ToolPort as Tool
 
 from ._test_results import (
     _is_pytest_runner,
+    _parts_invoke_pytest,
     _passed_tests,
     _target_has_pass_proof,
     _verification_targets_overlap,
     has_pass_evidence,
 )
-from .command_evidence import parse_test_command, relative_target
+from .command_evidence import _strip_command_padding, parse_test_command, relative_target
 
 
 def _pytest_target(target: str, workspace: str | None, local_filesystem: bool) -> str:
@@ -103,6 +104,7 @@ class BashEvidence:
         return getattr(self._delegate, name)
 
     def with_pass_reporting(self, command: str) -> str:
+        command = _strip_command_padding(command)
         spec = parse_test_command(command, None)
         if spec is None or not spec.provable or not _is_pytest_runner(spec.runner):
             return command
@@ -121,6 +123,9 @@ class BashEvidence:
                 runner_seen = False
             if token.rsplit("/", 1)[-1] == "pytest":
                 runner_seen = True
+
+    def invokes_pytest(self, parts: list[str]) -> bool:
+        return _parts_invoke_pytest(parts)
 
     def fork_verification_scope(self, scope: dict[object, Any]) -> BashEvidence:
         """Share one fresh observer among this call's Bash and edit tools."""

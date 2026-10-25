@@ -47,6 +47,12 @@ async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed, wrap
     "echo Starting && env printf CHECK_OK", "echo Starting && command printf CHECK_OK",
     "echo Starting && /usr/bin/env CHECK_ENV=yes printf CHECK_OK",
     "echo Starting && (printf CHECK_OK)", "echo Starting && { printf CHECK_OK; }",
+    "echo Starting && true; printf CHECK_OK", "echo Starting && :; printf CHECK_OK",
+    "echo Starting && false || printf CHECK_OK", "echo Starting && false | printf CHECK_OK",
+    "echo Starting && false & printf CHECK_OK",
+    "echo Starting && true\nprintf CHECK_OK", "echo Starting && :\nprintf CHECK_OK",
+    "echo Starting && false\nprintf CHECK_OK",
+    "echo Starting && false # a comment\nprintf CHECK_OK",
 ])
 async def test_static_printing_compounds_remain_unverified(tmp_path, command):
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
@@ -74,21 +80,80 @@ async def test_quoted_group_characters_preserve_real_probe_execution(tmp_path, q
     target = "check (result) {value}.py"
     (tmp_path / target).write_text(
         "from pathlib import Path\nimport sys\n"
-        "assert sys.argv[1] == 'argument (result) {value}'\n"
+        "assert sys.argv[1] == 'argument (result) {value} ; | & &&'\n"
         "Path('executed').write_text('yes')\n"
         "print('CHECK_OK')\n",
         encoding="utf-8",
     )
     command = f"echo {quote}Starting (check) {{value}}{quote} && {shlex.quote(sys.executable)} "
-    command += f"{quote}{target}{quote} {quote}argument (result) {{value}}{quote}"
+    command += f"{quote}{target}{quote} {quote}argument (result) {{value}} ; | & &&{quote}"
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
     assert output["executed"] is True and output["ok"] is True
     assert (tmp_path / "executed").read_text() == "yes"
 
 
+async def test_escaped_control_characters_preserve_real_probe_execution(tmp_path):
+    (tmp_path / "check.py").write_text(
+        "from pathlib import Path\nimport sys\n"
+        "assert sys.argv[1] == 'argument;|& '\n"
+        "Path('executed').write_text('yes')\n"
+        "print('CHECK_OK')\n",
+        encoding="utf-8",
+    )
+    command = f"echo Starting && {shlex.quote(sys.executable)} check.py argument\\;\\|\\&\\ "
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert output["executed"] is True and output["ok"] is True
+    assert (tmp_path / "executed").read_text() == "yes"
+
+
+@pytest.mark.parametrize("padding", [("", ""), ("", "\n"), ("", "\r\n"), (" \n\t", " \t\r\n")])
+async def test_probe_padding_preserves_real_probe_execution(tmp_path, padding):
+    (tmp_path / "check.py").write_text(
+        "from pathlib import Path\nimport sys\n"
+        "assert len(sys.argv) == 1\n"
+        "assert 6 * 7 == 42\n"
+        "Path('executed').write_text('yes')\n"
+        "print('CHECK_OK')\n",
+        encoding="utf-8",
+    )
+    command = padding[0] + f"{shlex.quote(sys.executable)} check.py" + padding[1]
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert output["executed"] is True and output["ok"] is True
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert output["report"]["checks"][0]["command"] == command
+
+
+@pytest.mark.parametrize("argument", ["pytest", "unittest", "/opt/runners/pytest"])
+@pytest.mark.parametrize("prefix", ["", "echo Starting && env CHECK_ENV=yes "])
+async def test_script_runner_argument_preserves_assertion_probe_delivery(tmp_path, argument, prefix):
+    (tmp_path / "runner.txt").write_text(argument, encoding="utf-8")
+    (tmp_path / "check_runner.py").write_text(
+        "from pathlib import Path\nimport sys\n"
+        "assert Path('runner.txt').read_text() == sys.argv[1]\n"
+        "assert Path('result.txt').read_text() == 'correct\\n'\n"
+        "Path('executed').write_text('yes')\n"
+        "print('CHECK_OK')\n",
+        encoding="utf-8",
+    )
+    command = f"{prefix}{shlex.quote(sys.executable)} check_runner.py {shlex.quote(argument)}"
+    result = await OpenCollab(tmp_path, model="offline").workflow(
+        "weave", {"groups": [{"id": "file", "prompt": "write-stage writes result.txt"}],
+                  "check_commands": [{"command": command, "expected_output": "CHECK_OK"}],
+                  "config": {"max_steps": 4, "max_repair_rounds": 0}},
+        llm=FileModel(initial="correct\n"), budget=20_000, limit_mode="explicit", trace=False, timeout=20,
+    )
+    assert result.ok, result.reason
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert result.output["status"] == "completed" and result.output["delivery_ok"] is True
+    row = result.output["verification"]["report"]["checks"][0]
+    assert row["executed"] is True and row["exit_code"] == 0 and row["matched"] is True
+    assert not row["test_records"]
+
+
 @pytest.mark.parametrize("target", ["test_result.py", "test result.py"])
 @pytest.mark.parametrize("separator", [False, True])
-async def test_documented_quiet_pytest_verifies_actual_target(tmp_path, target, separator):
+@pytest.mark.parametrize("padding", [("", ""), ("", "\n"), ("", "\r\n"), (" \n\t", " \t\r\n")])
+async def test_documented_quiet_pytest_verifies_actual_target(tmp_path, target, separator, padding):
     (tmp_path / target).write_text(
         "from pathlib import Path\n"
         "def test_result():\n"
@@ -98,6 +163,7 @@ async def test_documented_quiet_pytest_verifies_actual_target(tmp_path, target, 
     )
     command = f"{shlex.quote(sys.executable)} -m pytest -q -p no:cacheprovider "
     command += ("-- " if separator else "") + shlex.quote(target)
+    command = padding[0] + command + padding[1]
     result = await OpenCollab(tmp_path, model="offline").workflow(
         "weave", {"groups": [{"id": "file", "prompt": "write-stage writes result.txt"}],
                   "check_commands": [command], "config": {"max_steps": 4, "max_repair_rounds": 0}},
@@ -136,7 +202,7 @@ async def test_quiet_pytest_preserves_cd_quotes_variables_and_selected_test(tmp_
 
 
 @pytest.mark.parametrize("mode", ["passed", "failed", "empty", "help", "collect", "compound", "redirect", "suffix"])
-@pytest.mark.parametrize("prefix", ["", "echo Starting && "])
+@pytest.mark.parametrize("prefix", ["", "echo Starting && ", "echo Starting && env CHECK_ENV=yes "])
 async def test_pytest_adverse_results_and_unsupported_shell_remain_unverified(tmp_path, mode, prefix):
     (tmp_path / "test_result.py").write_text(
         "from pathlib import Path\n"
@@ -155,7 +221,7 @@ async def test_pytest_adverse_results_and_unsupported_shell_remain_unverified(tm
     output = await _check(tmp_path, {"command": command, "expected_output": expected or "CHECK_OK"})
     assert output["ok"] is (mode == "passed" and not prefix)
     row = output["report"]["checks"][0]
-    if mode in {"help", "collect"}:
+    if mode in {"help", "collect", "suffix"}:
         assert output["executed"] is False
         assert not (tmp_path / "test-executed").exists()
     else:
