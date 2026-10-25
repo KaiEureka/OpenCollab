@@ -71,6 +71,9 @@ class _CommandProbe(_Proxy):
         captured.environment = _CaptureEnvironment(environment, self.results) if environment is not None else None
         return await self._delegate.execute_with_runtime(params, captured)
 
+    def prepare_command(self, command: str) -> str:
+        return self._delegate.with_pass_reporting(command)
+
 def _command_spec(value: Any) -> tuple[str, str | None]:
     if isinstance(value, str):
         return value, None
@@ -81,15 +84,45 @@ def _command_spec(value: Any) -> tuple[str, str | None]:
         raise ValueError("a command probe requires command text and nonempty expected_output")
     return command, expected
 
+def _command_segments(command: str) -> list[str]:
+    quote = None
+    escaped = False
+    start = 0
+    segments = []
+    for index, char in enumerate(command):
+        if index < start:
+            continue
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif char == quote:
+            quote = None
+        elif quote is None and char in {"'", '"'}:
+            quote = char
+        elif quote is None and char == "#" and (index == 0 or command[index - 1].isspace()):
+            command = command[:index]
+            break
+        elif quote != "'" and (char == "`" or command[index:index + 2] == "$("):
+            return []
+        elif quote is None and command[index:index + 2] == "&&":
+            if command[start:index].strip():
+                segments.append(command[start:index])
+            start = index + 2
+    if command[start:].strip():
+        segments.append(command[start:])
+    return segments
+
 def _verification_mode(command: str) -> bool:
     try:
-        tokens = shlex.split(command)
+        segments = [shlex.split(segment) for segment in _command_segments(command)]
     except ValueError:
         return False
-    return bool(tokens) and not any(
+    return any(tokens and tokens[0].rsplit("/", 1)[-1] not in {"true", ":", "echo", "printf"}
+               for tokens in segments) and not any(
         token in {"-h", "--help", "--collect-only", "--co", "--version"}
-        or token.startswith("--collect-only=") for token in tokens
-    ) and tokens[0] not in {"true", ":", "echo", "printf"}
+        or token.startswith("--collect-only=") for tokens in segments for token in tokens
+    )
 
 async def _verify_commands(ctx: Any, commands: Sequence[Any], seconds: float | None) -> dict[str, Any]:
     deadline = math.inf if seconds is None else time.monotonic() + seconds
@@ -103,7 +136,10 @@ async def _verify_commands(ctx: Any, commands: Sequence[Any], seconds: float | N
             checks.append(row)
             continue
         tool = _CommandProbe()
-        params: dict[str, Any] = {"command": command}
+        executed_command = tool.prepare_command(command)
+        if executed_command != command:
+            row["executed_command"] = executed_command
+        params: dict[str, Any] = {"command": executed_command}
         if math.isfinite(remaining):
             params["timeout"] = remaining
         row["output"] = await ctx.execute_verification(tool, params)
@@ -116,16 +152,21 @@ async def _verify_commands(ctx: Any, commands: Sequence[Any], seconds: float | N
             truncated = any(getattr(result, key, False) for key in (
                 "stdout_truncated", "stderr_truncated", "stdout_dropped_bytes", "stderr_dropped_bytes",
             ))
+            completed = result.returncode == 0 and not truncated and not getattr(result, "timed_out", False)
             if records:
-                row["ok"] = all(record.get("verified") is True for record in records)
-            elif expected is None:
-                row["reason"] = "command requires parsed test evidence or an explicit expected_output probe"
+                row["ok"] = completed and all(record.get("verified") is True for record in records)
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+            lexer.whitespace_split = True
+            requires_test_evidence = any(token.rsplit("/", 1)[-1] == "pytest" for token in lexer)
+            if not records and (expected is None or requires_test_evidence):
+                row["reason"] = ("pytest command requires per-target test evidence from a supported invocation"
+                                 if requires_test_evidence else
+                                 "command requires parsed test evidence or an explicit expected_output probe")
             if expected is not None:
                 output = result.stdout + ("\n" + result.stderr if result.stderr else "")
                 row["expected_output"] = expected
                 row["matched"] = expected in output
-                row["ok"] = (row["ok"] if records else True) and result.returncode == 0 \
-                    and not truncated and not getattr(result, "timed_out", False) and row["matched"]
+                row["ok"] = (row["ok"] if records else not requires_test_evidence) and completed and row["matched"]
         checks.append(row)
     return {
         "ok": bool(checks) and all(row["ok"] for row in checks),

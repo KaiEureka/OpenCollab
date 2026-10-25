@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import os.path
 import posixpath
+import shlex
 from typing import Any
 
 from opencollab.application.ports import ToolPort as Tool
@@ -100,6 +101,26 @@ class BashEvidence:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate, name)
+
+    def with_pass_reporting(self, command: str) -> str:
+        spec = parse_test_command(command, None)
+        if spec is None or not spec.provable or not _is_pytest_runner(spec.runner):
+            return command
+        lexer = shlex.shlex(command, posix=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        runner_seen = False
+        while True:
+            start = lexer.instream.tell()
+            token = lexer.get_token()
+            if token is None:
+                return command + " -rA"
+            if runner_seen and token == "--":
+                return command[:start] + "-rA " + command[start:]
+            if token == "&&":
+                runner_seen = False
+            if token.rsplit("/", 1)[-1] == "pytest":
+                runner_seen = True
 
     def fork_verification_scope(self, scope: dict[object, Any]) -> BashEvidence:
         """Share one fresh observer among this call's Bash and edit tools."""
