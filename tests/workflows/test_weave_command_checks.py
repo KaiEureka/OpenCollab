@@ -23,7 +23,8 @@ async def _check(workspace, command, seconds=10):
 
 
 @pytest.mark.parametrize("passed", [False, True])
-async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed):
+@pytest.mark.parametrize("wrapper", ["", "env CHECK_ENV=yes "])
+async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed, wrapper):
     (tmp_path / "check.py").write_text(
         "from pathlib import Path\n"
         "Path('executed').write_text('yes')\n"
@@ -31,7 +32,7 @@ async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed):
         "print('CHECK_OK')\n",
         encoding="utf-8",
     )
-    command = f"echo 'Starting check' && {shlex.quote(sys.executable)} check.py"
+    command = f"echo 'Starting check' && {wrapper}{shlex.quote(sys.executable)} check.py"
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
     assert (tmp_path / "executed").read_text() == "yes"
     assert output["executed"] is True
@@ -43,6 +44,8 @@ async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed):
     "echo Starting && printf CHECK_OK", "echo 'Starting && python check.py CHECK_OK'",
     "echo CHECK_OK # && python check.py", "echo CHECK_OK && echo '&&' python check.py",
     "echo CHECK_OK | cat", "echo CHECK_OK; printf CHECK_OK", "echo Starting && /bin/echo CHECK_OK",
+    "echo Starting && env printf CHECK_OK", "echo Starting && command printf CHECK_OK",
+    "echo Starting && /usr/bin/env CHECK_ENV=yes printf CHECK_OK",
 ])
 async def test_static_printing_compounds_remain_unverified(tmp_path, command):
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})

@@ -113,13 +113,23 @@ def _command_segments(command: str) -> list[str]:
         segments.append(command[start:])
     return segments
 
+def _has_behavior_command(tokens: list[str]) -> bool:
+    for token in tokens:
+        variable, separator, _ = token.partition("=")
+        if separator and variable.isidentifier():
+            continue
+        name = token.rsplit("/", 1)[-1]
+        if name in {"env", "command", "builtin", "--"}:
+            continue
+        return not token.startswith("-") and name not in {"true", ":", "echo", "printf"}
+    return False
+
 def _verification_mode(command: str) -> bool:
     try:
         segments = [shlex.split(segment) for segment in _command_segments(command)]
     except ValueError:
         return False
-    return any(tokens and tokens[0].rsplit("/", 1)[-1] not in {"true", ":", "echo", "printf"}
-               for tokens in segments) and not any(
+    return any(_has_behavior_command(tokens) for tokens in segments) and not any(
         token in {"-h", "--help", "--collect-only", "--co", "--version"}
         or token.startswith("--collect-only=") for tokens in segments for token in tokens
     )
