@@ -73,6 +73,13 @@ test output. An executable probe uses a `command` and its `expected_output`, as
 shown above. Include assertions in the probe so the expected output follows
 the behavior being checked.
 
+Weave adds `-rA` to recognized pytest invocations to retain the executed test
+nodes, including ordinary `python -m pytest test_result.py -q` checks. The
+verification report keeps the supplied `command` and records `executed_command`
+when reporting flags were added. Shell combinations outside the supported test
+parser require an application verifier or an assertion script with
+`expected_output`.
+
 ## Run through the public SDK
 
 This script uses the installed package, creates ordinary files, and verifies
@@ -190,6 +197,7 @@ rounds. `max_repair_rounds` and `stagnant_round_limit` bound repair attempts.
 An adapter's `save_state(data)` hook receives independent JSON snapshots for
 storage. Supply a saved snapshot as the JSON `state` input or through
 `WeaveState(saved_snapshot)` with `run_weave`. Reuse the saved `run_id`
-when calling the SDK. Generated groups continue at their checks, checked groups
+when calling the SDK or pass it as `workflow run weave --run-id RUN_ID` through
+the CLI. Generated groups continue at their checks, checked groups
 retain their generation results, and consumed repair rounds remain counted.
 The saved group fields must agree with the supplied groups.
