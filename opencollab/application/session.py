@@ -52,6 +52,10 @@ class _InheritedLimit(Enum):
     RUNTIME = "runtime"
 
 @dataclass
+class _SharedLLMOwnership:
+    owners: int = 1
+
+@dataclass
 class SessionRuntime:
     """Pre-built collaborators a ``Session`` facade keeps as attributes.
 
@@ -137,6 +141,7 @@ class Session:
         self._auto_save_subscriber = runtime.auto_save_subscriber
         self.runner.late_provider_usage_checkpoint = self.enqueue_auto_save
         self._owns_llm = runtime.owns_llm
+        self._shared_llm_ownership: _SharedLLMOwnership | None = None
         self._llm_closed = False
         self._llm_close_error: BaseException | None = None
         self._terminal_checkpoint_error: Exception | None = None
@@ -257,7 +262,7 @@ class Session:
         return tuple(errors)
 
     async def aclose(self) -> None:
-        """Close the model transport when this session created and owns it."""
+        """Release the owned model transport after its last session snapshot closes."""
         await self._close_owned_runtimes()
         if self._llm_close_error is not None:
             raise self._llm_close_error
@@ -265,6 +270,11 @@ class Session:
             self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
             return
         self._llm_closed = True
+        if self._shared_llm_ownership is not None:
+            self._shared_llm_ownership.owners -= 1
+            if self._shared_llm_ownership.owners:
+                self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
+                return
         close = getattr(self._llm, "close", None)
         if not callable(close):
             close = getattr(self._llm, "aclose", None)
@@ -278,6 +288,14 @@ class Session:
                 self.runner._emit_run_event("error", error_type=type(exc).__name__, message=str(exc))
                 raise
         self.runner.finish_run_control(lambda: self.pending_cleanup_tasks)
+
+    def _share_llm_ownership(self, snapshot: Session) -> None:
+        if self._owns_llm:
+            if self._shared_llm_ownership is None:
+                self._shared_llm_ownership = _SharedLLMOwnership()
+            self._shared_llm_ownership.owners += 1
+            snapshot._shared_llm_ownership = self._shared_llm_ownership
+            snapshot._owns_llm = True
 
     def own_runtime(
         self, close: Callable[[], Awaitable[None]], *, reserve_tokens: Callable[[], int] | None = None,

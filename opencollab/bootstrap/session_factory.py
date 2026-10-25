@@ -316,6 +316,8 @@ def snapshot_session(
     from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
     from opencollab.bootstrap.team_workflow import TeamWorkflowTool
 
+    if session._llm_closed:
+        raise SnapshotSessionError("cannot snapshot a session with closed model ownership")
     session_tools = (*session.agent.tools, *session.runner._initial_agent_tools)
     # Exclude callable owners from deepcopy. Python 3.14 functions bypass memo lookup.
     owner_bindings = {
@@ -405,6 +407,7 @@ def snapshot_session(
         if shaper is not None and shaper is session.runner.shaper:
             raise SnapshotSessionError("cannot clone context shaper for an independent snapshot")
         new.runner.shaper = shaper
+        session._share_llm_ownership(new)
         return new
     except BaseException as error:
         try:
