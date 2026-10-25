@@ -100,6 +100,8 @@ def _command_segments(command: str) -> list[str]:
             quote = None
         elif quote is None and char in {"'", '"'}:
             quote = char
+        elif quote is None and char in "(){}":
+            return []
         elif quote is None and char == "#" and (index == 0 or command[index - 1].isspace()):
             command = command[:index]
             break

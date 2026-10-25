@@ -46,11 +46,44 @@ async def test_echo_prefix_executes_actual_behavior_probe(tmp_path, passed, wrap
     "echo CHECK_OK | cat", "echo CHECK_OK; printf CHECK_OK", "echo Starting && /bin/echo CHECK_OK",
     "echo Starting && env printf CHECK_OK", "echo Starting && command printf CHECK_OK",
     "echo Starting && /usr/bin/env CHECK_ENV=yes printf CHECK_OK",
+    "echo Starting && (printf CHECK_OK)", "echo Starting && { printf CHECK_OK; }",
 ])
 async def test_static_printing_compounds_remain_unverified(tmp_path, command):
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
     assert output["executed"] is False
     assert output["ok"] is False
+
+
+@pytest.mark.parametrize("group", ["({command})", "{{ {command}; }}"])
+async def test_grouped_behavior_probes_remain_unverified(tmp_path, group):
+    (tmp_path / "check.py").write_text(
+        "from pathlib import Path\n"
+        "Path('executed').write_text('yes')\n"
+        "assert 6 * 7 == 42\n"
+        "print('CHECK_OK')\n",
+        encoding="utf-8",
+    )
+    command = "echo Starting && " + group.format(command=f"{shlex.quote(sys.executable)} check.py")
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert output["executed"] is False and output["ok"] is False
+    assert not (tmp_path / "executed").exists()
+
+
+@pytest.mark.parametrize("quote", ["'", '"'])
+async def test_quoted_group_characters_preserve_real_probe_execution(tmp_path, quote):
+    target = "check (result) {value}.py"
+    (tmp_path / target).write_text(
+        "from pathlib import Path\nimport sys\n"
+        "assert sys.argv[1] == 'argument (result) {value}'\n"
+        "Path('executed').write_text('yes')\n"
+        "print('CHECK_OK')\n",
+        encoding="utf-8",
+    )
+    command = f"echo {quote}Starting (check) {{value}}{quote} && {shlex.quote(sys.executable)} "
+    command += f"{quote}{target}{quote} {quote}argument (result) {{value}}{quote}"
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert output["executed"] is True and output["ok"] is True
+    assert (tmp_path / "executed").read_text() == "yes"
 
 
 @pytest.mark.parametrize("target", ["test_result.py", "test result.py"])
