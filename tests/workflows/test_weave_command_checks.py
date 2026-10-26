@@ -66,6 +66,16 @@ async def _check(workspace, command, seconds=10):
     ("lua -l module -e 'print(1)'", True, True),
     ("bash check.sh", True, False),
     ("bash -- check.sh -c settings.json", True, False),
+    ("bash -e check.sh", True, False),
+    ("bash -eux -- check.sh -c settings.json", True, False),
+    ("bash -euo pipefail check.sh", True, False),
+    ("bash -o errexit -o nounset check.sh", True, False),
+    ("bash -e", False, True),
+    ("bash -euo", False, True),
+    ("bash -s check.sh", False, True),
+    ("bash -n check.sh", False, True),
+    ("bash -o noexec check.sh", False, True),
+    ("bash -ec 'echo CHECK_OK'", False, True),
     ("python -c 'import sys; print(sys.stdin.read())' <<< CHECK_OK", False, False),
     ("python -c 'import sys; print(sys.stdin.read())' <<< \"$X\"", False, False),
     ("python check.py < /dev/null", True, False),
@@ -151,10 +161,21 @@ async def test_other_interpreter_script_arguments_preserve_behavior_probe(
     assert output["executed"] is True and output["ok"] is passed
 
 
-@pytest.mark.parametrize("separator", ["", "-- "])
-@pytest.mark.parametrize("arguments", ["", "python -c settings.json"])
+@pytest.mark.parametrize("options,arguments", [
+    ("", ""),
+    ("--", ""),
+    ("", "python -c settings.json"),
+    ("--", "python -c settings.json"),
+    ("-e", ""),
+    ("-u", ""),
+    ("-x", ""),
+    ("-eu", "python -c settings.json"),
+    ("-eux --", "python -c settings.json"),
+    ("-o pipefail", ""),
+    ("-euo pipefail", ""),
+])
 @pytest.mark.parametrize("passed", [True, False])
-async def test_shell_file_script_preserves_assertion_probe(tmp_path, separator, arguments, passed):
+async def test_shell_file_script_preserves_assertion_probe(tmp_path, options, arguments, passed):
     shell = shutil.which("bash")
     if shell is None:
         pytest.skip("Bash is required for the shell assertion probe")
@@ -168,7 +189,7 @@ async def test_shell_file_script_preserves_assertion_probe(tmp_path, separator, 
         "printf 'CHECK_OK\\n'\n",
         encoding="utf-8",
     )
-    command = f"{shlex.quote(shell)} {separator}check.sh {arguments}"
+    command = f"{shlex.quote(shell)} {options} check.sh {arguments}"
     output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
     assert (tmp_path / "executed").read_text() == "yes"
     assert output["executed"] is True and output["ok"] is passed

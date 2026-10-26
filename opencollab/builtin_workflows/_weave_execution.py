@@ -150,8 +150,8 @@ def _effective_tokens(tokens: list[str]) -> list[str] | None:
 
     Assignments and ``env`` / ``command`` / ``builtin`` are skipped, as before.
     Their options stay in place, so ``env -i python`` remains unverified.
-    Shells accept a literal script path, while inline commands and wrappers
-    remain unverified.
+    Shells accept a literal script path with execution options, while inline
+    commands and wrappers remain unverified.
     """
     index = 0
     while index < len(tokens):
@@ -166,16 +166,31 @@ def _effective_tokens(tokens: list[str]) -> list[str] | None:
             continue
         if name in _WRAPPERS:
             return None
-        if name in _SHELLS:
-            arguments = tokens[index + 1:]
-            if arguments[:1] == ["--"]:
-                arguments = arguments[1:]
-            if not arguments or not arguments[0] or arguments[0].startswith("-") or any(
-                char in arguments[0] for char in "$<>"
-            ):
-                return None
+        if name in _SHELLS and not _shell_file_script(tokens[index + 1:]):
+            return None
         return tokens[index:]
     return []
+
+
+def _shell_file_script(arguments: list[str]) -> bool:
+    index = 0
+    while index < len(arguments):
+        option = arguments[index]
+        if option == "--":
+            index += 1
+            break
+        if not option.startswith("-"):
+            break
+        if re.fullmatch(r"-[eux]*o", option):
+            index += 1
+            if index == len(arguments) or arguments[index] not in {"errexit", "nounset", "xtrace", "pipefail"}:
+                return False
+        elif not re.fullmatch(r"-[eux]+", option):
+            return False
+        index += 1
+    return index < len(arguments) and bool(arguments[index]) and not arguments[index].startswith("-") and not any(
+        char in arguments[index] for char in "$<>"
+    )
 
 
 def _command_words(tokens: list[str]) -> list[str]:
