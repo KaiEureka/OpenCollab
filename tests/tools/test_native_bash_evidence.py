@@ -48,6 +48,24 @@ def test_native_bash_schema_output_command_and_timeout_are_unchanged():
     assert observed.verification_records[-1]["command"] == COMMAND
     assert "Verdict:" not in result
 
+@pytest.mark.parametrize("command, expected", [
+    ("python -m pytest tests.py -q", "python -m pytest tests.py -q -rA"),
+    ('python -m pytest -k "$SELECTION" "test file.py" -q',
+     'python -m pytest -k "$SELECTION" "test file.py" -q -rA'),
+    ('python -m pytest -q -- "test file.py"', 'python -m pytest -q -rA -- "test file.py"'),
+    ('cd pytest && env -- python -m pytest -q -- test.py',
+     'cd pytest && env -- python -m pytest -q -rA -- test.py'),
+    ('uv run -- python -m pytest -q test.py', 'uv run -- python -m pytest -q test.py -rA'),
+    ('echo Starting && python -m pytest -q test.py', 'echo Starting && python -m pytest -q test.py'),
+    ('python -m pytest test.py > report.txt', 'python -m pytest test.py > report.txt'),
+    ('python -m pytest test.py && echo finished', 'python -m pytest test.py && echo finished'),
+    ('python -m pytest --collect-only', 'python -m pytest --collect-only'),
+    ('python -m pytest --help', 'python -m pytest --help'),
+])
+def test_opt_in_pass_reporting_preserves_shell_text_and_target_separator(command, expected):
+    tool = evidence_tools("bash")[0]
+    assert tool.with_pass_reporting(command) == expected
+
 def test_removed_tool_is_unavailable():
     with pytest.raises(ValueError, match="unsupported built-in"):
         evidence_tools("run_tests")

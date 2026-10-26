@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 
 import pytest
@@ -14,6 +15,7 @@ from opencollab.adapters.llm.client import LLMClient
 from opencollab.adapters.llm.types import LLMResponse, Usage
 from opencollab.application.workflow import WorkflowBudgetExceeded, WorkflowContext
 from opencollab.bootstrap._workflow_runtime_session import WorkflowSessionFactory
+from tests.support.provider_sdk_http import completion_http_response, install_sdk_transport
 from tests.support.workflow_context_test_support import FakeFactory, FakeSession
 
 
@@ -382,3 +384,90 @@ async def test_cancelled_candidate_keeps_completed_sessions_and_spend(repository
     assert parent.pending_cleanup_tasks == ()
     await parent.agent("later work")
     assert factory.builds[-1]["budget"] == 50
+
+
+@pytest.mark.parametrize("spent", [30, 130])
+async def test_parent_sees_candidate_spend_before_candidate_completion(repository, spent):
+    factory = FakeFactory([FakeSession(tokens=spent), FakeSession(tokens=7)])
+    parent = _context(repository, factory, 100)
+    ready, release = asyncio.Event(), asyncio.Event()
+    children = []
+
+    async def nested(child, _args):
+        children.append(child)
+        await child.agent("candidate role")
+        ready.set()
+        await release.wait()
+        return "done"
+
+    task = asyncio.create_task(parent.candidate_workflow(nested, {}, label="candidate", budget=80))
+    try:
+        await asyncio.wait_for(ready.wait(), 10)
+        assert parent.tokens_spent() == spent
+        assert len(parent.sessions) == 1
+        assert parent.tokens_remaining() == 100 - spent - max(0, 80 - spent)
+        assert children[0].tokens_remaining() == 80 - spent
+        if spent > 100:
+            with pytest.raises(WorkflowBudgetExceeded):
+                await parent.agent("later parent role", budget=20)
+            assert len(factory.builds) == 1
+        else:
+            assert await parent.agent("later parent role", budget=20) == "done"
+            assert children[0].tokens_remaining() == 50
+    finally:
+        release.set()
+        await asyncio.wait_for(task, 10)
+
+    expected = spent + (7 if spent < 100 else 0)
+    assert parent.tokens_spent() == expected
+    assert len(parent.sessions) == (2 if spent < 100 else 1)
+    assert len({id(session) for session in parent.sessions}) == len(parent.sessions)
+    assert parent.tokens_remaining() == 100 - expected
+
+
+async def test_native_candidate_settlement_stops_parent_admission_while_child_is_open(repository, monkeypatch):
+    requests, contexts, observations = [], [], []
+    ready, release = asyncio.Event(), asyncio.Event()
+
+    async def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        response = completion_http_response(request, text="done")
+        if len(requests) == 1:
+            payload = json.loads(response.content)
+            payload["usage"] = {"prompt_tokens": 11793, "completion_tokens": 1, "total_tokens": 11794}
+            return type(response)(200, json=payload)
+        return response
+
+    install_sdk_transport(monkeypatch, "openai", handler)
+
+    async def candidate(child, _args):
+        await child.agent("Summarize the supplied diagnostics.", tools=[], budget=8000)
+        ready.set()
+        await release.wait()
+        return "done"
+
+    async def outer(ctx, _args):
+        contexts.append(ctx)
+        task = asyncio.create_task(ctx.candidate_workflow(candidate, {}, label="candidate", budget=8000))
+        try:
+            await asyncio.wait_for(ready.wait(), 10)
+            observations.append((ctx.tokens_spent(), ctx.tokens_remaining(), len(ctx.sessions)))
+            with pytest.raises(WorkflowBudgetExceeded):
+                await ctx.agent("Produce the final summary.", tools=[], budget=2000)
+        finally:
+            release.set()
+            await asyncio.wait_for(task, 10)
+        return "settled"
+
+    result = await OpenCollab(
+        repository, model="gpt-4o", provider="openai", api_key="controlled-test",  # pragma: allowlist secret
+        base_url="https://fixture.invalid/v1", config={"llm_max_retries": 0},
+    ).workflow(outer, budget=10000, concurrency=1, max_steps=1,
+               limit_mode="explicit", trace=False)
+
+    assert result.ok and result.output == "settled"
+    assert len(requests) == 1
+    assert observations == [(11794, -1794, 1)]
+    assert result.tokens == contexts[0].tokens_spent() == 11794
+    assert len(contexts[0].sessions) == 1

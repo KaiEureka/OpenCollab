@@ -41,9 +41,22 @@ def _targets(arguments: list[str], value_options: set[str]) -> tuple[str, ...] |
         index += 1
     return tuple(targets) or (".",)
 
+def _strip_command_padding(command: str) -> str:
+    end = len(command.rstrip())
+    escaped = end
+    while escaped and command[escaped - 1] == "\\":
+        escaped -= 1
+    # The first escaped whitespace character belongs to the final argument.
+    if end < len(command) and (end - escaped) % 2:
+        end += 1
+    return command[:end].lstrip()
+
 def parse_test_command(command: str, workspace: str | None) -> TestCommand | None:
     """Recognize direct pytest, Go and Django invocations, never shell output replay."""
-    if not isinstance(command, str) or any(char in command for char in "\n\r;|<>`"):
+    if not isinstance(command, str):
+        return None
+    command = _strip_command_padding(command)
+    if any(char in command for char in "\n\r;|<>`"):
         return None
     try:
         parts = shlex.split(command)

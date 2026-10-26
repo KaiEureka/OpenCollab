@@ -153,6 +153,8 @@ class ReadTimeSummarizer:
 
     async def _complete(self, request: list[dict[str, Any]]) -> str:
         response = await self._acomplete(request)
+        if getattr(response, "finish_reason", None) in {"length", "max_tokens", "model_context_window_exceeded"}:
+            raise ValueError("The model returned a truncated conversation summary")
         return format_compact_summary(getattr(response, "content", None) or "")
 
     def _fits(self, request: list[dict[str, Any]], *, allow_budget_stop: bool = False) -> bool:

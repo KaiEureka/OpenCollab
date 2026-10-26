@@ -205,6 +205,59 @@ def test_patch_rejects_worktree_scoped_sparse_checkout(tmp_path):
     assert result.returncode == 125
     assert "core.sparsecheckout" in result.stderr
 
+@pytest.mark.parametrize("scope", ["--local", "--worktree"])
+@pytest.mark.parametrize("value", ["false", "FaLsE", "no", "off", "0", ""])
+def test_patch_allows_disabled_sparse_boolean_values(tmp_path, scope, value):
+    repo = _repo(tmp_path)
+    (repo / "tracked.txt").write_text("new\n", encoding="utf-8")
+    expected = _extract(repo)
+    assert expected.returncode == 0, expected.stderr
+    _git(repo, "config", "extensions.worktreeConfig", "true")
+    for key in ("core.sparsecheckout", "core.sparsecheckoutcone"):
+        _git(repo, "config", scope, key, value)
+
+    result = _extract(repo)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected.stdout
+
+@pytest.mark.parametrize("scope", ["--local", "--worktree"])
+@pytest.mark.parametrize("key", ["core.sparsecheckout", "core.sparsecheckoutcone"])
+@pytest.mark.parametrize("value", ["true", "yes", "on", "1", "-1", "2", "invalid", None])
+def test_patch_rejects_enabled_or_invalid_sparse_values(tmp_path, scope, key, value):
+    repo = _repo(tmp_path)
+    _git(repo, "config", "extensions.worktreeConfig", "true")
+    if value is None:
+        config = Path(_git(repo, "rev-parse", "--git-path", "config.worktree" if scope == "--worktree"
+                           else "config").stdout.strip())
+        with (repo / config).open("a", encoding="utf-8") as stream:
+            stream.write(f"[core]\n\t{key.split('.')[1]}\n")
+    else:
+        _git(repo, "config", scope, key, value)
+
+    result = _extract(repo)
+
+    assert result.returncode == 125
+    assert f"unsafe repository Git configuration: {key}" in result.stderr
+
+@pytest.mark.parametrize("sparse_index", [False, True])
+def test_patch_rejects_active_sparse_checkout(tmp_path, sparse_index):
+    repo = _repo(tmp_path)
+    for directory in ("visible", "hidden"):
+        (repo / directory).mkdir()
+        (repo / directory / "file.txt").write_text("tracked\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add directories")
+    _git(repo, "sparse-checkout", "init", "--cone", "--sparse-index" if sparse_index else "--no-sparse-index")
+    _git(repo, "sparse-checkout", "set", "visible")
+    assert not (repo / "hidden" / "file.txt").exists()
+    assert "S hidden/" in _git(repo, "ls-files", "--sparse", "-t").stdout
+
+    result = _extract(repo)
+
+    assert result.returncode == 125
+    assert "core.sparsecheckout" in result.stderr
+
 def test_patch_rejects_transform_config_loaded_through_include(tmp_path):
     repo = _repo(tmp_path)
     (repo / "payload.txt").write_text("candidate\n", encoding="utf-8")

@@ -610,7 +610,6 @@ class WorkflowCandidatesMixin:
                             else:
                                 failure = exc
                         finally:
-                            self._sessions.extend(child.sessions)
                             for agent_failure in child.agent_failures:
                                 self._agent_failures.append({
                                     **agent_failure,

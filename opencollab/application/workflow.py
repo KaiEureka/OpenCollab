@@ -708,7 +708,7 @@ class WorkflowContext(
         return time.monotonic() + timeout
 
     def _track_session(self, session: Any) -> None:
-        self._sessions.append(session)
+        self.budget._track_session(session)
         lease = self._active_budget_lease.get()
         if lease is not None:
             lease.sessions.append(session)

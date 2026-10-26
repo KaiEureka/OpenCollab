@@ -266,12 +266,12 @@ async def test_stop_grace_leaves_finished_runner_result_persistence_owned(
     environment = local_environment_factory(str(tmp_path))
     parent, tool, runtime = _manager(environment)
     entered, finish = asyncio.Event(), asyncio.Event()
-    native_read = environment.read_file
+    native_copy = authored_workflow._copy_artifact_to_host
     read_cancelled = False
 
-    async def delayed_result(path):
+    async def delayed_result(environment, path, target):
         nonlocal read_cancelled
-        value = await native_read(path)
+        await native_copy(environment, path, target)
         if path.endswith("/result.json"):
             entered.set()
             try:
@@ -279,9 +279,8 @@ async def test_stop_grace_leaves_finished_runner_result_persistence_owned(
             except asyncio.CancelledError:
                 read_cancelled = True
                 raise
-        return value
 
-    monkeypatch.setattr(environment, "read_file", delayed_result)
+    monkeypatch.setattr(authored_workflow, "_copy_artifact_to_host", delayed_result)
     child = await _launch(tool, runtime)
     stopping = None
     try:

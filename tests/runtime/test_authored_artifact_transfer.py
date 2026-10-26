@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import asyncio
+import os
+import shutil
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
+
+from opencollab.adapters import _docker_snapshot as snapshot_module
+from opencollab.adapters._docker_snapshot import _copy_artifact_to_host
+from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters.env import DockerEnvironment, ExecResult, LocalEnvironment, WorktreeEnvironment
+from opencollab.adapters.session_environments import SessionEnvironmentPool
+from opencollab.application.tool_execution import ToolRuntime
+from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge, BridgeClient, BridgeEnvironment
+
+
+@pytest.mark.parametrize("kind", ["local", "worktree"])
+@pytest.mark.parametrize("target_kind", ["relative-escape", "absolute-escape", "file-link", "directory-link", "fifo"])
+async def test_artifact_transfer_preserves_local_path_and_regular_file_checks(tmp_path, kind, target_kind):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    environment = (LocalEnvironment if kind == "local" else WorktreeEnvironment)(str(workspace))
+    await environment.setup()
+    root = Path(environment.workspace)
+    outside = root.parent / f"{root.name}-outside"
+    outside.mkdir()
+    (outside / "result.json").write_text('{"outside": true}')
+    if target_kind == "relative-escape":
+        source = f"../{outside.name}/result.json"
+    elif target_kind == "absolute-escape":
+        source = str(outside / "result.json")
+    elif target_kind == "file-link":
+        (root / "result.json").symlink_to(outside / "result.json")
+        source = str(root / "result.json")
+    elif target_kind == "directory-link":
+        (root / "artifacts").symlink_to(outside, target_is_directory=True)
+        source = str(root / "artifacts" / "result.json")
+    else:
+        os.mkfifo(root / "result.json")
+        source = str(root / "result.json")
+    target = tmp_path / "copied.json"
+    try:
+        with pytest.raises((OSError, PermissionError)):
+            await _copy_artifact_to_host(environment, source, target)
+        assert not target.exists()
+    finally:
+        for name in ("result.json", "artifacts"):
+            if os.path.lexists(root / name):
+                (root / name).unlink()
+        shutil.rmtree(outside)
+        if isinstance(environment, WorktreeEnvironment):
+            await environment.get_diff()
+        await environment.cleanup()
+
+
+async def test_artifact_transfer_rejects_replaced_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    environment = LocalEnvironment(str(workspace))
+    workspace.rename(tmp_path / "original")
+    workspace.mkdir()
+    (workspace / "result.json").write_text('{"replacement": true}')
+    try:
+        with pytest.raises(OSError, match="workspace was replaced"):
+            await _copy_artifact_to_host(environment, str(workspace / "result.json"), tmp_path / "copied.json")
+        assert not (tmp_path / "copied.json").exists()
+    finally:
+        await environment.cleanup()
+
+
+@pytest.mark.parametrize("kind", ["docker", "vm"])
+@pytest.mark.parametrize("symlink", [False, True])
+async def test_remote_artifact_transfer_uses_existing_transport_and_requires_regular_output(
+    tmp_path, monkeypatch, kind, symlink,
+):
+    environment = object.__new__(DockerEnvironment if kind == "docker" else VMEnvironment)
+    environment.workspace = "/workspace"
+    target = tmp_path / "copied.json"
+    native = tmp_path / "native.json"
+    native.write_bytes(b'{"payload":"' + b"x" * (4 * 1024 * 1024) + b'"}\n')
+
+    async def copy(destination):
+        if symlink:
+            destination.symlink_to(native)
+        else:
+            shutil.copyfile(native, destination)
+
+    if kind == "docker":
+        environment._container_id = "owned-test-container"
+        monkeypatch.setattr(environment, "setup", AsyncMock())
+        contained = AsyncMock(return_value="/workspace/physical/result.json")
+        monkeypatch.setattr(environment, "_contained_file_path", contained)
+
+        async def docker(*args):
+            assert args[:3] == ("cp", "--", "owned-test-container:/workspace/physical/result.json")
+            await copy(Path(args[3]))
+            return ExecResult(0, "", "")
+
+        monkeypatch.setattr(environment, "_docker", docker)
+    else:
+        async def download(source, destination, *, directory=False):
+            assert source == "/workspace/result.json" and not directory
+            await copy(destination)
+
+        monkeypatch.setattr(environment, "copy_to_host", download)
+    if symlink:
+        with pytest.raises(OSError, match="regular file"):
+            await _copy_artifact_to_host(environment, "/workspace/result.json", target)
+    else:
+        await _copy_artifact_to_host(environment, "/workspace/result.json", target)
+        assert target.read_bytes() == native.read_bytes()
+    if kind == "docker":
+        contained.assert_awaited_once_with("/workspace/result.json")
+    with pytest.raises(PermissionError, match="escapes workspace"):
+        await _copy_artifact_to_host(environment, "/outside/result.json", target)
+
+
+async def test_artifact_copy_failure_closes_source_descriptor(tmp_path, monkeypatch):
+    (tmp_path / "result.json").write_text('{"ready": true}')
+    environment = LocalEnvironment(str(tmp_path))
+    descriptor = None
+
+    def fail_copy(source, target):
+        nonlocal descriptor
+        descriptor = source.fileno()
+        raise OSError("destination write failed")
+
+    monkeypatch.setattr(snapshot_module.shutil, "copyfileobj", fail_copy)
+    try:
+        with pytest.raises(OSError, match="destination write failed"):
+            await _copy_artifact_to_host(environment, "result.json", tmp_path / "copied.json")
+        assert descriptor is not None
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    finally:
+        await environment.cleanup()
+
+
+async def test_artifact_transfer_retains_bridge_environment_fallback(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    artifacts = tmp_path / "bridge-artifacts"
+    artifacts.mkdir()
+    (tmp_path / "result.json").write_text('{"ready": true}')
+    environment = LocalEnvironment(str(tmp_path))
+    bridge = AuthoredWorkflowBridge(
+        environment, str(artifacts),
+        SessionEnvironmentPool(str(tmp_path), isolation="shared", base_environment=environment),
+        {}, ToolRuntime(environment, None, None), allow_unisolated_shell=True,
+    )
+    proxy = BridgeEnvironment(BridgeClient(artifacts, bridge.options()), {
+        "handle": 0, "workspace": str(tmp_path), "process_isolated": False,
+    })
+    copying = asyncio.create_task(_copy_artifact_to_host(proxy, "result.json", tmp_path / "copied.json"))
+
+    async def poll_until_copied():
+        while not copying.done():
+            await bridge.poll()
+            await asyncio.sleep(0.01)
+
+    try:
+        await asyncio.wait_for(poll_until_copied(), 5)
+        await copying
+        assert (tmp_path / "copied.json").read_text() == (tmp_path / "result.json").read_text()
+    finally:
+        copying.cancel()
+        await asyncio.gather(copying, return_exceptions=True)
+        await bridge.aclose()
+        await environment.cleanup()
