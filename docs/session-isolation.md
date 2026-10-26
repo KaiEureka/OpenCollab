@@ -62,6 +62,25 @@ the caller's source remains an explicit operation.
 
 The Workflow CLI accepts `--isolation shared` or `--isolation worktree`.
 
+## Session snapshots
+
+`opencollab.bootstrap.snapshot_session(session)` creates independent session
+state and a forked environment under the [snapshot collaborator requirements](migrations/0.5.0.md).
+The source and its successful snapshots share the model transport. When OC
+created that transport, each session holds an ownership reference and
+`await session.aclose()` releases its reference. The final owner closes the
+transport once. A snapshot can continue model requests after its source or
+sibling closes. A model injected through `build_session(llm=...)` remains owned
+by its caller, who closes it after all sessions finish.
+
+The snapshot acquires its model reference after its state and runtime
+collaborators have copied successfully. Failed construction cleans up its
+forked environment. Shared model ownership retains a reference count, allowing
+a closed source session to be reclaimed while its snapshots continue. Creating
+a new snapshot from a session that has released its model ownership raises
+`SnapshotSessionError`. Each session's environment retains its own cleanup
+operation.
+
 ## Custom environment providers
 
 Pass `environment_providers={"custom": factory}` to `OpenCollab`, then select

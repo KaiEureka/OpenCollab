@@ -28,8 +28,8 @@ from opencollab.adapters.single2_safety import Single2SafetyPolicy
 from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
-from opencollab.application._session_run_shared import ENFORCEMENT_OFF, ENFORCEMENT_ON
 from opencollab.application.compaction_summary import run_coro_blocking
+from opencollab.application.event_bus import EventBus
 from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.ports import (
     AskUserPort,
@@ -316,6 +316,8 @@ def snapshot_session(
     from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool
     from opencollab.bootstrap.team_workflow import TeamWorkflowTool
 
+    if session._llm_closed:
+        raise SnapshotSessionError("cannot snapshot a session with closed model ownership")
     session_tools = (*session.agent.tools, *session.runner._initial_agent_tools)
     # Exclude callable owners from deepcopy. Python 3.14 functions bypass memo lookup.
     owner_bindings = {
@@ -329,6 +331,12 @@ def snapshot_session(
             for callback in (tool._environment_pool_factory, tool._environment_catalog, tool._describe_environment):
                 if callback is not None:
                     owner_bindings[id(callback)] = callback
+    for tool in session_tools:
+        if isinstance(tool, (AuthoredWorkflowTool, TeamWorkflowTool)) and id(tool._config) not in owner_bindings:
+            config = replace(tool._config, tracer=None, event_bus=EventBus())
+            owner_bindings[id(tool._config)] = _clone_snapshot_component(
+                config, label="workflow configuration", memo=owner_bindings,
+            )
     agent, initial_tools, initial_tool_choice = _clone_snapshot_component(
         (session.agent, session.runner._initial_agent_tools, session.runner._initial_agent_tool_choice),
         label="agent",
@@ -365,24 +373,9 @@ def snapshot_session(
             run_control=control,
         )
         new.max_budget_tokens = session.max_budget_tokens
-        reserve = session.runner._commit_reserve
-        strength = session.runner._enforcement_strength
-        soft = new.max_budget_tokens
-        if strength == ENFORCEMENT_ON and soft is not None and reserve > soft:
-            # A later lease can shrink the soft cap below the reserve that was
-            # legal when enforcement was armed. Holding the reserve at the new
-            # cap keeps the fork on the commit side of that line. A cap below
-            # one token cannot hold a reserve.
-            if soft >= 1:
-                # Keep the fork past the explore line. A quarter of the new cap
-                # would let it spend tokens the source already had to commit.
-                reserve = soft
-            else:
-                strength = ENFORCEMENT_OFF
-        new.runner.configure_enforcement(
-            enforcement_strength=strength,
-            commit_reserve=reserve,
-        )
+        # Soft-budget changes preserve the source's already-effective reserve.
+        new.runner._enforcement_strength = session.runner._enforcement_strength
+        new.runner._commit_reserve = session.runner._commit_reserve
         if state.phase not in {
             SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
         } or new._open_tool_call_ids(state):
@@ -413,6 +406,7 @@ def snapshot_session(
         if shaper is not None and shaper is session.runner.shaper:
             raise SnapshotSessionError("cannot clone context shaper for an independent snapshot")
         new.runner.shaper = shaper
+        session._share_llm_ownership(new)
         return new
     except BaseException as error:
         try:

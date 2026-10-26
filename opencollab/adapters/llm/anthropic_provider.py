@@ -548,7 +548,7 @@ def convert_to_anthropic_messages(messages: list[dict]) -> tuple[list[str], list
     Returns (system_parts, anthropic_messages).
 
     Key conversions:
-    - role="system" → extracted to system_parts (Anthropic uses top-level system param)
+    - role="system"/"developer" → extracted to Anthropic's top-level system param
     - role="assistant" with tool_calls → assistant with tool_use content blocks
     - role="tool" → role="user" with tool_result content blocks (merged if consecutive)
     """

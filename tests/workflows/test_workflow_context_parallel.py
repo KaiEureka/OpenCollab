@@ -10,6 +10,7 @@ import pytest
 from opencollab.application.workflow import (
     WorkflowBudgetExceeded,
     WorkflowContext,
+    WorkflowEnvironmentRevoked,
 )
 from tests.support.workflow_context_test_support import (
     FakeFactory,
@@ -682,3 +683,57 @@ async def test_pipeline_propagates_budget_exceeded_and_skips_later_stages():
     with pytest.raises(WorkflowBudgetExceeded):
         await ctx.pipeline([7], agent_stage, later_stage)
     assert later_ran == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["parallel", "pipeline"])
+@pytest.mark.parametrize("error_type", [WorkflowBudgetExceeded, WorkflowEnvironmentRevoked])
+async def test_collections_preserve_returned_terminal_error_values(kind, error_type):
+    ctx = WorkflowContext(FakeFactory([]))
+    diagnostic = error_type("earlier operation failed")
+    if kind == "parallel":
+        values = await ctx.parallel([lambda: asyncio.sleep(0, result=diagnostic)])
+    else:
+        values = await ctx.pipeline([diagnostic])
+    assert values[0] is diagnostic
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["parallel", "pipeline"])
+@pytest.mark.parametrize("error_types", [
+    (WorkflowEnvironmentRevoked, WorkflowEnvironmentRevoked),
+    (WorkflowEnvironmentRevoked, WorkflowBudgetExceeded),
+    (WorkflowBudgetExceeded, WorkflowEnvironmentRevoked),
+    (WorkflowBudgetExceeded, WorkflowBudgetExceeded),
+])
+async def test_collections_choose_thrown_errors_by_budget_priority_then_input_order(kind, error_types):
+    ctx = WorkflowContext(FakeFactory([]), task_concurrency=2)
+    errors = [error_type(f"unit {index}") for index, error_type in enumerate(error_types)]
+    first_started, second_raised = asyncio.Event(), asyncio.Event()
+    raised_order = []
+
+    async def unit(index):
+        if index == 0:
+            first_started.set()
+            await second_raised.wait()
+        elif index == 1:
+            await first_started.wait()
+            second_raised.set()
+        else:
+            pytest.fail("queued work started after a terminal error")
+        raised_order.append(index)
+        raise errors[index]
+
+    if kind == "parallel":
+        operation = ctx.parallel([lambda index=index: unit(index) for index in range(3)])
+    else:
+        async def stage(_previous, _item, index):
+            return await unit(index)
+
+        operation = ctx.pipeline(list(range(3)), stage)
+    expected = next((error for error in errors if isinstance(error, WorkflowBudgetExceeded)), errors[0])
+    with pytest.raises(type(expected)) as caught:
+        await asyncio.wait_for(operation, timeout=1)
+    assert caught.value is expected
+    assert raised_order == [1, 0]
+    assert ctx._task_semaphore._value == 2
