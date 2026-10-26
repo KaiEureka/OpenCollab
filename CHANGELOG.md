@@ -7,6 +7,74 @@ and the project aims to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-27
+
+### Added
+
+Team and Workflow calls can select session isolation through SDK arguments,
+Team defaults and role overrides, and the Workflow CLI. `shared` reuses the
+parent workspace, while `worktree` creates an independent checkout inside the
+parent environment. `docker-group` shares a container across a run with private
+session worktrees, and `docker-session` gives each session its own container.
+Custom environment providers use the same allocation and cleanup interface.
+See [docs/session-isolation.md](docs/session-isolation.md).
+
+Existing Linux VMs can host tool execution over SSH. `vm-group` and `vm-session`
+allocate configured guests by run or session, with persistent exclusive leases,
+recoverable remote operations, artifact export, and administrator-defined reset
+commands before reuse. SDK VM profiles and `OPENCOLLAB_VM` configure both
+strategies. See [docs/virtual-machines.md](docs/virtual-machines.md).
+
+Logical model routes select physical models, providers, endpoints, credentials,
+and context settings. Shared local request pools coordinate backend capacity
+across processes, retain slots through provider cleanup, and release them before
+tool execution. See [docs/model-routing.md](docs/model-routing.md).
+
+Team members can invoke registered Workflows with `run_workflow` and write,
+launch, observe, and stop their own Python Workflows with `manage_workflow`.
+Child runs inherit tool restrictions and configuration, share the member's
+available token budget, and return native results and artifacts. Capability
+discovery exposes Workflow inputs, authoring examples, configured isolation
+choices, and available role and skill names.
+
+### Fixed
+
+Candidate creation and adoption preserve physical file bytes, symlinks,
+submodule edits, and files hidden by Git index hints or global ignore rules.
+Source comparisons account for conversion settings and exclusions, reviewers
+retain access to completed coder workspaces, and failed delivery preserves
+recoverable changes.
+
+Session snapshots preserve completed tool output, submitted answers, developer
+instructions, effective budgets, environment bindings, and runtime ownership.
+Forked sessions share the model transport's lifetime and keep their observation
+configuration independent. Interrupted tool exchanges finish consistently, and
+completion waits for owned cleanup.
+
+Nested Workflows cancel their workers when the parent stops, preserve returned
+values including exception objects, and account for live candidate usage.
+Queued calls use the current available budget. Owned local, worktree, Docker,
+and child-run resources are released on construction failures and shutdown.
+Remote artifact transfer failures preserve native child artifacts for recovery.
+
+Weave executes its required checks and records collected pytest targets while
+preserving shell and runner command boundaries. Expected-output verification
+requires executable behavior evidence. The Workflow CLI forwards `--run-id`
+for continuation. Reconstruct deduplicates equivalent inputs and validates
+complete evaluator results.
+
+Provider handling preserves visible Responses reasoning and its usage estimates,
+Anthropic developer instructions and native credentials, explicit thinking
+settings, and endpoint-specific keys. Truncated conversation summaries enter
+the existing fallback path. Docker file operations enforce workspace containment,
+and local and container file workers retain correct ownership across event loops.
+
+### Documentation
+
+New guides and executable examples cover session isolation, model routing,
+existing Linux VMs, and member-authored Workflows. Model-facing tool descriptions
+reflect configured permissions and available actions.
+
 ## [0.9.5] - 2026-10-20
 
 ### Added
@@ -587,7 +655,8 @@ clean architecture where everything but the model sits behind swappable ports.
 - Trimmed the GLM SWE-bench experiment archive to the final report and prediction files.
 - Moved Chinese working notes into `docs/archive/`.
 
-[Unreleased]: https://github.com/RISE-X-Lab/OpenCollab/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/RISE-X-Lab/OpenCollab/compare/v0.9.6...HEAD
+[0.9.6]: https://github.com/RISE-X-Lab/OpenCollab/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/RISE-X-Lab/OpenCollab/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/RISE-X-Lab/OpenCollab/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/RISE-X-Lab/OpenCollab/compare/v0.9.2...v0.9.3
