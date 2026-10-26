@@ -447,10 +447,10 @@ def test_responses_converts_image_url_instead_of_dropping_it():
     ]
 
 def test_anthropic_rejects_unknown_message_role_instead_of_dropping_it():
-    with pytest.raises(ValueError, match="unsupported role 'developer'"):
+    with pytest.raises(ValueError, match="unsupported role 'unknown'"):
         build_anthropic_kwargs(
             "claude-sonnet-5",
-            [{"role": "developer", "content": "hidden instruction"}],
+            [{"role": "unknown", "content": "hidden instruction"}],
             None,
             0.2,
         )
