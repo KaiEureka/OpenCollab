@@ -147,12 +147,14 @@ async def test_run_workflow_quiesces_late_session_before_manifest_and_tracer_clo
         def __init__(self, environment, tracer) -> None:
             self.env = environment
             self.tracer = tracer
+            self.started = asyncio.Event()
             self.cancel_seen = asyncio.Event()
 
         async def add_user_message(self, content: str) -> None:
             return None
 
         async def run_loop(self) -> str:
+            self.started.set()
             try:
                 await asyncio.Event().wait()
             except asyncio.CancelledError:
@@ -204,7 +206,11 @@ async def test_run_workflow_quiesces_late_session_before_manifest_and_tracer_clo
     )
 
     async def fn(ctx, args):
-        assert await ctx.agent("slow", timeout=0.001) is None
+        agent_task = asyncio.create_task(ctx.agent("slow"))
+        await asyncio.wait_for(holder["session"].started.wait(), timeout=MUST_SETTLE_SECONDS)
+        agent_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(agent_task, timeout=MUST_SETTLE_SECONDS)
         await asyncio.wait_for(holder["session"].cancel_seen.wait(), timeout=MUST_SETTLE_SECONDS)
         return "ok"
 
@@ -614,6 +620,7 @@ async def test_owned_tracer_closes_when_cleanup_fails(
         def __init__(self, environment, tracer) -> None:
             self.env = environment
             self.tracer = tracer
+            self.started = asyncio.Event()
             self.cancel_seen = asyncio.Event()
             self.release = asyncio.Event()
 
@@ -621,6 +628,7 @@ async def test_owned_tracer_closes_when_cleanup_fails(
             return None
 
         async def run_loop(self) -> str:
+            self.started.set()
             try:
                 await asyncio.Event().wait()
             except asyncio.CancelledError:
@@ -661,7 +669,11 @@ async def test_owned_tracer_closes_when_cleanup_fails(
     monkeypatch.setattr(workflow_execution, "build_workflow_context", fake_build_context)
 
     async def fn(ctx, args):
-        assert await ctx.agent("slow", timeout=0.001) is None
+        agent_task = asyncio.create_task(ctx.agent("slow"))
+        await asyncio.wait_for(holder["session"].started.wait(), timeout=MUST_SETTLE_SECONDS)
+        agent_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(agent_task, timeout=MUST_SETTLE_SECONDS)
         await asyncio.wait_for(holder["session"].cancel_seen.wait(), timeout=MUST_SETTLE_SECONDS)
         return "workflow-returned"
 
