@@ -28,6 +28,7 @@ from opencollab.adapters.single2_safety import Single2SafetyPolicy
 from opencollab.adapters.storage import SessionStore
 from opencollab.adapters.tools.base import Tool
 from opencollab.adapters.trace import Tracer
+from opencollab.application._session_run_shared import ENFORCEMENT_OFF, ENFORCEMENT_ON
 from opencollab.application.compaction_summary import run_coro_blocking
 from opencollab.application.exception_notes import add_exception_note
 from opencollab.application.ports import (
@@ -364,9 +365,20 @@ def snapshot_session(
             run_control=control,
         )
         new.max_budget_tokens = session.max_budget_tokens
+        reserve = session.runner._commit_reserve
+        strength = session.runner._enforcement_strength
+        soft = new.max_budget_tokens
+        if strength == ENFORCEMENT_ON and soft is not None and reserve > soft:
+            # A later lease can shrink the soft cap below the reserve that was
+            # legal when enforcement was armed. Use the scout's quarter-cap
+            # clamp. A cap below one token cannot hold a reserve.
+            if soft >= 1:
+                reserve = max(1, soft // 4)
+            else:
+                strength = ENFORCEMENT_OFF
         new.runner.configure_enforcement(
-            enforcement_strength=session.runner._enforcement_strength,
-            commit_reserve=session.runner._commit_reserve,
+            enforcement_strength=strength,
+            commit_reserve=reserve,
         )
         if state.phase not in {
             SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,

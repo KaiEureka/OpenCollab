@@ -117,6 +117,8 @@ def _command_segments(command: str) -> list[str]:
             if command[start:index].strip():
                 segments.append(command[start:index])
             start = index + 2
+        elif quote is None and command[index:index + 3] == "<<<":
+            return []
         elif quote is None and char in ";|&":
             return []
         elif quote is None and char in "\n\r" and command[:index].strip() and command[index:].strip():
@@ -132,15 +134,16 @@ _WRAPPERS = frozenset({
 })
 _SHELLS = frozenset({"bash", "sh", "dash", "zsh", "ksh", "ash"})
 _STATIC_COMMANDS = frozenset({"true", "false", ":", "echo", "printf", "test", "["})
-_INLINE_SCRIPT_FLAGS = {
-    "perl": {"-e"},
-    "ruby": {"-e"},
-    "node": {"-e", "--eval"},
-    "nodejs": {"-e", "--eval"},
-    "php": {"-r"},
-    "lua": {"-e"},
-    "awk": {"-e", "--source"},
+_TEXT_TOOLS = frozenset({"awk", "gawk", "nawk", "mawk", "sed", "jq"})
+_INLINE_FLAGS = {
+    "perl": ("-e",),
+    "ruby": ("-e",),
+    "node": ("-e", "--eval"),
+    "nodejs": ("-e", "--eval"),
+    "php": ("-r",),
+    "lua": ("-e",),
 }
+_FILE_READ_MARKERS = ("open(", "Path(", "stdin", "argv", "read_text", "read_bytes", "readFile")
 
 
 def _command_basename(token: str) -> str:
@@ -180,7 +183,8 @@ def _has_behavior_command(tokens: list[str]) -> bool:
     words = _effective_tokens(tokens)
     if not words or words[0].startswith("-"):
         return False
-    return _command_basename(words[0]) not in _STATIC_COMMANDS
+    name = _command_basename(words[0])
+    return name not in _STATIC_COMMANDS and name not in _TEXT_TOOLS
 
 
 def _static_printer_supplies(command: str, expected: str) -> bool:
@@ -197,19 +201,29 @@ def _static_printer_supplies(command: str, expected: str) -> bool:
         except ValueError:
             return True
         words = _effective_tokens(tokens)
-        if not words:
-            if words is None and any(expected in token for token in tokens):
-                return True
-            continue
-        name = _command_basename(words[0])
-        if name in {"echo", "printf"} and any(expected in token for token in words[1:]):
+        # A here-string, assignment, or quoted program can carry the expected
+        # text. ``echo 'Starting check' && python check.py`` does not.
+        if any(expected in token for token in tokens):
             return True
-        flags = {"-c"} if name.startswith("python") else _INLINE_SCRIPT_FLAGS.get(name)
-        if flags is not None:
-            for index, token in enumerate(words):
-                if token in flags and index + 1 < len(words) and expected in words[index + 1]:
-                    return True
+        script = _inline_script(words) if words else None
+        if script is not None and not any(marker in script for marker in _FILE_READ_MARKERS):
+            return True
     return False
+
+
+def _inline_script(words: list[str]) -> str | None:
+    """Return an interpreter one-liner, leaving ``python -m pytest -c`` alone."""
+    name = _command_basename(words[0])
+    if name.startswith("python"):
+        if "-m" in words or "-c" not in words:
+            return None
+        index = words.index("-c")
+        return words[index + 1] if index + 1 < len(words) else ""
+    for flag in _INLINE_FLAGS.get(name, ()):
+        if flag in words:
+            index = words.index(flag)
+            return words[index + 1] if index + 1 < len(words) else ""
+    return None
 
 def _verification_mode(command: str) -> bool:
     try:

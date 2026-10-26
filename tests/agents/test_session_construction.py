@@ -427,6 +427,19 @@ def test_session_snapshot_returns_independent_session_without_autosave(local_env
     snap.messages.append({"role": "user", "content": "isolated"})
     assert {"role": "user", "content": "isolated"} not in session.messages
 
+def test_session_snapshot_clamps_enforcement_after_the_soft_cap_shrinks(local_environment_factory):
+    session = _new_session(local_environment_factory, env=_ForkableEnvironment(), max_budget_tokens=100_000)
+    session.runner.configure_enforcement(enforcement_strength="needs-enforcement", commit_reserve=25_000)
+    session.max_budget_tokens = 1_000
+
+    snap = snapshot_session(session)
+
+    assert snap.max_budget_tokens == 1_000
+    assert snap.runner.hard_budget_tokens == 100_000
+    assert snap.runner._enforcement_strength == "needs-enforcement"
+    assert snap.runner._commit_reserve == 250
+
+
 def test_session_snapshot_preserves_queued_external_turn(local_environment_factory):
     session = _new_session(local_environment_factory, env=_ForkableEnvironment())
     run(session.add_user_message("resume this request"))

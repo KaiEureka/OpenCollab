@@ -34,10 +34,28 @@ async def _check(workspace, command, seconds=10):
     ("eval 'echo CHECK_OK'", False, True),
     ("env -i python check.py", False, False),
     ("echo 'Starting check' && python check.py", True, False),
+    ("awk 'BEGIN{print \"CHECK_OK\"}'", False, True),
+    ("awk 'BEGIN{print \"CHECK\" \"_OK\"}'", False, False),
+    ("sed -n 's/.*/CHECK_OK/p'", False, True),
+    ("python -c 'print(\"CHE\"+\"CK_OK\")'", True, True),
+    ("python -c 'print(open(\"result.txt\").read())'", True, False),
+    ("python -m pytest -c pytest.ini tests.py", True, False),
+    ("python -c 'import sys; print(sys.stdin.read())' <<< CHECK_OK", False, False),
+    ("python -c 'import sys; print(sys.stdin.read())' <<< \"$X\"", False, False),
+    ("python check.py < /dev/null", True, False),
 ])
 def test_static_output_cannot_satisfy_an_expected_probe(command, executable, supplied):
     assert _verification_mode(command) is executable
     assert _static_printer_supplies(command, "CHECK_OK") is supplied
+
+
+async def test_here_string_cannot_authenticate_a_noop_program(tmp_path):
+    output = await _check(
+        tmp_path,
+        {"command": "python -c 'import sys; print(sys.stdin.read())' <<< CHECK_OK", "expected_output": "CHECK_OK"},
+    )
+    assert output["executed"] is False
+    assert output["ok"] is False
 
 
 async def test_printer_prefix_cannot_authenticate_a_noop_program(tmp_path):
