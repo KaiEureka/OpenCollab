@@ -143,7 +143,6 @@ _INLINE_FLAGS = {
     "php": ("-r",),
     "lua": ("-e",),
 }
-_FILE_READ_MARKERS = ("open(", "Path(", "stdin", "argv", "read_text", "read_bytes", "readFile")
 
 
 def _command_basename(token: str) -> str:
@@ -205,24 +204,35 @@ def _static_printer_supplies(command: str, expected: str) -> bool:
         # text. ``echo 'Starting check' && python check.py`` does not.
         if any(expected in token for token in tokens):
             return True
-        script = _inline_script(words) if words else None
-        if script is not None and not any(marker in script for marker in _FILE_READ_MARKERS):
+        if words and _inline_script(words) is not None:
+            # ``open(`` inside the script is not evidence. A one-liner can print
+            # the expected text without that substring, including ``-c"..."``.
             return True
     return False
+
+
+def _is_inline_flag(token: str, flag: str) -> bool:
+    if token == flag:
+        return True
+    if flag.startswith("--"):
+        return token.startswith(flag)
+    return token.startswith(flag) and not token.startswith("--")
 
 
 def _inline_script(words: list[str]) -> str | None:
     """Return an interpreter one-liner, leaving ``python -m pytest -c`` alone."""
     name = _command_basename(words[0])
     if name.startswith("python"):
-        if "-m" in words or "-c" not in words:
+        if "-m" in words:
             return None
-        index = words.index("-c")
-        return words[index + 1] if index + 1 < len(words) else ""
+        for index, token in enumerate(words):
+            if _is_inline_flag(token, "-c"):
+                return token if token != "-c" else (words[index + 1] if index + 1 < len(words) else "")
+        return None
     for flag in _INLINE_FLAGS.get(name, ()):
-        if flag in words:
-            index = words.index(flag)
-            return words[index + 1] if index + 1 < len(words) else ""
+        for index, token in enumerate(words):
+            if _is_inline_flag(token, flag):
+                return token if token != flag else (words[index + 1] if index + 1 < len(words) else "")
     return None
 
 def _verification_mode(command: str) -> bool:

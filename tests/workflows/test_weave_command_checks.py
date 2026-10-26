@@ -38,7 +38,10 @@ async def _check(workspace, command, seconds=10):
     ("awk 'BEGIN{print \"CHECK\" \"_OK\"}'", False, False),
     ("sed -n 's/.*/CHECK_OK/p'", False, True),
     ("python -c 'print(\"CHE\"+\"CK_OK\")'", True, True),
-    ("python -c 'print(open(\"result.txt\").read())'", True, False),
+    ("python -c 'x=\"open(\"; print(\"CHE\"+\"CK_OK\")'", True, True),
+    ("python -c 'print(open(\"result.txt\").read())'", True, True),
+    ('python -c"print(\'CHE\'+\'CK_OK\')"', True, True),
+    ('SCRIPT=\'print("CHE"+"CK_OK")\' python -c"$SCRIPT"', True, True),
     ("python -m pytest -c pytest.ini tests.py", True, False),
     ("python -c 'import sys; print(sys.stdin.read())' <<< CHECK_OK", False, False),
     ("python -c 'import sys; print(sys.stdin.read())' <<< \"$X\"", False, False),
@@ -47,6 +50,14 @@ async def _check(workspace, command, seconds=10):
 def test_static_output_cannot_satisfy_an_expected_probe(command, executable, supplied):
     assert _verification_mode(command) is executable
     assert _static_printer_supplies(command, "CHECK_OK") is supplied
+
+
+async def test_decoy_file_read_cannot_authenticate_a_one_liner(tmp_path):
+    command = f"{shlex.quote(sys.executable)} -c 'x=\"open(\"; print(\"CHE\"+\"CK_OK\")'"
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert output["executed"] is True
+    assert output["ok"] is False
+    assert output["report"]["checks"][0]["reason"] == "expected output is supplied by a static printer"
 
 
 async def test_here_string_cannot_authenticate_a_noop_program(tmp_path):

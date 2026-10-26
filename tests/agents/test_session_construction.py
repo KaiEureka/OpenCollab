@@ -437,7 +437,7 @@ def test_session_snapshot_clamps_enforcement_after_the_soft_cap_shrinks(local_en
     assert snap.max_budget_tokens == 1_000
     assert snap.runner.hard_budget_tokens == 100_000
     assert snap.runner._enforcement_strength == "needs-enforcement"
-    assert snap.runner._commit_reserve == 250
+    assert snap.runner._commit_reserve == 1_000
 
 
 def test_session_snapshot_preserves_queued_external_turn(local_environment_factory):

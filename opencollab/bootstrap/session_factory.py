@@ -370,10 +370,13 @@ def snapshot_session(
         soft = new.max_budget_tokens
         if strength == ENFORCEMENT_ON and soft is not None and reserve > soft:
             # A later lease can shrink the soft cap below the reserve that was
-            # legal when enforcement was armed. Use the scout's quarter-cap
-            # clamp. A cap below one token cannot hold a reserve.
+            # legal when enforcement was armed. Holding the reserve at the new
+            # cap keeps the fork on the commit side of that line. A cap below
+            # one token cannot hold a reserve.
             if soft >= 1:
-                reserve = max(1, soft // 4)
+                # Keep the fork past the explore line. A quarter of the new cap
+                # would let it spend tokens the source already had to commit.
+                reserve = soft
             else:
                 strength = ENFORCEMENT_OFF
         new.runner.configure_enforcement(
