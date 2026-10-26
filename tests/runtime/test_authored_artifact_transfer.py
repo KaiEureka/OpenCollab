@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 from opencollab.adapters import _docker_snapshot as snapshot_module
 from opencollab.adapters._docker_snapshot import _copy_artifact_to_host
-from opencollab.adapters._env_vm import VMEnvironment
+from opencollab.adapters._env_process import ProcessResult
+from opencollab.adapters._env_vm import VMEnvironment, VMTransportError
 from opencollab.adapters.env import DockerEnvironment, ExecResult, LocalEnvironment, WorktreeEnvironment
 from opencollab.adapters.session_environments import SessionEnvironmentPool
 from opencollab.application.tool_execution import ToolRuntime
+from opencollab.bootstrap.authored_workflow import AuthoredWorkflowTool, _Child
 from opencollab.bootstrap.authored_workflow_bridge import AuthoredWorkflowBridge, BridgeClient, BridgeEnvironment
 
 
@@ -116,6 +120,117 @@ async def test_remote_artifact_transfer_uses_existing_transport_and_requires_reg
         contained.assert_awaited_once_with("/workspace/result.json")
     with pytest.raises(PermissionError, match="escapes workspace"):
         await _copy_artifact_to_host(environment, "/outside/result.json", target)
+
+
+@pytest.mark.parametrize("kind", ["docker", "vm"])
+async def test_missing_remote_artifact_stays_distinguishable_from_transport_failure(
+    tmp_path, monkeypatch, kind,
+):
+    environment = object.__new__(DockerEnvironment if kind == "docker" else VMEnvironment)
+    environment.workspace = "/workspace"
+    target = tmp_path / "copied.json"
+
+    async def absent(command, timeout=120.0, **kwargs):
+        assert command == "test ! -e /workspace/result.json"
+        return ExecResult(0, "", "")
+
+    monkeypatch.setattr(environment, "exec_cmd", absent)
+    if kind == "docker":
+        environment._container_id = "owned-test-container"
+        monkeypatch.setattr(environment, "setup", AsyncMock())
+        monkeypatch.setattr(environment, "_contained_file_path", AsyncMock(return_value="/workspace/result.json"))
+
+        async def docker(*args):
+            return ExecResult(1, "", "No such file")
+
+        monkeypatch.setattr(environment, "_docker", docker)
+    else:
+        async def download(source, destination, *, directory=False):
+            raise VMTransportError("missing", operation_id="download")
+
+        monkeypatch.setattr(environment, "copy_to_host", download)
+    with pytest.raises(FileNotFoundError):
+        await _copy_artifact_to_host(environment, "/workspace/result.json", target)
+    assert not target.exists()
+
+    async def present(command, timeout=120.0, **kwargs):
+        return ExecResult(1, "", "")
+
+    monkeypatch.setattr(environment, "exec_cmd", present)
+    with pytest.raises((OSError, VMTransportError), match="copy failed|missing"):
+        await _copy_artifact_to_host(environment, "/workspace/result.json", target)
+
+
+@pytest.mark.parametrize("probe", [
+    ExecResult(1, "", "Cannot connect to the Docker daemon"),
+    ExecResult(0, "", "", timed_out=True),
+    ExecResult(0, "", "", stdout_truncated=True),
+    ExecResult(0, "", "", stderr_truncated=True),
+    ExecResult(0, "", "", stdout_dropped_bytes=1),
+    ExecResult(0, "", "", stderr_dropped_bytes=1),
+])
+async def test_failed_remote_absence_probe_preserves_transfer_error(tmp_path, monkeypatch, probe):
+    environment = object.__new__(VMEnvironment)
+    environment.workspace = "/workspace"
+    monkeypatch.setattr(environment, "exec_cmd", AsyncMock(return_value=probe))
+    error = VMTransportError("download failed", operation_id="download")
+    monkeypatch.setattr(environment, "copy_to_host", AsyncMock(side_effect=error))
+
+    with pytest.raises(VMTransportError) as caught:
+        await _copy_artifact_to_host(environment, "/workspace/result.json", tmp_path / "copied.json")
+
+    assert caught.value is error
+
+
+async def test_authored_docker_transport_failure_retains_native_artifacts(tmp_path, monkeypatch):
+    native = tmp_path / "workspace" / "child"
+    native.mkdir(parents=True)
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    (native / "workflow.json").write_text('{"evidence": "retain this workflow"}')
+    (native / "result.json").write_text(json.dumps({
+        "status": "completed", "output": 42, "tokens": 0, "artifact_files": ["workflow.json"],
+    }))
+    environment = DockerEnvironment(workspace=str(native.parent))
+    environment._container_id = "owned-test-container"
+    monkeypatch.setattr(environment, "setup", AsyncMock(return_value=environment._container_id))
+    monkeypatch.setattr(environment, "_contained_file_path", AsyncMock(side_effect=lambda path: path))
+    monkeypatch.setattr(environment, "read_file", AsyncMock(side_effect=FileNotFoundError))
+    commands = []
+
+    async def docker(*args, **kwargs):
+        if args[0] == "cp":
+            source = args[2].split(":", 1)[1]
+            if source.endswith("/workflow.json"):
+                return ProcessResult(1, b"", b"Cannot connect to the Docker daemon")
+            shutil.copyfile(source, args[3])
+            return ProcessResult(0, b"", b"")
+        assert args[0] == "exec"
+        command = args[-1]
+        commands.append(command)
+        if command.startswith("test "):
+            return ProcessResult(1, b"", b"Cannot connect to the Docker daemon")
+        if command.startswith("rm -rf -- "):
+            shutil.rmtree(native)
+        return ProcessResult(0, b"", b"")
+
+    monkeypatch.setattr(environment, "_docker", docker)
+    parent = SimpleNamespace(runner=SimpleNamespace(_run_cancellation_requested=lambda: False))
+    tool = AuthoredWorkflowTool(lambda: parent, None, str(saved))
+    bridge = SimpleNamespace(tokens=0, poll=AsyncMock(), aclose=AsyncMock())
+    child = _Child("child", environment, str(native), None, bridge=bridge)
+    tool._children[child.id] = child
+
+    await tool._execute(child, "fixture-runner", b"{}")
+
+    assert child.status == "failed"
+    assert isinstance(child.cleanup_error, OSError)
+    assert "child result persistence failed" in child.result["reason"]
+    with pytest.raises(RuntimeError, match="Docker source workspace copy failed"):
+        await tool.aclose()
+    assert (native / "workflow.json").is_file()
+    assert not child.artifacts_removed
+    assert all(not command.startswith("rm -rf -- ") for command in commands)
 
 
 async def test_artifact_copy_failure_closes_source_descriptor(tmp_path, monkeypatch):

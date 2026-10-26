@@ -22,6 +22,13 @@ from opencollab.environments import local_environment
     ("python -m pytest --report-chars A tests/test_example.py", ("tests/test_example.py",)),
     ("python -m pytest --max-warnings 5 tests/test_example.py", ("tests/test_example.py",)),
     ("python -m pytest -r A -k example tests", ("tests",)),
+    ("python -m pytest test_example.py # keep this note", ("test_example.py",)),
+    ("python -m pytest test_example.py #don't parse ' | ; < > `", ("test_example.py",)),
+    ("python -m pytest --junit-prefix '#suite' test_example.py", ("test_example.py",)),
+    (r"python -m pytest --junit-prefix \#suite test_example.py", ("test_example.py",)),
+    ("python -m pytest '#test_example.py'", ("#test_example.py",)),
+    (r"python -m pytest \#test_example.py", ("#test_example.py",)),
+    ("python -m pytest test#example.py", ("test#example.py",)),
     ("go test -json -coverprofile=coverage.out .", (".",)),
     ("go test -json -coverprofile coverage.out .", (".",)),
     ("go test -json -covermode count -coverpkg ./... -coverprofile coverage.out ./pkg", ("./pkg",)),
@@ -35,6 +42,13 @@ def test_native_test_options_do_not_become_targets(command, targets):
 def test_missing_native_option_value_cannot_prove_execution(command):
     parsed = parse_test_command(command, "/workspace")
     assert parsed is None or not parsed.provable
+
+@pytest.mark.parametrize("command", [
+    "python -m pytest test_example.py # note\npython other.py",
+    "python -m pytest\n test_example.py",
+])
+def test_native_test_commands_keep_multiline_execution_unverified(command):
+    assert parse_test_command(command, "/workspace") is None
 
 def test_pytest_core_required_values_follow_installed_option_metadata():
     for group in get_config()._parser._groups:

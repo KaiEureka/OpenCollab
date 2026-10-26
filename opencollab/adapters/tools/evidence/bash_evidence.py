@@ -17,7 +17,7 @@ from ._test_results import (
     _verification_targets_overlap,
     has_pass_evidence,
 )
-from .command_evidence import _strip_command_padding, parse_test_command, relative_target
+from .command_evidence import _shell_comment_start, _strip_command_padding, parse_test_command, relative_target
 
 
 def _pytest_target(target: str, workspace: str | None, local_filesystem: bool) -> str:
@@ -108,7 +108,8 @@ class BashEvidence:
         spec = parse_test_command(command, None)
         if spec is None or not spec.provable or not _is_pytest_runner(spec.runner):
             return command
-        lexer = shlex.shlex(command, posix=True)
+        comment_start = _shell_comment_start(command)
+        lexer = shlex.shlex(command[:comment_start], posix=True)
         lexer.whitespace_split = True
         lexer.commenters = ""
         runner_seen = False
@@ -116,6 +117,8 @@ class BashEvidence:
             start = lexer.instream.tell()
             token = lexer.get_token()
             if token is None:
+                if comment_start < len(command):
+                    return command[:comment_start] + "-rA " + command[comment_start:]
                 return command + " -rA"
             if runner_seen and token == "--":
                 return command[:start] + "-rA " + command[start:]
