@@ -215,6 +215,72 @@ class _ScoutModel:
         return llm_response(content="READY")
 
 
+class _ReadOrCommitModel(_FileModel):
+    def __init__(self):
+        super().__init__()
+        self.requests = []
+
+    async def complete(self, messages, tools=None, **kwargs):
+        names = [tool["function"]["name"] for tool in tools or []]
+        self.requests.append((names, copy.deepcopy(kwargs.get("tool_choice"))))
+        if names == ["submit_findings"]:
+            return llm_response(tool_calls=[_call("submit_findings", {
+                "findings": [], "summary": "No matching evidence was collected for this turn.",
+                "insufficient_evidence": True,
+            }, f"submit-{len(self.requests)}")], finish_reason="tool_calls")
+        return await super().complete(messages, tools=tools, **kwargs)
+
+
+@pytest.mark.parametrize("expansion", ["direct", "policy"])
+@pytest.mark.parametrize("expanded_cap,forced", [(25_000, True), (50_000, False)])
+async def test_snapshot_preserves_reserve_after_shrink_and_expansion(
+    tmp_path, expansion, expanded_cap, forced,
+):
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "marker.txt").write_text("RESERVE_MARKER")
+    target = None
+
+    def decide(observation):
+        return BudgetDecision(observation.soft_budget_tokens if target is None else target)
+
+    model = _ReadOrCommitModel()
+    source = build_session(
+        agent=Agent(name="scout", system_prompt="Read evidence and submit findings.",
+                    tools=[FileReadTool(), SubmitFindingsTool()]),
+        env=_ForkableEnvironment(str(workspace)), llm=model, max_budget_tokens=100_000,
+        run_control=RunControl(decide_budget=decide) if expansion == "policy" else None,
+    )
+    branch = None
+    try:
+        source.runner.configure_enforcement(enforcement_strength="needs-enforcement", commit_reserve=25_000)
+        await source.add_user_message("Read marker.txt.")
+        assert "RESERVE_MARKER" in await source.run_loop()
+        assert source.used_tokens == 23
+        source.max_budget_tokens = 10_000
+        branch = snapshot_session(source)
+        if expansion == "direct":
+            source.max_budget_tokens = branch.max_budget_tokens = expanded_cap
+        else:
+            target = expanded_cap
+        for session in (source, branch):
+            before = len(model.requests)
+            message_start = len(session.messages)
+            await session.add_user_message("Read marker.txt and report the available evidence.")
+            answer = await session.run_loop()
+            choice = {"type": "function", "function": {"name": "submit_findings"}}
+            expected = (["submit_findings"], choice) if forced else (["file_read", "submit_findings"], None)
+            assert model.requests[before] == expected
+            assert (session.agent.find_tool("submit_findings").captured is not None) is forced
+            results = [row["content"] for row in session.messages[message_start:] if row["role"] == "tool"]
+            assert any("RESERVE_MARKER" in value for value in results) is (not forced)
+            if not forced:
+                assert "RESERVE_MARKER" in answer
+            assert session.max_budget_tokens == expanded_cap
+    finally:
+        await _close(branch, source)
+
+
 @pytest.mark.parametrize("spent,forced", [(7499, False), (8001, True)])
 async def test_snapshot_preserves_scout_commit_threshold_and_capture(tmp_path, spent, forced):
     model = _ScoutModel()
