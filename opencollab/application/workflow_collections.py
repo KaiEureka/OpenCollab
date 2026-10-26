@@ -154,7 +154,7 @@ class WorkflowCollectionsMixin:
             planned_budget = max(1, available // size) if available else 0
         results: list[Any] = [None] * size
         next_index = iter(range(size))
-        terminal: list[BaseException] = []
+        errors: dict[int, BaseException] = {}
 
         async def execute(index: int) -> None:
             budget_token = self._active_collection_budget.set(planned_budget)
@@ -165,13 +165,12 @@ class WorkflowCollectionsMixin:
             except asyncio.CancelledError:
                 raise
             except BaseException as exc:
-                results[index] = exc
-                terminal.append(exc)
+                errors[index] = exc
             finally:
                 self._active_collection_budget.reset(budget_token)
 
         async def worker() -> None:
-            while not terminal:
+            while not errors:
                 try:
                     index = next(next_index)
                 except StopIteration:
@@ -242,12 +241,11 @@ class WorkflowCollectionsMixin:
                 )
                 raise
 
-        for result in results:
-            if isinstance(result, WorkflowBudgetExceeded):
-                raise result
-        for result in results:
-            if isinstance(result, BaseException):
-                raise result
+        for index in sorted(errors):
+            if isinstance(errors[index], WorkflowBudgetExceeded):
+                raise errors[index]
+        if errors:
+            raise errors[min(errors)]
         return results
 
     async def parallel(self, thunks: Sequence[Thunk]) -> list[Any]:
