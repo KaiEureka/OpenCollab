@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shlex
+import shutil
 import sys
 
 import pytest
@@ -48,6 +49,23 @@ async def _check(workspace, command, seconds=10):
     ("perl -E 'say \"CHE\".\"CK_OK\"'", True, True),
     ("uv run python -c 'print(\"CHE\"+\"CK_OK\")'", True, True),
     ("python -m pytest -c pytest.ini tests.py", True, False),
+    ("python -W ignore -c 'print(1)'", True, True),
+    ("python -X dev -c 'print(1)'", True, True),
+    ("python check.py -c settings.json", True, False),
+    ("python check.py node -p artifact.txt", True, False),
+    ("./check.sh python -c config.json", True, False),
+    ("node check.js -p artifact.txt", True, False),
+    ("node --require setup.js -e 'console.log(1)'", True, True),
+    ("perl check.pl -e settings.json", True, False),
+    ("ruby check.rb -e settings.json", True, False),
+    ("php check.php -r settings.json", True, False),
+    ("lua check.lua -e settings.json", True, False),
+    ("perl -I lib -E 'say 1'", True, True),
+    ("ruby -I lib -e 'puts 1'", True, True),
+    ("php -c config.ini -r 'echo 1;'", True, True),
+    ("lua -l module -e 'print(1)'", True, True),
+    ("bash check.sh", True, False),
+    ("bash -- check.sh -c settings.json", True, False),
     ("python -c 'import sys; print(sys.stdin.read())' <<< CHECK_OK", False, False),
     ("python -c 'import sys; print(sys.stdin.read())' <<< \"$X\"", False, False),
     ("python check.py < /dev/null", True, False),
@@ -55,6 +73,141 @@ async def _check(workspace, command, seconds=10):
 def test_static_output_cannot_satisfy_an_expected_probe(command, executable, supplied):
     assert _verification_mode(command) is executable
     assert _static_printer_supplies(command, "CHECK_OK") is supplied
+
+
+@pytest.mark.parametrize("arguments", ["-c settings.json", "node -p artifact.txt"])
+@pytest.mark.parametrize("passed", [True, False])
+async def test_python_script_arguments_preserve_behavior_probe(tmp_path, arguments, passed):
+    (tmp_path / "artifact.txt").write_text("42\n", encoding="utf-8")
+    (tmp_path / "check.py").write_text(
+        "from pathlib import Path\nimport sys\n"
+        f"assert sys.argv[1:] == {shlex.split(arguments)!r}\n"
+        "Path('executed').write_text('yes')\n"
+        f"assert Path('artifact.txt').read_text() == {('42' if passed else '43')!r} + '\\n'\n"
+        "print('CHECK_OK')\n",
+        encoding="utf-8",
+    )
+    command = f"{shlex.quote(sys.executable)} check.py {arguments}"
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert output["executed"] is True and output["ok"] is passed
+
+
+@pytest.mark.parametrize("passed", [True, False])
+async def test_node_script_arguments_preserve_behavior_probe(tmp_path, passed):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required for the JavaScript assertion probe")
+    (tmp_path / "artifact.txt").write_text("42\n", encoding="utf-8")
+    (tmp_path / "check.js").write_text(
+        "const fs = require('node:fs');\nconst assert = require('node:assert/strict');\n"
+        "assert.deepEqual(process.argv.slice(2), ['-p', 'artifact.txt']);\n"
+        "fs.writeFileSync('executed', 'yes');\n"
+        f"assert.equal(fs.readFileSync(process.argv[3], 'utf8'), {('42' if passed else '43')!r} + '\\n');\n"
+        "console.log('CHECK_OK');\n",
+        encoding="utf-8",
+    )
+    command = f"{shlex.quote(node)} check.js -p artifact.txt"
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert output["executed"] is True and output["ok"] is passed
+
+
+@pytest.mark.parametrize("interpreter,suffix,flag,source", [
+    ("perl", "pl", "-e",
+     'die "args" unless "@ARGV" eq "-e settings.json";\n'
+     'open(my $input, "<", "artifact.txt") or die $!;\n'
+     'my $actual = <$input>; chomp $actual;\n'
+     'open(my $marker, ">", "executed") or die $!; print $marker "yes";\n'
+     'die "bad artifact" unless $actual eq "VALUE";\nprint "CHECK_OK\\n";\n'),
+    ("ruby", "rb", "-e",
+     "raise 'args' unless ARGV == ['-e', 'settings.json']\n"
+     "File.write('executed', 'yes')\n"
+     "raise 'bad artifact' unless File.read('artifact.txt').strip == 'VALUE'\nputs 'CHECK_OK'\n"),
+    ("php", "php", "-r",
+     "<?php\nif (array_slice($argv, 1) !== ['-r', 'settings.json']) { exit(2); }\n"
+     "file_put_contents('executed', 'yes');\n"
+     "if (trim(file_get_contents('artifact.txt')) !== 'VALUE') { exit(1); }\n"
+     'echo "CHECK_OK\\n";\n'),
+    ("lua", "lua", "-e",
+     'assert(arg[1] == "-e" and arg[2] == "settings.json")\n'
+     'local input = assert(io.open("artifact.txt")); local actual = input:read("*a"); input:close()\n'
+     'local marker = assert(io.open("executed", "w")); marker:write("yes"); marker:close()\n'
+     'assert(actual == "VALUE\\n")\nprint("CHECK_OK")\n'),
+])
+@pytest.mark.parametrize("passed", [True, False])
+async def test_other_interpreter_script_arguments_preserve_behavior_probe(
+    tmp_path, interpreter, suffix, flag, source, passed,
+):
+    executable = shutil.which(interpreter)
+    if executable is None:
+        pytest.skip(f"{interpreter} is required for its assertion probe")
+    (tmp_path / "artifact.txt").write_text("42\n", encoding="utf-8")
+    script = f"check.{suffix}"
+    (tmp_path / script).write_text(source.replace("VALUE", "42" if passed else "43"), encoding="utf-8")
+    command = f"{shlex.quote(executable)} {script} {flag} settings.json"
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert output["executed"] is True and output["ok"] is passed
+
+
+@pytest.mark.parametrize("separator", ["", "-- "])
+@pytest.mark.parametrize("arguments", ["", "python -c settings.json"])
+@pytest.mark.parametrize("passed", [True, False])
+async def test_shell_file_script_preserves_assertion_probe(tmp_path, separator, arguments, passed):
+    shell = shutil.which("bash")
+    if shell is None:
+        pytest.skip("Bash is required for the shell assertion probe")
+    (tmp_path / "artifact.txt").write_text("42\n", encoding="utf-8")
+    (tmp_path / "check.sh").write_text(
+        "test -f artifact.txt || exit 1\n"
+        f"test \"$*\" = {shlex.quote(arguments)} || exit 1\n"
+        "printf yes > executed\n"
+        "read -r actual < artifact.txt\n"
+        f"test \"$actual\" = {('42' if passed else '43')} || exit 1\n"
+        "printf 'CHECK_OK\\n'\n",
+        encoding="utf-8",
+    )
+    command = f"{shlex.quote(shell)} {separator}check.sh {arguments}"
+    output = await _check(tmp_path, {"command": command, "expected_output": "CHECK_OK"})
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert output["executed"] is True and output["ok"] is passed
+
+
+async def test_expected_output_can_overlap_a_real_script_argument(tmp_path):
+    (tmp_path / "check.py").write_text(
+        "import sys\nfrom pathlib import Path\n"
+        "assert Path('artifact.txt').read_text() == sys.argv[1]\n"
+        "print('correct')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "artifact.txt").write_text("correct", encoding="utf-8")
+    command = f"{shlex.quote(sys.executable)} check.py correct"
+    output = await _check(tmp_path, {"command": command, "expected_output": "correct"})
+    assert output["executed"] is True and output["ok"] is True
+
+
+@pytest.mark.parametrize("target,options", [
+    ("test_result.py", ""),
+    ("test_result.py", "--junit-prefix '#suite'"),
+    ("test_result.py", r"--junit-prefix \#suite"),
+    ("test_result.py", "# keep this note"),
+    ("test_result.py", "#don't parse this ' comment; | < > `"),
+    ("#test_result.py", ""),
+    ("test#result.py", ""),
+])
+async def test_pytest_target_output_and_quoted_hash_option_preserve_test_execution(tmp_path, target, options):
+    (tmp_path / target).write_text(
+        "from pathlib import Path\ndef test_result():\n"
+        "    Path('executed').write_text('yes')\n"
+        "    assert 6 * 7 == 42\n",
+        encoding="utf-8",
+    )
+    command = f"{shlex.quote(sys.executable)} -m pytest -q -p no:cacheprovider {shlex.quote(target)} {options}"
+    output = await _check(tmp_path, {"command": command, "expected_output": target})
+    assert (tmp_path / "executed").read_text() == "yes"
+    assert output["executed"] is True and output["ok"] is True
+    assert all(row["verified"] for row in output["report"]["checks"][0]["test_records"])
 
 
 async def test_clustered_python_flag_cannot_authenticate_a_one_liner(tmp_path):

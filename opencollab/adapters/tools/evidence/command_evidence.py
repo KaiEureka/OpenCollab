@@ -51,14 +51,29 @@ def _strip_command_padding(command: str) -> str:
         end += 1
     return command[:end].lstrip()
 
+def _shell_comment_start(command: str) -> int:
+    lexer = shlex.shlex(command, posix=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    while True:
+        start = lexer.instream.tell()
+        remaining = command[start:].lstrip()
+        if remaining.startswith("#"):
+            return len(command) - len(remaining)
+        if lexer.get_token() is None:
+            return len(command)
+
 def parse_test_command(command: str, workspace: str | None) -> TestCommand | None:
     """Recognize direct pytest, Go and Django invocations, never shell output replay."""
     if not isinstance(command, str):
         return None
     command = _strip_command_padding(command)
-    if any(char in command for char in "\n\r;|<>`"):
+    if any(char in command for char in "\n\r"):
         return None
     try:
+        command = command[:_shell_comment_start(command)]
+        if any(char in command for char in ";|<>`"):
+            return None
         parts = shlex.split(command)
     except ValueError:
         return None

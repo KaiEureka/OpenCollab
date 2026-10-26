@@ -136,7 +136,7 @@ _WRAPPERS = frozenset({
 _SHELLS = frozenset({"bash", "sh", "dash", "zsh", "ksh", "ash"})
 _STATIC_COMMANDS = frozenset({"true", "false", ":", "echo", "printf", "test", "["})
 _TEXT_TOOLS = frozenset({"awk", "gawk", "nawk", "mawk", "sed", "jq"})
-_PY_INLINE = re.compile(r"-[bBdEihIOqsuvVxX?]*c")
+_PY_INLINE = re.compile(r"-[bBdEihIOPqRsSuvVx?]*c")
 _PERL_INLINE = re.compile(r"-[nplad]*[eE]")
 _RUBY_INLINE = re.compile(r"-[npl]*e")
 
@@ -150,8 +150,8 @@ def _effective_tokens(tokens: list[str]) -> list[str] | None:
 
     Assignments and ``env`` / ``command`` / ``builtin`` are skipped, as before.
     Their options stay in place, so ``env -i python`` remains unverified.
-    ``exec``, ``bash -c``, ``busybox``, and similar wrappers are rejected
-    outright: peeling their options can mistake the next word for the program.
+    Shells accept a literal script path, while inline commands and wrappers
+    remain unverified.
     """
     index = 0
     while index < len(tokens):
@@ -164,8 +164,16 @@ def _effective_tokens(tokens: list[str]) -> list[str] | None:
         if name in {"env", "command", "builtin", "--"}:
             index += 1
             continue
-        if name in _WRAPPERS or name in _SHELLS:
+        if name in _WRAPPERS:
             return None
+        if name in _SHELLS:
+            arguments = tokens[index + 1:]
+            if arguments[:1] == ["--"]:
+                arguments = arguments[1:]
+            if not arguments or not arguments[0] or arguments[0].startswith("-") or any(
+                char in arguments[0] for char in "$<>"
+            ):
+                return None
         return tokens[index:]
     return []
 
@@ -195,9 +203,9 @@ def _static_printer_supplies(command: str, expected: str) -> bool:
             tokens = shlex.split(segment)
         except ValueError:
             return True
-        # A here-string, assignment, or quoted program can carry the expected
-        # text. ``echo 'Starting check' && python check.py`` does not.
-        if any(expected in token for token in tokens):
+        words = _effective_tokens(tokens)
+        printer = not words or _command_basename(words[0]) in _STATIC_COMMANDS | _TEXT_TOOLS
+        if printer and any(expected in token for token in tokens):
             return True
         if _contains_inline_script(tokens):
             # Clustered flags (``python -ic``), ``node -p``, ``perl -E``, and a
@@ -208,43 +216,60 @@ def _static_printer_supplies(command: str, expected: str) -> bool:
 
 
 def _contains_inline_script(tokens: list[str]) -> bool:
-    for index, token in enumerate(tokens):
-        name = _command_basename(token)
-        rest = tokens[index + 1:]
-        if name.startswith("python") and _python_inline(rest):
+    words = _effective_tokens(tokens)
+    if words is None:
+        return True
+    if words and _command_basename(words[0]) == "uv" and words[1:2] == ["run"]:
+        words = _effective_tokens(words[2:])
+        if words is None or words and words[0].startswith("-"):
             return True
-        if name in {"node", "nodejs"} and any(_node_inline(item) for item in rest):
-            return True
-        if name == "perl" and any(_PERL_INLINE.match(item) for item in rest):
-            return True
-        if name == "ruby" and any(_RUBY_INLINE.match(item) for item in rest):
-            return True
-        if name.startswith("php") and any(
-            item == "-r" or item.startswith("-r") and not item.startswith("--") for item in rest
-        ):
-            return True
-        if name == "lua" and any(
-            item == "-e" or item.startswith("-e") and not item.startswith("--") for item in rest
-        ):
-            return True
+    if not words:
+        return False
+    name, rest = _command_basename(words[0]), words[1:]
+    if name.startswith("python"):
+        return _python_inline(rest)
+    if name in {"node", "nodejs"}:
+        return _node_inline(rest)
+    if name == "perl":
+        return any(_PERL_INLINE.match(item) for item in _interpreter_options(rest, {"-I", "-M", "-m"}))
+    if name == "ruby":
+        return any(_RUBY_INLINE.match(item) for item in _interpreter_options(rest, {"-I", "-r", "-C", "-E", "-F"}))
+    if name.startswith("php"):
+        return any(item.startswith("-r") and not item.startswith("--")
+                   for item in _interpreter_options(rest, {"-c", "-d"}))
+    if name == "lua":
+        return any(item.startswith("-e") and not item.startswith("--")
+                   for item in _interpreter_options(rest, {"-l"}))
     return False
 
 
-def _node_inline(token: str) -> bool:
-    if token in {"-e", "-p", "--eval", "--print"}:
-        return True
-    if token.startswith("--"):
-        return token.startswith("--eval") or token.startswith("--print")
-    return token.startswith("-e") or token.startswith("-p")
+def _interpreter_options(rest: list[str], value_options: set[str]) -> list[str]:
+    options = []
+    arguments = iter(rest)
+    for token in arguments:
+        if token == "--" or not token.startswith("-"):
+            break
+        options.append(token)
+        if token in value_options:
+            next(arguments, None)
+    return options
+
+
+def _node_inline(rest: list[str]) -> bool:
+    options = _interpreter_options(rest, {
+        "-r", "--require", "--import", "--loader", "--experimental-loader",
+        "-C", "--conditions", "--input-type",
+    })
+    return any(token.startswith(("--eval", "--print")) or (
+        not token.startswith("--") and token.startswith(("-e", "-p"))
+    ) for token in options)
 
 
 def _python_inline(rest: list[str]) -> bool:
-    module = False
-    for token in rest:
+    for token in _interpreter_options(rest, {"-W", "-X", "--check-hash-based-pycs"}):
         if token == "-m" or (token.startswith("-m") and not token.startswith("--")):
-            module = True
-            continue
-        if _PY_INLINE.match(token) and not module:
+            return False
+        if _PY_INLINE.match(token):
             return True
     return False
 
@@ -299,7 +324,7 @@ async def _verify_commands(ctx: Any, commands: Sequence[Any], seconds: float | N
                 row["expected_output"] = expected
                 row["matched"] = expected in output
                 row["ok"] = (row["ok"] if records else not requires_test_evidence) and completed and row["matched"]
-                if row["ok"] and _static_printer_supplies(command, expected):
+                if row["ok"] and not records and _static_printer_supplies(command, expected):
                     row["ok"] = False
                     row["reason"] = "expected output is supplied by a static printer"
         checks.append(row)
