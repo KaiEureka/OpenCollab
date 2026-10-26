@@ -82,17 +82,16 @@ async def _copy_artifact_to_host(environment: Any, source: str, target: Path) ->
 
 
 async def _remote_path_absent(environment: Any, source: str) -> bool:
-    """True only when the guest reports that the source path is absent.
-
-    A failed copy of a listed optional artifact must stay distinguishable from a
-    transport failure. ``test -e`` returns 1 for a missing path and another
-    status when the probe itself cannot run.
-    """
+    """A successful absence probe keeps transport failures visible."""
     try:
-        result = await environment.exec_cmd(f"test -e {shlex.quote(source)}", timeout=30)
+        result = await environment.exec_cmd(f"test ! -e {shlex.quote(source)}", timeout=30)
     except Exception:
         return False
-    return getattr(result, "returncode", None) == 1
+    return (
+        result.returncode == 0 and not result.timed_out
+        and not result.stdout_truncated and not result.stderr_truncated
+        and not result.stdout_dropped_bytes and not result.stderr_dropped_bytes
+    )
 
 
 def _remove_marker(path: Path) -> None:
