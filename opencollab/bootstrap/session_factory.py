@@ -373,10 +373,9 @@ def snapshot_session(
             run_control=control,
         )
         new.max_budget_tokens = session.max_budget_tokens
-        new.runner.configure_enforcement(
-            enforcement_strength=session.runner._enforcement_strength,
-            commit_reserve=session.runner._commit_reserve,
-        )
+        # Soft-budget changes preserve the source's already-effective reserve.
+        new.runner._enforcement_strength = session.runner._enforcement_strength
+        new.runner._commit_reserve = session.runner._commit_reserve
         if state.phase not in {
             SessionPhase.IDLE, SessionPhase.DONE, SessionPhase.STOPPED, SessionPhase.ERROR,
         } or new._open_tool_call_ids(state):
