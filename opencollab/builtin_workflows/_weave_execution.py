@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import shlex
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -135,14 +136,9 @@ _WRAPPERS = frozenset({
 _SHELLS = frozenset({"bash", "sh", "dash", "zsh", "ksh", "ash"})
 _STATIC_COMMANDS = frozenset({"true", "false", ":", "echo", "printf", "test", "["})
 _TEXT_TOOLS = frozenset({"awk", "gawk", "nawk", "mawk", "sed", "jq"})
-_INLINE_FLAGS = {
-    "perl": ("-e",),
-    "ruby": ("-e",),
-    "node": ("-e", "--eval"),
-    "nodejs": ("-e", "--eval"),
-    "php": ("-r",),
-    "lua": ("-e",),
-}
+_PY_INLINE = re.compile(r"-[bBdEihIOqsuvVxX?]*c")
+_PERL_INLINE = re.compile(r"-[nplad]*[eE]")
+_RUBY_INLINE = re.compile(r"-[npl]*e")
 
 
 def _command_basename(token: str) -> str:
@@ -199,41 +195,58 @@ def _static_printer_supplies(command: str, expected: str) -> bool:
             tokens = shlex.split(segment)
         except ValueError:
             return True
-        words = _effective_tokens(tokens)
         # A here-string, assignment, or quoted program can carry the expected
         # text. ``echo 'Starting check' && python check.py`` does not.
         if any(expected in token for token in tokens):
             return True
-        if words and _inline_script(words) is not None:
-            # ``open(`` inside the script is not evidence. A one-liner can print
-            # the expected text without that substring, including ``-c"..."``.
+        if _contains_inline_script(tokens):
+            # Clustered flags (``python -ic``), ``node -p``, ``perl -E``, and a
+            # runner such as ``uv run python -c`` can still print arbitrary text.
+            # ``python -m pytest -c`` stays a real test command.
             return True
     return False
 
 
-def _is_inline_flag(token: str, flag: str) -> bool:
-    if token == flag:
+def _contains_inline_script(tokens: list[str]) -> bool:
+    for index, token in enumerate(tokens):
+        name = _command_basename(token)
+        rest = tokens[index + 1:]
+        if name.startswith("python") and _python_inline(rest):
+            return True
+        if name in {"node", "nodejs"} and any(_node_inline(item) for item in rest):
+            return True
+        if name == "perl" and any(_PERL_INLINE.match(item) for item in rest):
+            return True
+        if name == "ruby" and any(_RUBY_INLINE.match(item) for item in rest):
+            return True
+        if name.startswith("php") and any(
+            item == "-r" or item.startswith("-r") and not item.startswith("--") for item in rest
+        ):
+            return True
+        if name == "lua" and any(
+            item == "-e" or item.startswith("-e") and not item.startswith("--") for item in rest
+        ):
+            return True
+    return False
+
+
+def _node_inline(token: str) -> bool:
+    if token in {"-e", "-p", "--eval", "--print"}:
         return True
-    if flag.startswith("--"):
-        return token.startswith(flag)
-    return token.startswith(flag) and not token.startswith("--")
+    if token.startswith("--"):
+        return token.startswith("--eval") or token.startswith("--print")
+    return token.startswith("-e") or token.startswith("-p")
 
 
-def _inline_script(words: list[str]) -> str | None:
-    """Return an interpreter one-liner, leaving ``python -m pytest -c`` alone."""
-    name = _command_basename(words[0])
-    if name.startswith("python"):
-        if "-m" in words:
-            return None
-        for index, token in enumerate(words):
-            if _is_inline_flag(token, "-c"):
-                return token if token != "-c" else (words[index + 1] if index + 1 < len(words) else "")
-        return None
-    for flag in _INLINE_FLAGS.get(name, ()):
-        for index, token in enumerate(words):
-            if _is_inline_flag(token, flag):
-                return token if token != flag else (words[index + 1] if index + 1 < len(words) else "")
-    return None
+def _python_inline(rest: list[str]) -> bool:
+    module = False
+    for token in rest:
+        if token == "-m" or (token.startswith("-m") and not token.startswith("--")):
+            module = True
+            continue
+        if _PY_INLINE.match(token) and not module:
+            return True
+    return False
 
 def _verification_mode(command: str) -> bool:
     try:
